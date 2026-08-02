@@ -9,3 +9,6 @@ export {
   type SqliteDatabase,
 } from './Database.js'
 export { currentVersion, latestVersion, type Migration } from './migrations/runner.js'
+export { DatabaseHandle } from './DatabaseHandle.js'
+export { createRepositories } from './repositories/index.js'
+export { SqliteBackupStore } from './backup/SqliteBackupStore.js'

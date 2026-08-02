@@ -32,3 +32,10 @@ export {
 } from './auth/PasswordHasher.js'
 
 export { NoRateError, RateService, type RateDependencies } from './rates/RateService.js'
+export {
+  BackupService,
+  BackupVerificationError,
+  DEFAULT_RETENTION,
+  type BackupDependencies,
+  type RetentionPolicy,
+} from './backup/BackupService.js'

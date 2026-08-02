@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import {
   PURITIES,
+  systemClock,
   toIsoTimestamp,
+  type Clock,
   type Branch,
   type AuditEntry,
   type GoldRate,
@@ -25,7 +27,7 @@ import type {
   ShopRepository,
   UserRepository,
 } from '@jewellery/application'
-import type { SqliteDatabase } from '../Database.js'
+import type { DatabaseProvider, SqliteDatabase } from '../Database.js'
 import {
   fromBool,
   toAuditEntry,
@@ -48,21 +50,39 @@ import {
  * `@jewellery/application/abstractions`, which is what makes a later move to
  * PostgreSQL a provider swap rather than a rewrite.
  *
- * Statements are prepared once per repository instance and reused. better-sqlite3
- * is synchronous by design — there is no connection pool and no await, because a
- * local file needs neither, and the absence of both removes a whole class of
+ * Every method fetches the connection through a DatabaseProvider rather than
+ * capturing one at construction. Restore replaces the database file and reopens
+ * the connection, and a repository holding the old object would be left talking
+ * to a closed handle — a backup test caught exactly that. Statements are
+ * therefore prepared per call; better-sqlite3's prepare is cheap, and at a shop
+ * counter's write volume the correctness is worth far more than the microseconds.
+ *
+ * better-sqlite3 is synchronous by design — no connection pool, no await, because
+ * a local file needs neither, and the absence of both removes a whole class of
  * interleaving bug from the ledger.
  */
 
-function now(): string {
-  return toIsoTimestamp(new Date())
+/**
+ * Every timestamp in the database comes from the injected clock.
+ *
+ * Previously this called `new Date()` directly, so repository timestamps and
+ * service timestamps could come from different sources. A test caught it:
+ * `daysSinceLastGoodBackup` compared a frozen service clock against a real
+ * wall-clock row and returned -1. In a ledger, two disagreeing sources of "now"
+ * is not a test artifact — it is a reconciliation bug waiting to happen.
+ */
+function nowFrom(clock: Clock): string {
+  return toIsoTimestamp(clock.now())
 }
 
 class SqliteShopRepository implements ShopRepository {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
 
   get(): ShopProfile | null {
-    const row = this.db.prepare("SELECT * FROM shop_profile WHERE id = 'shop'").get() as
+    const row = this.conn.get().prepare("SELECT * FROM shop_profile WHERE id = 'shop'").get() as
       | ShopRow
       | undefined
     return row ? toShopProfile(row) : null
@@ -70,7 +90,7 @@ class SqliteShopRepository implements ShopRepository {
 
   save(profile: Omit<ShopProfile, 'updatedAt'>): ShopProfile {
     // One row, ever — the id is fixed and the schema CHECKs it.
-    this.db
+    this.conn.get()
       .prepare(
         `INSERT INTO shop_profile
            (id, name, tagline, owner_name, second_owner_name,
@@ -83,7 +103,7 @@ class SqliteShopRepository implements ShopRepository {
            phone2 = @phone2, phone3 = @phone3, address = @address,
            logo_path = @logoPath, updated_at = @updatedAt`,
       )
-      .run({ ...profile, updatedAt: now() })
+      .run({ ...profile, updatedAt: nowFrom(this.clock) })
 
     const saved = this.get()
     if (!saved) throw new Error('Shop profile vanished immediately after saving')
@@ -92,31 +112,34 @@ class SqliteShopRepository implements ShopRepository {
 }
 
 class SqliteBranchRepository implements BranchRepository {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
 
   findById(id: string): Branch | null {
-    const row = this.db.prepare('SELECT * FROM branches WHERE id = ?').get(id) as
+    const row = this.conn.get().prepare('SELECT * FROM branches WHERE id = ?').get(id) as
       | BranchRow
       | undefined
     return row ? toBranch(row) : null
   }
 
   findDefault(): Branch | null {
-    const row = this.db.prepare('SELECT * FROM branches WHERE is_default = 1').get() as
+    const row = this.conn.get().prepare('SELECT * FROM branches WHERE is_default = 1').get() as
       | BranchRow
       | undefined
     return row ? toBranch(row) : null
   }
 
   listActive(): Branch[] {
-    const rows = this.db
+    const rows = this.conn.get()
       .prepare('SELECT * FROM branches WHERE is_active = 1 ORDER BY is_default DESC, name')
       .all() as BranchRow[]
     return rows.map(toBranch)
   }
 
   create(branch: Omit<Branch, 'createdAt'>): Branch {
-    this.db
+    this.conn.get()
       .prepare(
         `INSERT INTO branches (id, name, address, is_default, is_active, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -127,7 +150,7 @@ class SqliteBranchRepository implements BranchRepository {
         branch.address,
         fromBool(branch.isDefault),
         fromBool(branch.isActive),
-        now(),
+        nowFrom(this.clock),
       )
     const created = this.findById(branch.id)
     if (!created) throw new Error(`Branch ${branch.id} vanished immediately after insert`)
@@ -135,7 +158,7 @@ class SqliteBranchRepository implements BranchRepository {
   }
 
   rename(id: string, name: string, address: string | null): Branch {
-    this.db
+    this.conn.get()
       .prepare('UPDATE branches SET name = ?, address = ? WHERE id = ?')
       .run(name, address, id)
     const updated = this.findById(id)
@@ -145,10 +168,13 @@ class SqliteBranchRepository implements BranchRepository {
 }
 
 class SqliteUserRepository implements UserRepository {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
 
   findById(id: string): User | null {
-    const row = this.db.prepare('SELECT * FROM users WHERE id = ?').get(id) as
+    const row = this.conn.get().prepare('SELECT * FROM users WHERE id = ?').get(id) as
       | UserRow
       | undefined
     return row ? toUser(row) : null
@@ -156,21 +182,21 @@ class SqliteUserRepository implements UserRepository {
 
   findByUsername(username: string): User | null {
     // COLLATE NOCASE matches the unique index, so lookup and uniqueness agree.
-    const row = this.db
+    const row = this.conn.get()
       .prepare('SELECT * FROM users WHERE username = ? COLLATE NOCASE')
       .get(username) as UserRow | undefined
     return row ? toUser(row) : null
   }
 
   list(): User[] {
-    const rows = this.db
+    const rows = this.conn.get()
       .prepare('SELECT * FROM users ORDER BY is_active DESC, name')
       .all() as UserRow[]
     return rows.map(toUser)
   }
 
   countActiveAdmins(): number {
-    const row = this.db
+    const row = this.conn.get()
       .prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'ADMIN' AND is_active = 1")
       .get() as { n: number }
     return row.n
@@ -178,8 +204,8 @@ class SqliteUserRepository implements UserRepository {
 
   create(user: NewUser): User {
     const id = randomUUID()
-    const stamp = now()
-    this.db
+    const stamp = nowFrom(this.clock)
+    this.conn.get()
       .prepare(
         `INSERT INTO users
            (id, branch_id, name, username, password_hash, role,
@@ -204,31 +230,31 @@ class SqliteUserRepository implements UserRepository {
     id: string,
     changes: { name: string; role: Role; branchId: string | null },
   ): User {
-    this.db
+    this.conn.get()
       .prepare('UPDATE users SET name = ?, role = ?, branch_id = ?, updated_at = ? WHERE id = ?')
-      .run(changes.name, changes.role, changes.branchId, now(), id)
+      .run(changes.name, changes.role, changes.branchId, nowFrom(this.clock), id)
     return this.require(id)
   }
 
   setPassword(id: string, passwordHash: string, mustChangePassword: boolean): User {
-    this.db
+    this.conn.get()
       .prepare(
         `UPDATE users SET password_hash = ?, must_change_password = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .run(passwordHash, fromBool(mustChangePassword), now(), id)
+      .run(passwordHash, fromBool(mustChangePassword), nowFrom(this.clock), id)
     return this.require(id)
   }
 
   setActive(id: string, isActive: boolean): User {
-    this.db
+    this.conn.get()
       .prepare('UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?')
-      .run(fromBool(isActive), now(), id)
+      .run(fromBool(isActive), nowFrom(this.clock), id)
     return this.require(id)
   }
 
   recordLogin(id: string): void {
-    this.db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now(), id)
+    this.conn.get().prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(nowFrom(this.clock), id)
   }
 
   private require(id: string): User {
@@ -239,7 +265,10 @@ class SqliteUserRepository implements UserRepository {
 }
 
 class SqliteGoldRateRepository implements GoldRateRepository {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
 
   /**
    * The latest rate whose effective_from is on or before `on`.
@@ -261,7 +290,7 @@ class SqliteGoldRateRepository implements GoldRateRepository {
    * why no date parsing is needed in SQL.
    */
   findEffective(branchId: string, purity: Purity, on: IsoDate): GoldRate | null {
-    const row = this.db
+    const row = this.conn.get()
       .prepare(
         `SELECT * FROM gold_rates
           WHERE branch_id = ? AND purity = ? AND effective_from <= ?
@@ -291,7 +320,7 @@ class SqliteGoldRateRepository implements GoldRateRepository {
   }
 
   history(branchId: string, purity: Purity, limit: number): GoldRate[] {
-    const rows = this.db
+    const rows = this.conn.get()
       .prepare(
         `SELECT * FROM gold_rates
           WHERE branch_id = ? AND purity = ?
@@ -305,7 +334,7 @@ class SqliteGoldRateRepository implements GoldRateRepository {
   /** Insert only. There is deliberately no update — a rate is history. */
   record(rate: NewGoldRate): GoldRate {
     const id = randomUUID()
-    this.db
+    this.conn.get()
       .prepare(
         `INSERT INTO gold_rates
            (id, branch_id, purity, rate_per_gram, effective_from,
@@ -320,20 +349,23 @@ class SqliteGoldRateRepository implements GoldRateRepository {
         rate.ratePerGram.paisa,
         rate.effectiveFrom,
         rate.createdByUserId,
-        now(),
+        nowFrom(this.clock),
         rate.note,
       )
-    const row = this.db.prepare('SELECT * FROM gold_rates WHERE id = ?').get(id) as GoldRateRow
+    const row = this.conn.get().prepare('SELECT * FROM gold_rates WHERE id = ?').get(id) as GoldRateRow
     return toGoldRate(row)
   }
 }
 
 class SqliteAuditRepository implements AuditRepository {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
 
   append(entry: NewAuditEntry): AuditEntry {
     const id = randomUUID()
-    this.db
+    this.conn.get()
       .prepare(
         `INSERT INTO audit_log
            (id, branch_id, user_id, action, entity, entity_id, detail, created_at)
@@ -347,21 +379,21 @@ class SqliteAuditRepository implements AuditRepository {
         entry.entity,
         entry.entityId,
         entry.detail,
-        now(),
+        nowFrom(this.clock),
       )
-    const row = this.db.prepare('SELECT * FROM audit_log WHERE id = ?').get(id) as AuditRow
+    const row = this.conn.get().prepare('SELECT * FROM audit_log WHERE id = ?').get(id) as AuditRow
     return toAuditEntry(row)
   }
 
   recent(limit: number): AuditEntry[] {
-    const rows = this.db
+    const rows = this.conn.get()
       .prepare('SELECT * FROM audit_log ORDER BY created_at DESC, rowid DESC LIMIT ?')
       .all(limit) as AuditRow[]
     return rows.map(toAuditEntry)
   }
 
   forEntity(entity: string, entityId: string): AuditEntry[] {
-    const rows = this.db
+    const rows = this.conn.get()
       .prepare(
         `SELECT * FROM audit_log
           WHERE entity = ? AND entity_id = ?
@@ -373,27 +405,30 @@ class SqliteAuditRepository implements AuditRepository {
 }
 
 class SqliteSettingsRepository implements SettingsRepository {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
 
   get(key: string): string | null {
-    const row = this.db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
+    const row = this.conn.get().prepare('SELECT value FROM app_settings WHERE key = ?').get(key) as
       | { value: string }
       | undefined
     return row?.value ?? null
   }
 
   set(key: string, value: string): void {
-    this.db
+    this.conn.get()
       .prepare(
         `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
          ON CONFLICT (key) DO UPDATE SET value = excluded.value,
                                         updated_at = excluded.updated_at`,
       )
-      .run(key, value, now())
+      .run(key, value, nowFrom(this.clock))
   }
 
   all(): Record<string, string> {
-    const rows = this.db.prepare('SELECT key, value FROM app_settings').all() as {
+    const rows = this.conn.get().prepare('SELECT key, value FROM app_settings').all() as {
       key: string
       value: string
     }[]
@@ -402,12 +437,15 @@ class SqliteSettingsRepository implements SettingsRepository {
 }
 
 class SqliteBackupLogRepository implements BackupLogRepository {
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
 
   append(record: Omit<BackupRecord, 'id' | 'createdAt'>): BackupRecord {
     const id = randomUUID()
-    const createdAt = now()
-    this.db
+    const createdAt = nowFrom(this.clock)
+    this.conn.get()
       .prepare(
         `INSERT INTO backup_log
            (id, file_path, size_bytes, kind, integrity_ok, created_by_user_id, created_at)
@@ -426,7 +464,7 @@ class SqliteBackupLogRepository implements BackupLogRepository {
   }
 
   recent(limit: number): BackupRecord[] {
-    const rows = this.db
+    const rows = this.conn.get()
       .prepare('SELECT * FROM backup_log ORDER BY created_at DESC LIMIT ?')
       .all(limit) as Array<{
       id: string
@@ -453,15 +491,25 @@ class SqliteBackupLogRepository implements BackupLogRepository {
   }
 }
 
-/** Builds every repository over one database connection. */
-export function createRepositories(db: SqliteDatabase): Repositories {
+/**
+ * Builds every repository over a connection source.
+ *
+ * Accepts a DatabaseHandle (production, survives restore) or a bare connection
+ * (tests that never restore). Passing a bare connection is safe only because
+ * such a database is never swapped underneath.
+ */
+export function createRepositories(
+  source: SqliteDatabase | DatabaseProvider,
+  clock: Clock = systemClock,
+): Repositories {
+  const conn: DatabaseProvider = 'get' in source ? source : { get: () => source }
   return {
-    shop: new SqliteShopRepository(db),
-    branches: new SqliteBranchRepository(db),
-    users: new SqliteUserRepository(db),
-    goldRates: new SqliteGoldRateRepository(db),
-    audit: new SqliteAuditRepository(db),
-    settings: new SqliteSettingsRepository(db),
-    backupLog: new SqliteBackupLogRepository(db),
+    shop: new SqliteShopRepository(conn, clock),
+    branches: new SqliteBranchRepository(conn, clock),
+    users: new SqliteUserRepository(conn, clock),
+    goldRates: new SqliteGoldRateRepository(conn, clock),
+    audit: new SqliteAuditRepository(conn, clock),
+    settings: new SqliteSettingsRepository(conn, clock),
+    backupLog: new SqliteBackupLogRepository(conn, clock),
   }
 }

@@ -5,6 +5,18 @@ import { runMigrations } from './migrations/runner.js'
 
 export type SqliteDatabase = BetterSqlite3.Database
 
+/**
+ * Anything that can hand out the current connection.
+ *
+ * Repositories take one of these rather than a raw connection, because restore
+ * closes the live connection and opens a new one against the replaced file. A
+ * repository holding a captured connection object would be left pointing at a
+ * closed handle — which is exactly the bug a backup test caught.
+ */
+export interface DatabaseProvider {
+  get(): SqliteDatabase
+}
+
 export interface OpenOptions {
   /** Absolute path to the .sqlite file. Its directory is created if missing. */
   readonly file: string
