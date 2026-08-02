@@ -1,0 +1,38 @@
+# ── secrets ──────────────────────────────────────────────────────────────
+# An offline app has no connection strings, so there is normally nothing to
+# put here. Ignored anyway so a stray .env can never be committed again.
+.env
+.env.*
+!.env.example
+
+# ── dependencies ─────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ── build output ─────────────────────────────────────────────────────────
+dist/
+dist-electron/
+release/
+*.tsbuildinfo
+coverage/
+
+# ── the shop's data — NEVER commit ───────────────────────────────────────
+# Live database, WAL sidecars, and backups. This is the shop's only copy of
+# its books; it does not belong in version control.
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+backups/
+
+# ── print diagnostics ────────────────────────────────────────────────────
+# Dry-run raster dumps (PNG + ESC/POS byte streams).
+print-dumps/
+
+# ── editor / OS ──────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

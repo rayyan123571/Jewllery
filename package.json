@@ -1,0 +1,35 @@
+{
+  "name": "jewellery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gold Jewellery Management System — offline Windows desktop application",
+  "workspaces": [
+    "packages/domain",
+    "packages/application",
+    "packages/persistence",
+    "packages/printing",
+    "packages/desktop"
+  ],
+  "scripts": {
+    "typecheck": "tsc --build",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "npm run dev --workspace @jewellery/desktop",
+    "build": "npm run build --workspace @jewellery/desktop",
+    "dist:win": "npm run dist:win --workspace @jewellery/desktop",
+    "verify": "npm run lint && npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^22.14.1",
+    "eslint": "^9.20.0",
+    "eslint-plugin-boundaries": "^5.0.1",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
