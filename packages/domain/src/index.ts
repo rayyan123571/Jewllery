@@ -41,6 +41,9 @@ export {
 // ── shop ───────────────────────────────────────────────────────────────────
 export type { Branch, ShopProfile } from './shop/Shop.js'
 
+// ── parties ────────────────────────────────────────────────────────────────
+export type { NewParty, Party, PartyWithBalance } from './parties/Party.js'
+
 // ── users ──────────────────────────────────────────────────────────────────
 export {
   ROLES,

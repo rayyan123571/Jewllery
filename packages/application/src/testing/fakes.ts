@@ -9,6 +9,8 @@ import {
   type NewAuditEntry,
   type NewGoldRate,
   type Purity,
+  type NewParty,
+  type Party,
   type Role,
   type User,
 } from '@jewellery/domain'
@@ -16,6 +18,8 @@ import type {
   AuditRepository,
   GoldRateRepository,
   NewUser,
+  PartyRepository,
+  PartySearchResult,
   UserRepository,
 } from '../abstractions/repositories.js'
 
@@ -207,4 +211,78 @@ export class FakeGoldRateRepository implements GoldRateRepository {
       note: null,
     })
   }
+}
+
+export class FakePartyRepository implements PartyRepository {
+  private readonly rows = new Map<string, Party>()
+  private sequence = 0
+
+  constructor(private readonly clock: Clock) {}
+
+  findById(id: string): Party | null {
+    return this.rows.get(id) ?? null
+  }
+
+  findByCode(branchId: string, code: string): Party | null {
+    const target = code.toLowerCase()
+    for (const p of this.rows.values()) {
+      if (p.branchId === branchId && p.code.toLowerCase() === target) return p
+    }
+    return null
+  }
+
+  /** Prefix matches first, mirroring the real index's ORDER BY. */
+  search(branchId: string, query: string, limit: number): PartySearchResult[] {
+    const q = query.toLowerCase()
+    return [...this.rows.values()]
+      .filter((p) => p.branchId === branchId && p.isActive)
+      .filter((p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+      .sort((a, b) => rank(a, q) - rank(b, q) || a.name.localeCompare(b.name))
+      .slice(0, limit)
+      .map((p) => ({ id: p.id, code: p.code, name: p.name, mobile: p.mobile, city: p.city }))
+  }
+
+  list(branchId: string, includeInactive: boolean): Party[] {
+    return [...this.rows.values()]
+      .filter((p) => p.branchId === branchId && (includeInactive || p.isActive))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  create(party: NewParty): Party {
+    const now = toIsoTimestamp(this.clock.now())
+    const created: Party = {
+      ...party,
+      id: `party-${++this.sequence}`,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    }
+    this.rows.set(created.id, created)
+    return created
+  }
+
+  update(
+    id: string,
+    changes: { name: string; mobile: string | null; city: string | null; notes: string | null },
+  ): Party {
+    return this.mutate(id, (p) => ({ ...p, ...changes }))
+  }
+
+  setActive(id: string, isActive: boolean): Party {
+    return this.mutate(id, (p) => ({ ...p, isActive }))
+  }
+
+  private mutate(id: string, change: (p: Party) => Party): Party {
+    const existing = this.rows.get(id)
+    if (!existing) throw new Error(`No such party: ${id}`)
+    const updated = { ...change(existing), updatedAt: toIsoTimestamp(this.clock.now()) }
+    this.rows.set(id, updated)
+    return updated
+  }
+}
+
+function rank(p: Party, q: string): number {
+  if (p.code.toLowerCase().startsWith(q)) return 0
+  if (p.name.toLowerCase().startsWith(q)) return 1
+  return 2
 }

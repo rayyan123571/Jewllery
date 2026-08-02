@@ -1,6 +1,12 @@
 // Business calculations. Depends on domain only — no SQL, no Electron, no
 // React, so every calculation here is testable with no database and no window.
 
+export {
+  PartyService,
+  type CreatePartyInput,
+  type PartyDependencies,
+} from './parties/PartyService.js'
+
 export type {
   AuditRepository,
   BackupKind,
@@ -10,6 +16,8 @@ export type {
   GoldRateRepository,
   NewUser,
   Repositories,
+  PartyRepository,
+  PartySearchResult,
   SettingsRepository,
   ShopRepository,
   UserRepository,

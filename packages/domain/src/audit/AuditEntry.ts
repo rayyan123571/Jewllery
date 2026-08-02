@@ -28,6 +28,9 @@ export type AuditAction =
   | 'TRANSACTION_POSTED'
   | 'TRANSACTION_REVERSED'
   | 'OVER_RETURN_CONFIRMED'
+  | 'PARTY_CREATED'
+  | 'PARTY_UPDATED'
+  | 'PARTY_DEACTIVATED'
 
 export interface AuditEntry {
   readonly id: string

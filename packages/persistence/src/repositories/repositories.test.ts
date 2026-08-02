@@ -315,6 +315,7 @@ describe('the repository seam', () => {
       'backupLog',
       'branches',
       'goldRates',
+      'parties',
       'settings',
       'shop',
       'users',

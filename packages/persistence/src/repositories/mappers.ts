@@ -1,5 +1,6 @@
 import {
   Money,
+  Weight,
   toIsoDate,
   toIsoTimestamp,
   parsePurity,
@@ -10,6 +11,7 @@ import {
   type User,
   type AuditEntry,
   type AuditAction,
+  type Party,
 } from '@jewellery/domain'
 
 /**
@@ -160,5 +162,40 @@ export function toAuditEntry(row: AuditRow): AuditEntry {
     entityId: row.entity_id,
     detail: row.detail,
     createdAt: toIsoTimestamp(row.created_at),
+  }
+}
+
+// ── parties (M1) ────────────────────────────────────────────────────────────
+
+export interface PartyRow {
+  id: string
+  branch_id: string
+  code: string
+  name: string
+  mobile: string | null
+  city: string | null
+  opening_gold_mg: number
+  opening_cash_paisa: number
+  is_active: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function toParty(row: PartyRow): Party {
+  return {
+    id: row.id,
+    branchId: row.branch_id,
+    code: row.code,
+    name: row.name,
+    mobile: row.mobile,
+    city: row.city,
+    // Integers become value objects here and nowhere else.
+    openingGold: Weight.fromMilligrams(row.opening_gold_mg),
+    openingCash: Money.fromPaisa(row.opening_cash_paisa),
+    isActive: toBool(row.is_active),
+    notes: row.notes,
+    createdAt: toIsoTimestamp(row.created_at),
+    updatedAt: toIsoTimestamp(row.updated_at),
   }
 }

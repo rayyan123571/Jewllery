@@ -257,3 +257,71 @@ model, which denies the renderer any filesystem access at all.
 This is the reason the `application` layer may not import `better-sqlite3`,
 `electron`, or `react`. If a calculation cannot be tested without starting a
 database, it is in the wrong layer.
+
+---
+
+## 10. Settling a gold debt
+
+**A wholesale party owes khalis gold. All three ways of settling it reduce the
+gold debt.**
+
+| Settled by | Effect on the gold ledger | Effect on the cash ledger |
+|---|---|---|
+| khalis gold | reduced by the weight given | untouched |
+| cash | reduced by **the gold that cash buys** at the stored rate | untouched |
+| part gold, part cash | reduced by both portions | untouched |
+
+After a party settles a gold debt fully in cash, **their gold balance reads
+zero.** Not "gold still owed, cash in credit". The debt is settled.
+
+This is deliberately *not* the model used by the GoldLab reference
+implementation, which keeps two entirely independent ledgers and never converts
+between them. That is correct for a testing lab, where cash and metal are
+unrelated flows. It is wrong for a wholesale jeweller, where the cash is handed
+over *in place of* the gold owed. The reference was checked first; this decision
+overrides it on business grounds.
+
+A cash ledger still exists, for ordinary cash movements that have nothing to do
+with a gold debt. But settling a gold debt in cash is a **gold-debt transaction
+that happens to be paid in cash**, and is never modelled as an unrelated cash
+credit.
+
+### The conversion
+
+```
+gold_mg = cash_paisa × 11664 / rate_paisa_per_tola
+```
+
+Dimensionally: paisa × (mg/tola) ÷ (paisa/tola) = mg. It is the exact inverse of
+`Money.valueOfAtTolaRate`, and a round trip returns the same milligram — checked
+by test against the real slip's 234.853 g. One rounding, half away from zero,
+through `scaleDiv`. Implemented once, in `Weight.boughtByAtTolaRate`.
+
+### The rate is stored on the transaction
+
+The rate used for a cash portion is **written onto the settlement row**, not
+looked up again when the row is later read.
+
+This is the whole point. If the ledger re-derived the rate at read time, then
+every past settlement would silently re-value itself the next time the gold rate
+moved, and a party's history would change under them. History does not move.
+
+### No rate, no settlement
+
+If no rate exists on or before the settlement's own date, the settlement is
+**refused** with a message saying so. Never defaulted to zero, never silently
+substituted with today's rate. Valuing a cash payment at a made-up rate settles a
+real debt for an imaginary amount, and nothing on the slip would show it.
+
+### Mixed settlements are one transaction
+
+A part-gold, part-cash settlement is **one row carrying both portions**, not two
+unrelated entries. The slip and the ledger both show what was given in gold and
+what in cash, because a party asking "what did I pay in August" needs to see one
+event, not two halves they have to recognise as related.
+
+### Overpayment is allowed
+
+If a party settles more than they owe, the balance goes negative — the shop owes
+them. This is allowed, carried forward, and displayed as "(we owe)" under the
+§4 rule. Never clamped to zero, never blocked, never absolute-valued.

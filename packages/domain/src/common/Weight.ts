@@ -1,4 +1,5 @@
 import { assertSafeInteger, scaleDiv } from './rounding.js'
+import { MG_PER_TOLA } from './units.js'
 
 /**
  * A weight of gold, stored as an exact integer number of **milligrams**.
@@ -87,6 +88,34 @@ export class Weight {
       throw new TypeError(`Weight in grams must be finite, received ${String(grams)}`)
     }
     return Weight.fromMilligrams(scaleDiv(Math.trunc(grams * 1e6), 1, 1000))
+  }
+
+  /**
+   * How much gold a sum of cash buys at a per-tola rate.
+   *
+   *   milligrams = paisa × 11664 / ratePerTolaInPaisa
+   *
+   * This is the exact inverse of `Money.valueOfAtTolaRate`, and it is what makes
+   * a cash settlement reduce a *gold* debt: the shop is not taking a cash credit,
+   * it is accepting cash in place of the gold the party owes, so the cash has to
+   * become a weight before it can touch the gold ledger.
+   *
+   * Dimensionally: paisa × (mg/tola) ÷ (paisa/tola) = mg. Sanity check at the
+   * real slip's rate — Rs 358,000 buys 35,800,000 × 11,664 / 35,800,000 =
+   * 11,664 mg, exactly one tola.
+   *
+   * One rounding, half away from zero, at this step only. `scaleDiv` guards the
+   * intermediate product; a rate of zero throws rather than dividing by it,
+   * because "cash buys infinite gold" is never the right answer.
+   */
+  static boughtByAtTolaRate(cashPaisa: number, ratePerTolaPaisa: number): Weight {
+    if (ratePerTolaPaisa <= 0) {
+      throw new RangeError(
+        'Cannot convert cash to gold without a positive rate. A settlement paid ' +
+          'in cash needs the gold rate that applied on its own date.',
+      )
+    }
+    return Weight.fromMilligrams(scaleDiv(cashPaisa, MG_PER_TOLA, ratePerTolaPaisa))
   }
 
   // ── arithmetic ─────────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@ import {
   type GoldRate,
   type NewAuditEntry,
   type NewGoldRate,
+  type NewParty,
+  type Party,
   type IsoDate,
   type Purity,
   type Role,
@@ -22,6 +24,8 @@ import type {
   BranchRepository,
   GoldRateRepository,
   NewUser,
+  PartyRepository,
+  PartySearchResult,
   Repositories,
   SettingsRepository,
   ShopRepository,
@@ -33,11 +37,13 @@ import {
   toAuditEntry,
   toBranch,
   toGoldRate,
+  toParty,
   toShopProfile,
   toUser,
   type AuditRow,
   type BranchRow,
   type GoldRateRow,
+  type PartyRow,
   type ShopRow,
   type UserRow,
 } from './mappers.js'
@@ -492,6 +498,126 @@ class SqliteBackupLogRepository implements BackupLogRepository {
   }
 }
 
+class SqlitePartyRepository implements PartyRepository {
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
+
+  findById(id: string): Party | null {
+    const row = this.conn.get().prepare('SELECT * FROM parties WHERE id = ?').get(id) as
+      | PartyRow
+      | undefined
+    return row ? toParty(row) : null
+  }
+
+  findByCode(branchId: string, code: string): Party | null {
+    const row = this.conn
+      .get()
+      .prepare('SELECT * FROM parties WHERE branch_id = ? AND code = ? COLLATE NOCASE')
+      .get(branchId, code) as PartyRow | undefined
+    return row ? toParty(row) : null
+  }
+
+  /**
+   * Type-ahead. Prefix matches rank above contains-matches, so typing "CH"
+   * offers "CHAUDHARY" before "AL-CHISHTI" — which is what someone typing a
+   * code expects, and what makes the first suggestion safe to accept blind.
+   */
+  search(branchId: string, query: string, limit: number): PartySearchResult[] {
+    const like = `%${query}%`
+    const prefix = `${query}%`
+    const rows = this.conn
+      .get()
+      .prepare(
+        `SELECT id, code, name, mobile, city
+           FROM parties
+          WHERE branch_id = ? AND is_active = 1
+            AND (code LIKE ? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE)
+          ORDER BY
+            CASE WHEN code LIKE ? COLLATE NOCASE THEN 0
+                 WHEN name LIKE ? COLLATE NOCASE THEN 1
+                 ELSE 2 END,
+            name COLLATE NOCASE
+          LIMIT ?`,
+      )
+      .all(branchId, like, like, prefix, prefix, limit) as PartySearchResult[]
+    return rows
+  }
+
+  list(branchId: string, includeInactive: boolean): Party[] {
+    const rows = this.conn
+      .get()
+      .prepare(
+        `SELECT * FROM parties
+          WHERE branch_id = ?${includeInactive ? '' : ' AND is_active = 1'}
+          ORDER BY name COLLATE NOCASE`,
+      )
+      .all(branchId) as PartyRow[]
+    return rows.map(toParty)
+  }
+
+  create(party: NewParty): Party {
+    const id = randomUUID()
+    const stamp = nowFrom(this.clock)
+    this.conn
+      .get()
+      .prepare(
+        `INSERT INTO parties
+           (id, branch_id, code, name, mobile, city,
+            opening_gold_mg, opening_cash_paisa, is_active, notes,
+            created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        party.branchId,
+        party.code,
+        party.name,
+        party.mobile,
+        party.city,
+        // Value objects become integers here and nowhere else.
+        party.openingGold.milligrams,
+        party.openingCash.paisa,
+        party.notes,
+        stamp,
+        stamp,
+      )
+    return this.require(id)
+  }
+
+  update(
+    id: string,
+    changes: { name: string; mobile: string | null; city: string | null; notes: string | null },
+  ): Party {
+    // No code and no opening balances in this statement, on purpose — both
+    // appear on slips that have already been printed, and changing either would
+    // silently rewrite what those slips meant.
+    this.conn
+      .get()
+      .prepare(
+        `UPDATE parties SET name = ?, mobile = ?, city = ?, notes = ?, updated_at = ?
+          WHERE id = ?`,
+      )
+      .run(changes.name, changes.mobile, changes.city, changes.notes, nowFrom(this.clock), id)
+    return this.require(id)
+  }
+
+  setActive(id: string, isActive: boolean): Party {
+    this.conn
+      .get()
+      .prepare('UPDATE parties SET is_active = ?, updated_at = ? WHERE id = ?')
+      .run(fromBool(isActive), nowFrom(this.clock), id)
+    return this.require(id)
+  }
+
+  private require(id: string): Party {
+    const party = this.findById(id)
+    if (!party) throw new Error(`No such party: ${id}`)
+    return party
+  }
+}
+
 /**
  * Builds every repository over a connection source.
  *
@@ -512,5 +638,6 @@ export function createRepositories(
     audit: new SqliteAuditRepository(conn, clock),
     settings: new SqliteSettingsRepository(conn, clock),
     backupLog: new SqliteBackupLogRepository(conn, clock),
+    parties: new SqlitePartyRepository(conn, clock),
   }
 }

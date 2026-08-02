@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { Money } from './Money.js'
 import { Weight } from './Weight.js'
 
 describe('Weight — parsing at the UI edge', () => {
@@ -183,5 +184,46 @@ describe('Weight — comparison', () => {
     const w = Weight.parse('-0.500')
     expect(w.absolute.format()).toBe('0.500')
     expect(w.format()).toBe('-0.500')
+  })
+})
+
+describe('cash converted to gold, for settling a gold debt in cash', () => {
+  // A settlement paid in cash reduces the GOLD debt (docs/DECISIONS.md §10).
+  // The cash therefore has to become a weight before it can touch the gold
+  // ledger, at the rate stored on that transaction.
+  const SLIP_RATE_PAISA = 35_800_000 // Rs 358,000 per tola, from the real slip
+
+  it('buys exactly one tola for exactly the rate', () => {
+    const gold = Weight.boughtByAtTolaRate(SLIP_RATE_PAISA, SLIP_RATE_PAISA)
+    expect(gold.milligrams).toBe(11_664)
+    expect(gold.format()).toBe('11.664')
+  })
+
+  it('is the exact inverse of valuing gold at the same rate', () => {
+    // Round-tripping a real slip figure must land back on the same milligram,
+    // or a settlement would never quite clear a debt it was meant to clear.
+    const original = Weight.parse('234.853')
+    const cash = Money.valueOfAtTolaRate(original, Money.fromPaisa(SLIP_RATE_PAISA))
+    const back = Weight.boughtByAtTolaRate(cash.paisa, SLIP_RATE_PAISA)
+    expect(back.equals(original)).toBe(true)
+  })
+
+  it('converts a part payment', () => {
+    // Rs 1,000,000 at the slip rate buys 32.581 g.
+    const gold = Weight.boughtByAtTolaRate(100_000_000, SLIP_RATE_PAISA)
+    expect(gold.format()).toBe('32.581')
+  })
+
+  it('rounds half away from zero, once', () => {
+    // At a rate of 2 x 11,664 paisa/tola, 1 paisa buys exactly 0.5 mg.
+    expect(Weight.boughtByAtTolaRate(1, 2 * 11_664).milligrams).toBe(1)
+    expect(Weight.boughtByAtTolaRate(-1, 2 * 11_664).milligrams).toBe(-1)
+  })
+
+  it('refuses to convert without a rate rather than defaulting', () => {
+    // "Cash buys infinite gold" is never the right answer, and a zero rate
+    // would silently settle any debt for nothing.
+    expect(() => Weight.boughtByAtTolaRate(100_000, 0)).toThrow(/without a positive rate/)
+    expect(() => Weight.boughtByAtTolaRate(100_000, -1)).toThrow(/without a positive rate/)
   })
 })

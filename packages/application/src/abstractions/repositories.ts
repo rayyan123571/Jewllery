@@ -5,6 +5,8 @@ import type {
   IsoDate,
   NewAuditEntry,
   NewGoldRate,
+  NewParty,
+  Party,
   Purity,
   Role,
   ShopProfile,
@@ -125,4 +127,41 @@ export interface Repositories {
   readonly audit: AuditRepository
   readonly settings: SettingsRepository
   readonly backupLog: BackupLogRepository
+  readonly parties: PartyRepository
+}
+
+// ── parties (M1) ────────────────────────────────────────────────────────────
+
+export interface PartySearchResult {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly mobile: string | null
+  readonly city: string | null
+}
+
+export interface PartyRepository {
+  findById(id: string): Party | null
+  /** Case-insensitive, matching the unique index on (branch_id, code). */
+  findByCode(branchId: string, code: string): Party | null
+  /**
+   * Type-ahead for the party selector.
+   *
+   * Matches code or name, prefix matches first so typing "CH" puts "CHJ" above
+   * "ALCH". Inactive parties are excluded: a party nobody trades with any more
+   * should not be selectable on a new slip, though their ledger stays readable.
+   */
+  search(branchId: string, query: string, limit: number): PartySearchResult[]
+  list(branchId: string, includeInactive: boolean): Party[]
+  create(party: NewParty): Party
+  update(
+    id: string,
+    changes: {
+      name: string
+      mobile: string | null
+      city: string | null
+      notes: string | null
+    },
+  ): Party
+  setActive(id: string, isActive: boolean): Party
 }
