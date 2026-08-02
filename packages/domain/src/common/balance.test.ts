@@ -104,7 +104,7 @@ describe('negative balances are first class', () => {
 
   it('keeps the sign through valuation into the cash ledger', () => {
     const owed = Weight.parse('-0.500')
-    const value = Money.valueOf(owed, Money.parse('9400'))
+    const value = Money.valueOfAtTolaRate(owed, Money.parse('358000'))
     expect(describeBalance(value).label).toBe('we owe')
   })
 

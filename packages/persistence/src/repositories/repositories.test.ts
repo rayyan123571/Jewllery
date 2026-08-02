@@ -150,7 +150,7 @@ describe('gold rates — the time-effective lookup', () => {
       repos.goldRates.record({
         branchId: BRANCH,
         purity: 'K22',
-        ratePerGram: Money.fromRupees(rupees),
+        ratePerTola: Money.fromRupees(rupees),
         effectiveFrom: toIsoDate(from),
         createdByUserId: adminId(),
         note: null,
@@ -160,17 +160,17 @@ describe('gold rates — the time-effective lookup', () => {
 
   it('returns the rate in force, not the newest row', () => {
     const rate = repos.goldRates.findEffective(BRANCH, 'K22', toIsoDate('2026-08-15'))
-    expect(rate?.ratePerGram.format()).toBe('8,950.00')
+    expect(rate?.ratePerTola.format()).toBe('8,950.00')
   })
 
   it('does not apply a future-dated rate early', () => {
     const rate = repos.goldRates.findEffective(BRANCH, 'K22', toIsoDate('2026-08-31'))
-    expect(rate?.ratePerGram.format()).toBe('8,950.00')
+    expect(rate?.ratePerTola.format()).toBe('8,950.00')
   })
 
   it('still returns last month rate for a back-dated transaction', () => {
     const rate = repos.goldRates.findEffective(BRANCH, 'K22', toIsoDate('2026-07-15'))
-    expect(rate?.ratePerGram.format()).toBe('8,900.00')
+    expect(rate?.ratePerTola.format()).toBe('8,900.00')
   })
 
   it('returns null before any rate existed', () => {
@@ -181,19 +181,19 @@ describe('gold rates — the time-effective lookup', () => {
     repos.goldRates.record({
       branchId: BRANCH,
       purity: 'K21',
-      ratePerGram: Money.parse('8555.55'),
+      ratePerTola: Money.parse('8555.55'),
       effectiveFrom: toIsoDate('2026-08-01'),
       createdByUserId: adminId(),
       note: null,
     })
     const rate = repos.goldRates.findEffective(BRANCH, 'K21', toIsoDate('2026-08-02'))
-    expect(rate?.ratePerGram.paisa).toBe(855_555)
-    expect(rate?.ratePerGram.format()).toBe('8,555.55')
+    expect(rate?.ratePerTola.paisa).toBe(855_555)
+    expect(rate?.ratePerTola.format()).toBe('8,555.55')
   })
 
   it('stores the rate column as an integer, not a float', () => {
     const row = db
-      .prepare("SELECT typeof(rate_per_gram) AS t FROM gold_rates LIMIT 1")
+      .prepare("SELECT typeof(rate_per_tola) AS t FROM gold_rates LIMIT 1")
       .get() as { t: string }
     expect(row.t).toBe('integer')
   })
@@ -203,28 +203,28 @@ describe('gold rates — the time-effective lookup', () => {
       repos.goldRates.record({
         branchId: BRANCH,
         purity: 'K18',
-        ratePerGram: Money.fromRupees(rupees),
+        ratePerTola: Money.fromRupees(rupees),
         effectiveFrom: toIsoDate('2026-08-02'),
         createdByUserId: adminId(),
         note: null,
       })
     }
     const rate = repos.goldRates.findEffective(BRANCH, 'K18', toIsoDate('2026-08-02'))
-    expect(rate?.ratePerGram.format()).toBe('8,550.00')
+    expect(rate?.ratePerTola.format()).toBe('8,550.00')
   })
 
   it('reports the current rate per purity for the rate panel', () => {
     repos.goldRates.record({
       branchId: BRANCH,
       purity: 'K24',
-      ratePerGram: Money.fromRupees(9400),
+      ratePerTola: Money.fromRupees(9400),
       effectiveFrom: toIsoDate('2026-08-01'),
       createdByUserId: adminId(),
       note: null,
     })
     const current = repos.goldRates.findAllEffective(BRANCH, toIsoDate('2026-08-15'))
-    expect(current.K22?.ratePerGram.format()).toBe('8,950.00')
-    expect(current.K24?.ratePerGram.format()).toBe('9,400.00')
+    expect(current.K22?.ratePerTola.format()).toBe('8,950.00')
+    expect(current.K24?.ratePerTola.format()).toBe('9,400.00')
     expect(current.K18).toBeUndefined()
   })
 

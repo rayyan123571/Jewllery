@@ -114,7 +114,7 @@ export interface GoldRateRow {
   id: string
   branch_id: string
   purity: string
-  rate_per_gram: number
+  rate_per_tola: number
   effective_from: string
   created_by_user_id: string
   created_at: string
@@ -127,7 +127,8 @@ export function toGoldRate(row: GoldRateRow): GoldRate {
     branchId: row.branch_id,
     purity: parsePurity(row.purity),
     // The one conversion that matters: an integer count of paisa becomes Money.
-    ratePerGram: Money.fromPaisa(row.rate_per_gram),
+    // Per TOLA, exactly as entered — never divided down to per-gram here.
+    ratePerTola: Money.fromPaisa(row.rate_per_tola),
     effectiveFrom: toIsoDate(row.effective_from),
     createdByUserId: row.created_by_user_id,
     createdAt: toIsoTimestamp(row.created_at),

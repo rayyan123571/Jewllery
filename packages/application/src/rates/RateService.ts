@@ -75,13 +75,13 @@ export class RateService {
   /**
    * Values a weight of a given purity as of a date.
    *
-   * Goes through `Money.valueOf`, so the multiplication happens before the
-   * division and the result is rounded exactly once, half away from zero. A
-   * negative weight — meaning the shop owes the party — produces a negative
+   * Goes through `Money.valueOfAtTolaRate`, so the per-tola rate is divided by
+   * 11,664 mg only at this final step and the result is rounded exactly once,
+   * half away from zero. A negative weight — meaning the shop owes the party — produces a negative
    * amount, preserving the sign convention into the cash ledger.
    */
   value(branchId: string, weight: Weight, purity: Purity, on: IsoDate): Money {
-    return Money.valueOf(weight, this.requireRateOn(branchId, purity, on).ratePerGram)
+    return Money.valueOfAtTolaRate(weight, this.requireRateOn(branchId, purity, on).ratePerTola)
   }
 
   history(branchId: string, purity: Purity, limit = 50): GoldRate[] {
@@ -100,7 +100,7 @@ export class RateService {
     input: {
       branchId: string
       purity: Purity
-      ratePerGram: Money
+      ratePerTola: Money
       effectiveFrom: IsoDate
       note: string | null
     },
@@ -112,7 +112,7 @@ export class RateService {
       )
     }
 
-    if (!input.ratePerGram.isPositive) {
+    if (!input.ratePerTola.isPositive) {
       throw new ValidationError('A gold rate must be greater than zero.')
     }
 
@@ -132,7 +132,7 @@ export class RateService {
     const recorded = this.deps.goldRates.record({
       branchId: input.branchId,
       purity: input.purity,
-      ratePerGram: input.ratePerGram,
+      ratePerTola: input.ratePerTola,
       effectiveFrom: input.effectiveFrom,
       createdByUserId: actor.id,
       note: input.note,
@@ -147,8 +147,8 @@ export class RateService {
       detail: JSON.stringify({
         purity: input.purity,
         effectiveFrom: input.effectiveFrom,
-        ratePerGramPaisa: input.ratePerGram.paisa,
-        previousRatePerGramPaisa: previous?.ratePerGram.paisa ?? null,
+        ratePerTolaPaisa: input.ratePerTola.paisa,
+        previousRatePerTolaPaisa: previous?.ratePerTola.paisa ?? null,
       }),
     })
 

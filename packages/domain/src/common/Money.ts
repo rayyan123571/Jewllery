@@ -1,4 +1,5 @@
 import { assertSafeInteger, scaleDiv } from './rounding.js'
+import { MG_PER_TOLA } from './units.js'
 import type { Weight } from './Weight.js'
 
 /**
@@ -142,17 +143,34 @@ export class Money {
   // ── valuation ──────────────────────────────────────────────────────────────
 
   /**
-   * Values a weight of gold at a per-gram rate.
+   * Values a weight of gold at a **per-tola** rate.
    *
-   *   paisa = milligrams x ratePerGramInPaisa / 1000
+   *   paisa = milligrams × ratePerTolaInPaisa / 11664
    *
-   * The multiplication happens before the division, so no precision is lost in
-   * the middle, and the result is rounded half away from zero exactly once.
-   * `scaleDiv` checks the intermediate product against the safe integer range,
-   * so an implausibly large valuation throws rather than quietly degrading.
+   * The rate is held per tola because that is the unit the trade quotes and
+   * therefore the unit it is entered in. Converting it to a per-gram figure at
+   * storage time would destroy it: Rs 358,000 per tola is 3,069,341.56… paisa
+   * per gram, which is not an integer, and the fraction thrown away is roughly a
+   * rupee across a single 235 g slip — compounding on every transaction after
+   * that. Storing what was entered and dividing last is the only way this stays
+   * exact.
+   *
+   * Both the order and the divisor come from the working reference
+   * implementation, which is explicit about it: grams must be converted to
+   * tolas, and 11,664 mg is exactly one tola, so the denominator is an exact
+   * integer with no rounding of its own.
+   *
+   * The multiplication happens before the division so nothing is lost in the
+   * middle, and the result is rounded half away from zero exactly once — this
+   * is the single point at which money becomes an integer number of paisa.
+   *
+   * `scaleDiv` checks the intermediate product against the safe integer range.
+   * At realistic values there is ample headroom (5 kg at Rs 400,000/tola is
+   * 2×10¹⁴, against a safe limit of 9×10¹⁵), and anything beyond it throws
+   * rather than silently degrading.
    */
-  static valueOf(weight: Weight, ratePerGram: Money): Money {
-    return Money.fromPaisa(scaleDiv(weight.milligrams, ratePerGram.paisa, 1000))
+  static valueOfAtTolaRate(weight: Weight, ratePerTola: Money): Money {
+    return Money.fromPaisa(scaleDiv(weight.milligrams, ratePerTola.paisa, MG_PER_TOLA))
   }
 
   // ── the display edge ───────────────────────────────────────────────────────

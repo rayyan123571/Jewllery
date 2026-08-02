@@ -337,7 +337,7 @@ class SqliteGoldRateRepository implements GoldRateRepository {
     this.conn.get()
       .prepare(
         `INSERT INTO gold_rates
-           (id, branch_id, purity, rate_per_gram, effective_from,
+           (id, branch_id, purity, rate_per_tola, effective_from,
             created_by_user_id, created_at, note)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
@@ -345,8 +345,9 @@ class SqliteGoldRateRepository implements GoldRateRepository {
         id,
         rate.branchId,
         rate.purity,
-        // Money crosses into the database as an integer count of paisa.
-        rate.ratePerGram.paisa,
+        // Money crosses into the database as an integer count of paisa,
+        // per tola — the unit it was entered in.
+        rate.ratePerTola.paisa,
         rate.effectiveFrom,
         rate.createdByUserId,
         nowFrom(this.clock),

@@ -32,10 +32,10 @@ export function registerIpcHandlers(
       return [
         {
           purity: formatPurity(purity),
-          ratePerGramPaisa: rate.ratePerGram.paisa,
+          ratePerTolaPaisa: rate.ratePerTola.paisa,
           effectiveFrom: rate.effectiveFrom,
           // Preformatted here. The renderer displays it, never computes with it.
-          display: `Rs. ${rate.ratePerGram.formatWhole()}`,
+          display: `Rs. ${rate.ratePerTola.formatWhole()}`,
         },
       ]
     })

@@ -20,8 +20,11 @@ export interface GoldRate {
   readonly id: string
   readonly branchId: string
   readonly purity: Purity
-  /** Per gram, in paisa. Never a float. */
-  readonly ratePerGram: Money
+  /**
+   * Per **tola**, in paisa. Never a float, and never converted to per-gram at
+   * storage time — see Money.valueOfAtTolaRate for why that would lose money.
+   */
+  readonly ratePerTola: Money
   /** The first business day this rate applies to. */
   readonly effectiveFrom: IsoDate
   readonly createdByUserId: string
@@ -34,7 +37,7 @@ export interface GoldRate {
 export interface NewGoldRate {
   readonly branchId: string
   readonly purity: Purity
-  readonly ratePerGram: Money
+  readonly ratePerTola: Money
   readonly effectiveFrom: IsoDate
   readonly createdByUserId: string
   readonly note: string | null

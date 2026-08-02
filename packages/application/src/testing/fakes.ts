@@ -195,13 +195,13 @@ export class FakeGoldRateRepository implements GoldRateRepository {
   seed(
     branchId: string,
     purity: Purity,
-    rupeesPerGram: number,
+    rupeesPerTola: number,
     effectiveFrom: string,
   ): GoldRate {
     return this.record({
       branchId,
       purity,
-      ratePerGram: Money.fromRupees(rupeesPerGram),
+      ratePerTola: Money.fromRupees(rupeesPerTola),
       effectiveFrom: toIsoDate(effectiveFrom),
       createdByUserId: 'seed',
       note: null,

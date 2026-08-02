@@ -78,7 +78,7 @@ describe('the schema', () => {
   })
 
   it('stores the gold rate as an integer number of paisa', () => {
-    const rate = columnsOf(db, 'gold_rates').find((c) => c.name === 'rate_per_gram')
+    const rate = columnsOf(db, 'gold_rates').find((c) => c.name === 'rate_per_tola')
     expect(rate?.type).toBe('INTEGER')
     expect(rate?.notnull).toBe(1)
   })
@@ -137,7 +137,7 @@ describe('the schema', () => {
       db
         .prepare(
           `INSERT INTO gold_rates
-             (id, branch_id, purity, rate_per_gram, effective_from, created_by_user_id, created_at)
+             (id, branch_id, purity, rate_per_tola, effective_from, created_by_user_id, created_at)
            VALUES ('r1', 'no-such-branch', 'K22', 895000, '2026-08-02', 'no-such-user', ?)`,
         )
         .run(now),
@@ -159,7 +159,7 @@ describe('the schema', () => {
       db
         .prepare(
           `INSERT INTO gold_rates
-             (id, branch_id, purity, rate_per_gram, effective_from, created_by_user_id, created_at)
+             (id, branch_id, purity, rate_per_tola, effective_from, created_by_user_id, created_at)
            VALUES ('r1', 'b1', 'K22', 0, '2026-08-02', 'u1', ?)`,
         )
         .run(now),

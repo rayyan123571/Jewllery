@@ -18,6 +18,16 @@ export {
 } from './common/balance.js'
 export { assertSafeInteger, roundHalfAwayFromZero, scaleDiv } from './common/rounding.js'
 export {
+  GRAMS_PER_TOLA,
+  MASHA_PER_TOLA,
+  MAX_KATT_MILLI_RATTI,
+  MG_PER_TOLA,
+  MILLI_RATTI_PER_TOLA,
+  MIN_KATT_MILLI_RATTI,
+  RATTI_PER_MASHA,
+  RATTI_PER_TOLA,
+} from './common/units.js'
+export {
   businessDayOf,
   fixedClock,
   systemClock,

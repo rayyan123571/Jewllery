@@ -40,24 +40,24 @@ describe('resolving the rate in force on a date', () => {
 
   it('uses the rate in force on the day, not the newest row', () => {
     const rate = service.rateOn(BRANCH, 'K22', toIsoDate('2026-08-15'))
-    expect(rate?.ratePerGram.format()).toBe('8,950.00')
+    expect(rate?.ratePerTola.format()).toBe('8,950.00')
   })
 
   it('does not apply a future-dated rate early', () => {
     const rate = service.rateOn(BRANCH, 'K22', toIsoDate('2026-08-31'))
-    expect(rate?.ratePerGram.format()).toBe('8,950.00')
+    expect(rate?.ratePerTola.format()).toBe('8,950.00')
   })
 
   it('applies a rate on its first effective day', () => {
     const rate = service.rateOn(BRANCH, 'K22', toIsoDate('2026-08-01'))
-    expect(rate?.ratePerGram.format()).toBe('8,950.00')
+    expect(rate?.ratePerTola.format()).toBe('8,950.00')
   })
 
   it('still returns last month rate for a transaction dated last month', () => {
     // This is the reason the service exists. Reprinting an old statement must
     // not reprice it at today's gold price.
     const rate = service.rateOn(BRANCH, 'K22', toIsoDate('2026-07-15'))
-    expect(rate?.ratePerGram.format()).toBe('8,900.00')
+    expect(rate?.ratePerTola.format()).toBe('8,900.00')
   })
 
   it('returns null before any rate existed, rather than zero', () => {
@@ -75,7 +75,7 @@ describe('resolving the rate in force on a date', () => {
   it('prefers a same-day correction recorded later', () => {
     rates.seed(BRANCH, 'K21', 8500, '2026-08-02')
     rates.seed(BRANCH, 'K21', 8550, '2026-08-02') // typo corrected
-    expect(service.rateOn(BRANCH, 'K21', toIsoDate('2026-08-02'))?.ratePerGram.format()).toBe(
+    expect(service.rateOn(BRANCH, 'K21', toIsoDate('2026-08-02'))?.ratePerTola.format()).toBe(
       '8,550.00',
     )
   })
@@ -103,28 +103,21 @@ describe('valuation', () => {
     rates.seed(BRANCH, 'K22', 8950, '2026-08-01')
   })
 
-  it('values a weight at the rate in force', () => {
-    const value = service.value(BRANCH, Weight.parse('10'), 'K22', toIsoDate('2026-08-02'))
-    expect(value.format()).toBe('89,500.00')
+  it('values exactly one tola as exactly the rate', () => {
+    const value = service.value(BRANCH, Weight.parse('11.664'), 'K22', toIsoDate('2026-08-02'))
+    expect(value.format()).toBe('8,950.00')
   })
 
-  it('values a fractional weight exactly', () => {
+  it('values a fractional weight without losing it', () => {
     const value = service.value(BRANCH, Weight.parse('0.001'), 'K22', toIsoDate('2026-08-02'))
-    expect(value.paisa).toBe(895)
+    expect(value.paisa).toBe(77)
   })
 
   it('preserves the sign convention into the cash ledger', () => {
     // The shop owes 0.500 g. Its value is money the shop owes.
     const value = service.value(BRANCH, Weight.parse('-0.500'), 'K22', toIsoDate('2026-08-02'))
     expect(value.isNegative).toBe(true)
-    expect(value.absolute.format()).toBe('4,475.00')
-  })
-
-  it('values the mockup remaining weight without losing the sign', () => {
-    const remaining = Weight.parse('700').minus(Weight.parse('450')).minus(Weight.parse('250.500'))
-    const value = service.value(BRANCH, remaining, 'K22', toIsoDate('2026-08-02'))
-    expect(remaining.milligrams).toBe(-500)
-    expect(value.paisa).toBe(-447_500)
+    expect(value.absolute.paisa).toBe(38_366)
   })
 })
 
@@ -133,21 +126,21 @@ describe('recording a rate', () => {
     service.setRate(admin, {
       branchId: BRANCH,
       purity: 'K22',
-      ratePerGram: Money.fromRupees(8950),
+      ratePerTola: Money.fromRupees(8950),
       effectiveFrom: toIsoDate('2026-08-01'),
       note: null,
     })
     service.setRate(admin, {
       branchId: BRANCH,
       purity: 'K22',
-      ratePerGram: Money.fromRupees(9000),
+      ratePerTola: Money.fromRupees(9000),
       effectiveFrom: toIsoDate('2026-08-02'),
       note: 'market up',
     })
 
     expect(rates.rows).toHaveLength(2)
     // Yesterday's valuation is untouched by today's change.
-    expect(service.rateOn(BRANCH, 'K22', toIsoDate('2026-08-01'))?.ratePerGram.format()).toBe(
+    expect(service.rateOn(BRANCH, 'K22', toIsoDate('2026-08-01'))?.ratePerTola.format()).toBe(
       '8,950.00',
     )
   })
@@ -156,14 +149,14 @@ describe('recording a rate', () => {
     service.setRate(admin, {
       branchId: BRANCH,
       purity: 'K22',
-      ratePerGram: Money.fromRupees(8950),
+      ratePerTola: Money.fromRupees(8950),
       effectiveFrom: toIsoDate('2026-08-01'),
       note: null,
     })
     service.setRate(admin, {
       branchId: BRANCH,
       purity: 'K22',
-      ratePerGram: Money.fromRupees(9000),
+      ratePerTola: Money.fromRupees(9000),
       effectiveFrom: toIsoDate('2026-08-02'),
       note: null,
     })
@@ -171,8 +164,8 @@ describe('recording a rate', () => {
     const last = audit.entries.at(-1)
     expect(last?.action).toBe('GOLD_RATE_SET')
     expect(JSON.parse(last?.detail ?? '{}')).toMatchObject({
-      ratePerGramPaisa: 900_000,
-      previousRatePerGramPaisa: 895_000,
+      ratePerTolaPaisa: 900_000,
+      previousRatePerTolaPaisa: 895_000,
     })
   })
 
@@ -181,7 +174,7 @@ describe('recording a rate', () => {
       service.setRate(admin, {
         branchId: BRANCH,
         purity: 'K22',
-        ratePerGram: Money.ZERO,
+        ratePerTola: Money.ZERO,
         effectiveFrom: toIsoDate('2026-08-02'),
         note: null,
       }),
@@ -193,7 +186,7 @@ describe('recording a rate', () => {
       service.setRate(admin, {
         branchId: BRANCH,
         purity: 'K22',
-        ratePerGram: Money.fromRupees(8950),
+        ratePerTola: Money.fromRupees(8950),
         effectiveFrom: toIsoDate('2026-08-03'),
         note: null,
       }),
@@ -205,7 +198,7 @@ describe('recording a rate', () => {
       service.setRate(admin, {
         branchId: BRANCH,
         purity: 'K22',
-        ratePerGram: Money.fromRupees(8950),
+        ratePerTola: Money.fromRupees(8950),
         effectiveFrom: toIsoDate('2062-08-02'),
         note: null,
       }),
@@ -217,7 +210,7 @@ describe('recording a rate', () => {
       service.setRate(salesman, {
         branchId: BRANCH,
         purity: 'K22',
-        ratePerGram: Money.fromRupees(8950),
+        ratePerTola: Money.fromRupees(8950),
         effectiveFrom: toIsoDate('2026-08-02'),
         note: null,
       }),
@@ -231,8 +224,8 @@ describe('the rate panel', () => {
     rates.seed(BRANCH, 'K24', 9400, '2026-08-01')
     rates.seed(BRANCH, 'K22', 8950, '2026-08-01')
     const current = service.currentRates(BRANCH)
-    expect(current.K24?.ratePerGram.format()).toBe('9,400.00')
-    expect(current.K22?.ratePerGram.format()).toBe('8,950.00')
+    expect(current.K24?.ratePerTola.format()).toBe('9,400.00')
+    expect(current.K22?.ratePerTola.format()).toBe('8,950.00')
     expect(current.K18).toBeUndefined()
   })
 

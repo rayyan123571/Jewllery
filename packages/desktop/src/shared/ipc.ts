@@ -25,10 +25,15 @@ export const IPC = {
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
 
-/** A gold rate as it crosses the boundary. `ratePerGramPaisa` is an integer. */
+/**
+ * A gold rate as it crosses the boundary.
+ *
+ * Per TOLA, in integer paisa — the unit the trade quotes and the unit it is
+ * stored in. Never converted to per-gram, here or anywhere else.
+ */
 export interface RateDto {
   readonly purity: string
-  readonly ratePerGramPaisa: number
+  readonly ratePerTolaPaisa: number
   readonly effectiveFrom: string
   /** Preformatted for display, so the renderer never does money arithmetic. */
   readonly display: string
