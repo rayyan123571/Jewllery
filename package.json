@@ -2,6 +2,7 @@
   "name": "jewellery",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Gold Jewellery Management System — offline Windows desktop application",
   "workspaces": [
     "packages/domain",

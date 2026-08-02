@@ -45,17 +45,24 @@ export default tseslint.config(
     plugins: { boundaries },
     settings: {
       'boundaries/include': ['packages/**/*.{ts,tsx}'],
+      'boundaries/debug': process.env.BOUNDARIES_DEBUG === '1',
+      // mode: 'file' is REQUIRED. The plugin defaults to mode: 'folder', under
+      // which a pattern like 'packages/application/src/**/*' matches the file's
+      // FOLDER — so a file sitting directly in src/ matches no element at all and
+      // silently escapes every rule below. Verified by test: without this, an
+      // `import Database from 'better-sqlite3'` in packages/application/src/ lints
+      // clean. See packages/*/src/**/boundaries.test.ts.
       'boundaries/elements': [
         // Order matters — first match wins, so the more specific desktop
         // sub-layers must be listed before anything broader.
-        { type: 'domain', pattern: 'packages/domain/src/**/*' },
-        { type: 'application', pattern: 'packages/application/src/**/*' },
-        { type: 'persistence', pattern: 'packages/persistence/src/**/*' },
-        { type: 'printing', pattern: 'packages/printing/src/**/*' },
-        { type: 'desktop-main', pattern: 'packages/desktop/src/main/**/*' },
-        { type: 'desktop-preload', pattern: 'packages/desktop/src/preload/**/*' },
-        { type: 'desktop-renderer', pattern: 'packages/desktop/src/renderer/**/*' },
-        { type: 'shared-ipc', pattern: 'packages/desktop/src/shared/**/*' },
+        { type: 'domain', pattern: 'packages/domain/src/**/*', mode: 'file' },
+        { type: 'application', pattern: 'packages/application/src/**/*', mode: 'file' },
+        { type: 'persistence', pattern: 'packages/persistence/src/**/*', mode: 'file' },
+        { type: 'printing', pattern: 'packages/printing/src/**/*', mode: 'file' },
+        { type: 'desktop-main', pattern: 'packages/desktop/src/main/**/*', mode: 'file' },
+        { type: 'desktop-preload', pattern: 'packages/desktop/src/preload/**/*', mode: 'file' },
+        { type: 'desktop-renderer', pattern: 'packages/desktop/src/renderer/**/*', mode: 'file' },
+        { type: 'shared-ipc', pattern: 'packages/desktop/src/shared/**/*', mode: 'file' },
       ],
     },
     rules: {
@@ -114,26 +121,77 @@ export default tseslint.config(
         },
       ],
 
-      // A layer may only import packages its own package.json declares.
+      // Cross-package imports are checked HERE, not by element-types.
+      //
+      // In an npm workspace, `@jewellery/persistence` resolves through a
+      // node_modules symlink, so eslint-plugin-boundaries classifies it as an
+      // external dependency rather than as a local element. element-types
+      // therefore never sees it, and the one rule that matters most — the
+      // renderer must not import persistence — would silently never fire.
+      // Verified by test: see packages/desktop/src/renderer/boundaries.test.ts.
+      //
+      // element-types still governs relative imports *within* a package.
       'boundaries/external': [
         'error',
         {
           default: 'allow',
           rules: [
             {
-              from: ['domain', 'application'],
-              disallow: ['better-sqlite3', 'electron', 'react', 'react-dom'],
+              from: ['domain'],
+              disallow: ['@jewellery/*', 'better-sqlite3', 'electron', 'react', 'react-dom'],
               message:
-                'The domain and application layers must stay free of database, ' +
-                'Electron and React imports so their calculations can be tested ' +
-                'with no database and no window.',
+                'The domain layer has no dependencies and must not acquire any. ' +
+                'It is the bottom of the stack.',
+            },
+            {
+              from: ['application'],
+              disallow: [
+                '@jewellery/persistence',
+                '@jewellery/printing',
+                '@jewellery/desktop',
+                'better-sqlite3',
+                'electron',
+                'react',
+                'react-dom',
+              ],
+              message:
+                'The application layer must stay free of database, Electron and ' +
+                'React imports so every calculation can be tested with no ' +
+                'database and no window. Depend on an interface in ' +
+                'application/abstractions and let the composition root inject ' +
+                'the implementation.',
+            },
+            {
+              from: ['printing'],
+              disallow: ['@jewellery/persistence', 'better-sqlite3'],
+              message:
+                'Printing renders documents from data it is handed. It does not ' +
+                'read the database.',
             },
             {
               from: ['desktop-renderer'],
-              disallow: ['better-sqlite3', 'fs', 'node:fs', 'path', 'node:path', 'electron'],
+              disallow: [
+                '@jewellery/persistence',
+                '@jewellery/application',
+                'better-sqlite3',
+                'fs',
+                'node:fs',
+                'path',
+                'node:path',
+                'electron',
+              ],
               message:
-                'The renderer is sandboxed and has no filesystem access. Reach the ' +
-                'main process through the preload IPC bridge instead.',
+                'A screen must not open a database connection or run a business ' +
+                'calculation. The renderer is sandboxed and has no filesystem ' +
+                'access at runtime either — ask the main process over the preload ' +
+                'IPC bridge and render the answer.',
+            },
+            {
+              from: ['desktop-preload'],
+              disallow: ['@jewellery/persistence', '@jewellery/application', 'better-sqlite3'],
+              message:
+                'The preload bridge carries channel names and types across the IPC ' +
+                'gap. It holds no logic and reaches no database.',
             },
           ],
         },
