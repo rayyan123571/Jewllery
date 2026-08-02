@@ -319,4 +319,17 @@ export function registerWholesaleHandlers(container: Container, session: Session
   )
 
   ipcMain.handle(IPC_M2.wholesaleRecent, (): LedgerRowDto[] => [])
+
+  ipcMain.handle(IPC_M2.changePassword, (_e, current: string, next: string) => {
+    try {
+      const user = requireUser()
+      container.auth.changeOwnPassword(user.id, current, next)
+      // The session copy still says the password must change; refresh it so the
+      // shell stops gating on a condition that has just been satisfied.
+      session.user = { ...user, mustChangePassword: false }
+      return { ok: true as const }
+    } catch (error) {
+      return { ok: false as const, message: messageOf(error) }
+    }
+  })
 }

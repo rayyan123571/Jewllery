@@ -19,6 +19,7 @@ function context(): ActionContext {
     runBackup: vi.fn(async () => {}),
     restoreBackup: vi.fn(async () => {}),
     toggleUserMenu: vi.fn(),
+    dispatch: vi.fn(),
   }
 }
 
@@ -57,9 +58,12 @@ describe('every action is either ready or explicitly not built', () => {
 
 describe('a not-built action explains itself', () => {
   it('names the module and the milestone in its hover text', () => {
-    const action = registry['wholesale.save']
-    expect(action.kind).toBe('not-built')
-    expect(actionTitle(action)).toBe('Whole Sale — not built yet (M2)')
+    const action = registry['wholesale.hold']
+    expect(action.kind).toBe('ready')
+    // HOLD is wired; Purchase is not. Take an unbuilt one for the message test.
+    const unbuilt = registry['wholesale.import-from-stock']
+    expect(unbuilt.kind).toBe('not-built')
+    expect(actionTitle(unbuilt)).toBe('Stock Management — not built yet (M4)')
   })
 
   it('attributes a control to the module that actually blocks it', () => {
@@ -97,6 +101,53 @@ describe('navigation always works, even to an unbuilt module', () => {
     expect(nav.kind).toBe('ready')
     if (nav.kind === 'ready') void nav.run()
     expect(ctx.navigate).toHaveBeenCalledWith('reports' satisfies ModuleId)
+  })
+})
+
+describe('Whole Sale is built, so its controls are live', () => {
+  // The flip that matters: these were disabled while M2 was unbuilt. Now that
+  // the screen posts, they must all be wired — and the shell test checks the
+  // rendered DOM agrees.
+  it.each([
+    'wholesale.save',
+    'wholesale.save-and-print',
+    'wholesale.print',
+    'wholesale.hold',
+    'wholesale.cancel',
+    'wholesale.row.add',
+    'wholesale.row.clear',
+    'wholesale.row.delete',
+    'wholesale.party.add',
+    'wholesale.tab.new',
+    'wholesale.tab.ledger',
+    'wholesale.tab.return',
+    'wholesale.tab.history',
+    'wholesale.ledger.view-full',
+    'wholesale.ledger.view-entry',
+    'quick.wholesale-ledger',
+    'quick.return-receive',
+    'quick.print-last-invoice',
+    'goldrate.set',
+  ] as const)('%s is ready', (id) => {
+    expect(registry[id].kind).toBe('ready')
+  })
+
+  it('hands the action to the mounted screen', () => {
+    const ctx = context()
+    const action = createActionRegistry(ctx)['wholesale.save']
+    expect(action.kind).toBe('ready')
+    if (action.kind === 'ready') void action.run()
+    expect(ctx.dispatch).toHaveBeenCalledWith('wholesale.save')
+  })
+
+  it('still disables what belongs to an unbuilt module', () => {
+    // Import from Stock and Scan Barcode sit on the Whole Sale screen but
+    // belong to Stock Management, so they stay off and say so.
+    for (const id of ['wholesale.import-from-stock', 'wholesale.scan-barcode'] as const) {
+      const action = registry[id]
+      expect(action.kind).toBe('not-built')
+      if (action.kind === 'not-built') expect(action.module).toBe('stock')
+    }
   })
 })
 

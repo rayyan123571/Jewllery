@@ -50,6 +50,31 @@ const noopApi = {
   runBackup: vi.fn(),
   restoreBackup: vi.fn(),
   quit: vi.fn(),
+
+  // The wholesale screen asks for these on mount. Empty answers are enough:
+  // this suite is about which controls exist and whether they are wired, not
+  // about the figures — those are covered with no window at all, in the domain
+  // and application tests.
+  searchParties: vi.fn(async () => []),
+  createParty: vi.fn(),
+  partyBalance: vi.fn(async () => null),
+  rateFor: vi.fn(async () => null),
+  nextInvoiceNo: vi.fn(async () => 'WS-10001'),
+  previewWholesale: vi.fn(async () => ({
+    lines: [],
+    grossTotalDisplay: '0.000',
+    khalisTotalDisplay: '0.000',
+    amountTotalDisplay: '0.00',
+    rateDisplay: 'Rs. 358,000',
+    rateMissing: false,
+    previousBalance: null,
+    endBalance: null,
+  })),
+  postIssue: vi.fn(),
+  settle: vi.fn(),
+  partyLedger: vi.fn(async () => []),
+  setRate: vi.fn(),
+  changePassword: vi.fn(),
 }
 
 beforeEach(() => {
@@ -69,6 +94,7 @@ function stubContext(): ActionContext {
     runBackup: vi.fn(async () => {}),
     restoreBackup: vi.fn(async () => {}),
     toggleUserMenu: vi.fn(),
+    dispatch: vi.fn(),
   }
 }
 
@@ -156,12 +182,25 @@ describe('no dead buttons in the rendered shell', () => {
     render(<App />)
     await screen.findByText('WHOLE SALE MODULE')
 
-    const save = document.querySelector('[data-action="wholesale.save"]') as HTMLButtonElement
-    expect(save.disabled).toBe(true)
-    // userEvent respects pointer-events and disabled state; this is a no-op and
-    // must not throw or navigate anywhere.
-    await user.click(save).catch(() => undefined)
+    // Import from Stock sits on the Whole Sale screen but belongs to Stock
+    // Management, which is not built — so it is still off even though every
+    // Whole Sale control beside it is now live.
+    const disabled = document.querySelector(
+      '[data-action="wholesale.import-from-stock"]',
+    ) as HTMLButtonElement
+    expect(disabled.disabled).toBe(true)
+    await user.click(disabled).catch(() => undefined)
     expect(screen.getByText('WHOLE SALE MODULE')).toBeTruthy()
+  })
+
+  it('has Whole Sale controls live now that the module is built', async () => {
+    render(<App />)
+    await screen.findByText('WHOLE SALE MODULE')
+
+    for (const id of ['wholesale.save', 'wholesale.save-and-print', 'wholesale.hold']) {
+      const button = document.querySelector(`[data-action="${id}"]`) as HTMLButtonElement
+      expect(button.disabled).toBe(false)
+    }
   })
 })
 
@@ -220,15 +259,16 @@ describe('the shell chrome matches the mockup', () => {
     expect(screen.getByText('1.0.0.0')).toBeTruthy()
   })
 
-  it('never shows a balance as a bare minus sign', async () => {
-    // docs/DECISIONS.md §4. The mockup prints "-0.500 g" in the Party Summary;
-    // the approved rule is a magnitude plus an explicit label, because a bare
-    // minus is misread at a counter.
+  it('never renders a signed weight or amount anywhere on the screen', async () => {
+    // docs/DECISIONS.md §4. Balances are rendered as a magnitude plus an
+    // explicit label, because a bare minus is misread at a counter. This scans
+    // the whole rendered document rather than one panel, so a new screen that
+    // formats a balance itself is caught too.
     render(<App />)
     await screen.findByText('WHOLE SALE MODULE')
 
-    const summary = screen.getByText('PARTY SUMMARY').parentElement as HTMLElement
-    expect(within(summary).getByText('0.500 g (we owe)')).toBeTruthy()
-    expect(summary.textContent).not.toContain('-0.500')
+    const text = document.body.textContent ?? ''
+    // e.g. "-0.500 g" or "-1,200.00" — a minus immediately before a figure.
+    expect(text).not.toMatch(/-\s?\d[\d,]*\.\d/)
   })
 })

@@ -5,7 +5,9 @@ import { Icon } from './shell/Icon.js'
 import { MODULES, isModuleBuilt, moduleById, type ModuleId } from './shell/modules.js'
 import { ModulePlaceholder } from './shell/ModulePlaceholder.js'
 import { WholesaleScreen } from './modules/wholesale/WholesaleScreen.js'
-import type { BootstrapDto } from '../shared/ipc.js'
+import { GoldRateScreen } from './modules/rates/GoldRateScreen.js'
+import { LoginScreen } from './modules/auth/LoginScreen.js'
+import type { BootstrapDto, UserDto } from '../shared/ipc.js'
 
 /**
  * The application shell.
@@ -44,6 +46,11 @@ export function App() {
     return () => clearInterval(timer)
   }, [])
 
+  const reload = useCallback(async () => {
+    const next = await window.api.bootstrap()
+    setBoot(next)
+  }, [])
+
   const refreshRates = useCallback(async () => {
     const rates = await window.api.currentRates()
     setBoot((current) => ({ ...current, rates }))
@@ -74,9 +81,33 @@ export function App() {
         toggleUserMenu: () => {
           /* the menu itself is part of Users & Permissions */
         },
+        // Handed to whichever screen is mounted. The screen owns the state, so
+        // the registry never has to know what any of these actually do.
+        dispatch: (id) =>
+          window.dispatchEvent(
+            id === 'wholesale.party.add'
+              ? new CustomEvent('jewellery:add-party')
+              : new CustomEvent('jewellery:action', { detail: id }),
+          ),
       }),
     [refreshRates, runBackup],
   )
+
+  // The shell is not drawn until someone is signed in. Every IPC handler that
+  // writes anything refuses without a session anyway; this is so the header
+  // never shows "Not signed in" over a working screen.
+  if (!boot.user) {
+    return (
+      <LoginScreen
+        onSignedIn={(user: UserDto) => {
+          setBoot((current) => ({ ...current, user }))
+          void reload()
+        }}
+      />
+    )
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
 
   return (
     <ActionsProvider registry={registry}>
@@ -88,7 +119,17 @@ export function App() {
             <TopBar active={active} boot={boot} now={now} />
             <main className="content">
               {busy ? <div className="banner">{busy}</div> : null}
-              {active === 'wholesale' ? <WholesaleScreen /> : <ModulePlaceholder id={active} />}
+              {active === 'wholesale' ? (
+                <WholesaleScreen today={today} onPosted={() => void reload()} />
+              ) : active === 'gold-rate' ? (
+                <GoldRateScreen
+                  rates={boot.rates}
+                  today={today}
+                  onSaved={() => void reload()}
+                />
+              ) : (
+                <ModulePlaceholder id={active} />
+              )}
             </main>
           </div>
         </div>
@@ -185,7 +226,7 @@ function RatePanel({ boot }: { boot: BootstrapDto }) {
   return (
     <div className="rate-panel">
       <div className="rate-panel__title">
-        Gold Rate (Per Gram){' '}
+        Gold Rate (Per Tola){' '}
         <Action id="rate.refresh" variant="icon" ariaLabel="Refresh gold rate">
           <Icon name="refresh" size={12} />
         </Action>

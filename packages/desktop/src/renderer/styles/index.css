@@ -599,3 +599,307 @@ body {
   font-size: var(--font-size-base);
   color: #6B5200;
 }
+
+/* ── login ──────────────────────────────────────────────────────────────── */
+
+.login {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  background: var(--colour-navy);
+}
+
+.login__card {
+  width: 380px;
+  background: var(--colour-surface);
+  border-radius: var(--size-radius-large);
+  padding: 22px 24px 24px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--colour-border);
+  margin-bottom: 16px;
+}
+
+.login__brand .sidebar__name {
+  color: var(--colour-navy);
+}
+
+.login__title {
+  font-size: var(--font-size-xl);
+  margin: 0 0 12px;
+  color: var(--colour-navy);
+}
+
+.login__note {
+  font-size: var(--font-size-base);
+  color: var(--colour-text-muted);
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.login__field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.login__field > span {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  margin-bottom: 4px;
+}
+
+.login__field .input {
+  height: 32px;
+}
+
+.login__submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  height: 34px;
+  border: none;
+  border-radius: var(--size-radius);
+  background: var(--colour-action-save);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login__submit:disabled {
+  background: var(--colour-disabled-surface);
+  color: var(--colour-disabled-text);
+  cursor: not-allowed;
+}
+
+.login__error {
+  margin-top: 12px;
+  padding: 7px 10px;
+  border-radius: var(--size-radius);
+  background: #fdecec;
+  border: 1px solid #f0b4b4;
+  color: #8c1d18;
+  font-size: var(--font-size-base);
+}
+
+/* ── banners and hints ──────────────────────────────────────────────────── */
+
+.banner--good {
+  background: #e8f6ec;
+  border-color: #9ed3ae;
+  color: #14532d;
+}
+
+.banner--bad {
+  background: #fdecec;
+  border-color: #f0b4b4;
+  color: #8c1d18;
+}
+
+.hint {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.hint--bad {
+  color: var(--colour-negative);
+}
+
+/* ── grid cells ─────────────────────────────────────────────────────────── */
+
+.input--cell {
+  height: 22px;
+  border-color: transparent;
+  background: transparent;
+  padding: 0 4px;
+}
+
+.input--cell:focus {
+  border-color: var(--colour-info);
+  background: var(--colour-surface);
+  outline: none;
+}
+
+.row--error td {
+  background: #fff6f6;
+}
+
+.row--reversed td {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: var(--font-size-xs);
+  background: var(--colour-disabled-surface);
+  color: var(--colour-disabled-text);
+}
+
+.badge--warn {
+  background: #fdecec;
+  color: #8c1d18;
+}
+
+/* ── party selector ─────────────────────────────────────────────────────── */
+
+.party {
+  display: grid;
+  grid-template-columns: 1fr 72px;
+  gap: 6px;
+  position: relative;
+}
+
+.party__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 78px;
+  z-index: 20;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 210px;
+  overflow-y: auto;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border-strong);
+  border-radius: var(--size-radius);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
+}
+
+.party__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-base);
+  text-align: left;
+  cursor: pointer;
+}
+
+.party__option:hover {
+  background: var(--colour-surface-muted);
+}
+
+.party__code {
+  font-family: var(--font-numeric);
+  font-weight: 700;
+  color: var(--colour-info);
+  min-width: 44px;
+}
+
+.party__city {
+  margin-left: auto;
+  color: var(--colour-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+/* ── ghost autocomplete ─────────────────────────────────────────────────── */
+
+.ghost {
+  position: relative;
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.ghost__mirror {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+  white-space: pre;
+  display: flex;
+  align-items: center;
+  color: transparent;
+}
+
+.ghost__completion {
+  color: var(--colour-disabled-text);
+}
+
+/* ── modal + confirmation ───────────────────────────────────────────────── */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(16, 24, 40, 0.45);
+}
+
+.modal__card {
+  width: 520px;
+  background: var(--colour-surface);
+  border-radius: var(--size-radius-large);
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+/* The over-return confirmation. A question with a Continue button, never a
+   dismiss box — the operator has to be able to act on it, not just close it. */
+.confirm {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e6c200;
+  background: #fff8dc;
+  border-radius: var(--size-radius);
+}
+
+.confirm__text {
+  font-size: var(--font-size-md);
+  color: #6b5200;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.confirm__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm__actions .login__submit {
+  width: auto;
+  padding: 0 16px;
+}
+
+/* ── slip ───────────────────────────────────────────────────────────────── */
+
+.slip__head {
+  font-weight: 700;
+  border-bottom: 1px solid var(--colour-border);
+  padding-bottom: 2px;
+}
+
+.slip__item span:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slip__row span {
+  min-width: 0;
+}

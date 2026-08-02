@@ -1,0 +1,195 @@
+import { useRef, useState } from 'react'
+import { Icon } from '../../shell/Icon.js'
+import type { PartyBalanceDto, PartyDto } from '../../../shared/ipc.js'
+
+/**
+ * Settling a gold debt — in gold, in cash, or part and part.
+ *
+ * All three reduce the **gold** debt (docs/DECISIONS.md §10). Cash handed over
+ * in place of gold is a gold-debt transaction, not a cash credit, so the cash
+ * box here sits beside the gold box in one form and posts as one entry.
+ *
+ * The over-return case is a **Continue button on a sentence the operator can
+ * act on**, never a dismiss box. The main process refuses the first attempt and
+ * returns the consequence in plain words; this shows it with Continue and Go
+ * back, and only Continue retries with confirmation. That is warn-and-allow
+ * surviving all the way to the glass.
+ */
+export function SettlementPanel({
+  party,
+  balance,
+  entryDate,
+  onSettled,
+}: {
+  party: PartyDto | null
+  balance: PartyBalanceDto | null
+  entryDate: string
+  onSettled: () => Promise<void> | void
+}) {
+  const [gold, setGold] = useState('')
+  const [cash, setCash] = useState('')
+  const [message, setMessage] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  // Double-post guard: a second click can land before the button re-renders.
+  const posting = useRef(false)
+
+  async function post(confirmed: boolean): Promise<void> {
+    if (posting.current || !party) return
+    posting.current = true
+    setBusy(true)
+    setMessage(null)
+    try {
+      const result = await window.api.settle({
+        partyId: party.id,
+        entryDate,
+        goldGrams: gold,
+        cashRupees: cash,
+        notes: null,
+        ...(confirmed ? { confirmedOverReturn: true } : {}),
+      })
+
+      if (result.ok) {
+        setConfirming(null)
+        setMessage({
+          kind: 'ok',
+          text: `Settled as ${result.invoiceNo}. ${party.name} now ${result.balanceAfter.text}.`,
+        })
+        setGold('')
+        setCash('')
+        await onSettled()
+        return
+      }
+
+      if ('needsConfirmation' in result) {
+        // Not an error. A question with a Continue button.
+        setConfirming(result.message)
+        return
+      }
+      setMessage({ kind: 'bad', text: result.message })
+    } finally {
+      posting.current = false
+      setBusy(false)
+    }
+  }
+
+  const kind =
+    gold.trim() && cash.trim()
+      ? 'part gold and part cash'
+      : cash.trim()
+        ? 'cash'
+        : gold.trim()
+          ? 'khalis gold'
+          : null
+
+  return (
+    <div className="panel" style={{ marginTop: 10 }}>
+      <div className="panel__title">RETURN / RECEIVE — SETTLE A GOLD DEBT</div>
+      <div className="panel__body">
+        {!party ? (
+          <p className="hint">Choose a party first.</p>
+        ) : (
+          <>
+            <div className="summary-line">
+              <span>Currently owed</span>
+              <span
+                className={`summary-line__value ${
+                  balance?.gold.direction === 'shop-owes-party' ? 'negative' : 'positive'
+                }`}
+              >
+                {balance?.gold.text ?? '—'}{' '}
+                {balance?.gold.drCr ? `/${balance.gold.drCr}` : ''}
+              </span>
+            </div>
+
+            <div
+              className="field-row"
+              style={{ gridTemplateColumns: '1fr 1fr', padding: '8px 0 0' }}
+            >
+              <label className="field">
+                <span className="field__label">Khalis gold given (g)</span>
+                <input
+                  className="input input--numeric"
+                  value={gold}
+                  onChange={(e) => setGold(e.target.value)}
+                  placeholder="0.000"
+                  inputMode="decimal"
+                  aria-label="Khalis gold given"
+                />
+              </label>
+              <label className="field">
+                <span className="field__label">Cash given (Rs)</span>
+                <input
+                  className="input input--numeric"
+                  value={cash}
+                  onChange={(e) => setCash(e.target.value)}
+                  placeholder="0.00"
+                  inputMode="decimal"
+                  aria-label="Cash given"
+                />
+              </label>
+            </div>
+
+            <p className="hint">
+              {kind
+                ? `Settling in ${kind}. Both portions reduce the gold debt — cash is converted at the rate for ${entryDate}, which is stored on the entry so this settlement always means the same thing.`
+                : 'Enter gold, cash, or both. Whichever you use, the gold debt is what reduces.'}
+            </p>
+
+            {confirming ? (
+              <div className="confirm" role="alertdialog" aria-label="Confirm over-return">
+                <div className="confirm__text">{confirming}</div>
+                <div className="confirm__actions">
+                  <button
+                    type="button"
+                    className="action action--toolbar"
+                    data-action="settle.confirm.back"
+                    data-action-state="ready"
+                    title="Go back and change the amounts"
+                    onClick={() => setConfirming(null)}
+                  >
+                    Go back
+                  </button>
+                  <button
+                    type="button"
+                    className="login__submit"
+                    data-action="settle.confirm.continue"
+                    data-action-state="ready"
+                    title="Post this settlement anyway"
+                    onClick={() => void post(true)}
+                    disabled={busy}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="login__submit"
+                data-action="wholesale.settle"
+                data-action-state="ready"
+                title="Post this settlement"
+                onClick={() => void post(false)}
+                disabled={busy || (!gold.trim() && !cash.trim())}
+                style={{ marginTop: 8 }}
+              >
+                <Icon name="save" size={15} />
+                {busy ? 'Posting…' : 'Post settlement'}
+              </button>
+            )}
+
+            {message ? (
+              <div
+                className={message.kind === 'ok' ? 'banner banner--good' : 'banner banner--bad'}
+                style={{ marginTop: 10 }}
+              >
+                {message.text}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

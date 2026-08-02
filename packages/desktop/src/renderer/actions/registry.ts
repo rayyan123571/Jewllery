@@ -105,6 +105,32 @@ export interface ActionContext {
   readonly runBackup: () => Promise<void>
   readonly restoreBackup: () => Promise<void>
   readonly toggleUserMenu: () => void
+  /**
+   * Hands an action to whichever screen is mounted.
+   *
+   * The alternative — threading every screen's state up into the registry —
+   * would make the registry depend on the screens instead of the other way
+   * round, and every new module would have to widen this interface. The screen
+   * that owns the state listens; the registry stays a flat list of controls.
+   */
+  readonly dispatch: (id: ActionId) => void
+}
+
+/**
+ * A control the mounted screen handles.
+ *
+ * Ready by definition — it has a handler. What it does depends on which screen
+ * is listening, which is exactly the point: the registry lists controls, the
+ * screens own behaviour.
+ */
+function screenAction(
+  label: string,
+  id: ActionId,
+  dispatch: (id: ActionId) => void,
+  shortcut?: string,
+): ReadyAction {
+  const base = { kind: 'ready' as const, label, run: () => dispatch(id) }
+  return shortcut === undefined ? base : { ...base, shortcut }
 }
 
 function notBuilt(label: string, module: ModuleId, shortcut?: string): NotBuiltAction {
@@ -126,6 +152,9 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     label,
     run: () => context.navigate(module),
   })
+
+  const screen = (label: string, id: ActionId, shortcut?: string): ReadyAction =>
+    screenAction(label, id, context.dispatch, shortcut)
 
   return {
     // Navigation — always live.
@@ -164,29 +193,31 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
       run: () => context.restoreBackup(),
     },
 
-    // M0 screens not yet wired to forms — the module is built, the form is not,
-    // so these name the milestone that finishes them rather than pretending.
+    // The Gold Rate screen is built and its form posts, so this is live.
+    'goldrate.set': screen('Set Rate', 'goldrate.set'),
+
+    // Still-undrawn M0 screens. The feature works; the form does not exist yet.
     'settings.shop-profile.save': notBuilt('Save Shop Profile', 'settings'),
     'users.add': notBuilt('Add User', 'users'),
-    'goldrate.set': notBuilt('Set Rate', 'gold-rate'),
 
-    // M2 — Whole Sale. The module in the mockup, and the one that matters most.
-    'wholesale.tab.new': notBuilt('New Whole Sale', 'wholesale'),
-    'wholesale.tab.ledger': notBuilt('Whole Sale Ledger', 'wholesale'),
-    'wholesale.tab.return': notBuilt('Return / Receive', 'wholesale'),
-    'wholesale.tab.history': notBuilt('History', 'wholesale'),
-    'wholesale.party.add': notBuilt('Add Party', 'wholesale'),
-    'wholesale.invoice.search': notBuilt('Find Invoice', 'wholesale'),
-    'wholesale.row.add': notBuilt('Add Row', 'wholesale'),
-    'wholesale.row.clear': notBuilt('Clear Row', 'wholesale'),
-    'wholesale.row.delete': notBuilt('Delete Row', 'wholesale'),
-    'wholesale.save': notBuilt('SAVE', 'wholesale', 'F5'),
-    'wholesale.save-and-print': notBuilt('SAVE & PRINT', 'wholesale', 'F6'),
-    'wholesale.print': notBuilt('PRINT', 'wholesale', 'F7'),
-    'wholesale.hold': notBuilt('HOLD', 'wholesale', 'F8'),
-    'wholesale.cancel': notBuilt('CANCEL', 'wholesale'),
-    'wholesale.ledger.view-full': notBuilt('View Full Ledger', 'wholesale'),
-    'wholesale.ledger.view-entry': notBuilt('View Entry', 'wholesale'),
+    // M2 — Whole Sale. Built, so these are live. Each hands off to the screen
+    // that owns the state (see ActionContext.dispatch).
+    'wholesale.tab.new': screen('New Whole Sale', 'wholesale.tab.new'),
+    'wholesale.tab.ledger': screen('Whole Sale Ledger', 'wholesale.tab.ledger'),
+    'wholesale.tab.return': screen('Return / Receive', 'wholesale.tab.return'),
+    'wholesale.tab.history': screen('History', 'wholesale.tab.history'),
+    'wholesale.party.add': screen('Add Party', 'wholesale.party.add'),
+    'wholesale.invoice.search': screen('Find Invoice', 'wholesale.invoice.search'),
+    'wholesale.row.add': screen('Add Row', 'wholesale.row.add'),
+    'wholesale.row.clear': screen('Clear Row', 'wholesale.row.clear'),
+    'wholesale.row.delete': screen('Delete Row', 'wholesale.row.delete'),
+    'wholesale.save': screen('SAVE', 'wholesale.save', 'F5'),
+    'wholesale.save-and-print': screen('SAVE & PRINT', 'wholesale.save-and-print', 'F6'),
+    'wholesale.print': screen('PRINT', 'wholesale.print', 'F7'),
+    'wholesale.hold': screen('HOLD', 'wholesale.hold', 'F8'),
+    'wholesale.cancel': screen('CANCEL', 'wholesale.cancel'),
+    'wholesale.ledger.view-full': screen('View Full Ledger', 'wholesale.ledger.view-full'),
+    'wholesale.ledger.view-entry': screen('View Entry', 'wholesale.ledger.view-entry'),
 
     // Belong to other modules even though they appear on the wholesale screen.
     // Labelling them by their real owner is the point: "Import from Stock" is
@@ -194,9 +225,10 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'wholesale.import-from-stock': notBuilt('Import from Stock', 'stock'),
     'wholesale.scan-barcode': notBuilt('Scan Barcode', 'stock'),
 
-    'quick.wholesale-ledger': notBuilt('Whole Sale Ledger', 'wholesale'),
-    'quick.return-receive': notBuilt('Return / Receive', 'wholesale'),
-    'quick.print-last-invoice': notBuilt('Print Last Invoice', 'wholesale'),
+    'quick.wholesale-ledger': screen('Whole Sale Ledger', 'wholesale.tab.ledger'),
+    'quick.return-receive': screen('Return / Receive', 'wholesale.tab.return'),
+    'quick.print-last-invoice': screen('Print Last Invoice', 'wholesale.print'),
+    // Party Balance belongs to Customers (M1's own screen), not to Whole Sale.
     'quick.party-balance': notBuilt('Party Balance', 'customers'),
   }
 }

@@ -62,6 +62,10 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_M2.wholesaleLedger, partyId) as Promise<readonly LedgerRowDto[]>,
   setRate: (request: SetRateRequest) =>
     ipcRenderer.invoke(IPC_M2.rateSet, request) as ReturnType<RendererApi['setRate']>,
+  changePassword: (current: string, next: string) =>
+    ipcRenderer.invoke(IPC_M2.changePassword, current, next) as ReturnType<
+      RendererApi['changePassword']
+    >,
 }
 
 contextBridge.exposeInMainWorld('api', api)

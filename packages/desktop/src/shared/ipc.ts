@@ -103,6 +103,10 @@ export interface RendererApi {
   settle(request: SettleRequest): Promise<PostResult>
   partyLedger(partyId: string): Promise<readonly LedgerRowDto[]>
   setRate(request: SetRateRequest): Promise<{ ok: true } | { ok: false; message: string }>
+  changePassword(
+    current: string,
+    next: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }>
 }
 
 declare global {
@@ -133,6 +137,7 @@ export const IPC_M2 = {
   wholesaleRecent: 'wholesale:recent',
   wholesaleReverse: 'wholesale:reverse',
   rateSet: 'rates:set',
+  changePassword: 'auth:changePassword',
 } as const
 
 export interface PartyDto {
