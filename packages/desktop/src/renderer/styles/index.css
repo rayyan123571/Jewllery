@@ -1,0 +1,601 @@
+/* Layout for the shell. Every colour and dimension comes from a token defined
+   in theme.ts and injected as a CSS custom property — nothing here invents one,
+   so matching the mockup exactly is a change to that file, not a sweep. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-base);
+  color: var(--colour-text);
+  background: var(--colour-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── app frame ──────────────────────────────────────────────────────────── */
+
+.app {
+  display: grid;
+  grid-template-rows: var(--size-title-bar-height) 1fr var(--size-status-bar-height);
+  height: 100%;
+}
+
+.title-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  background: var(--colour-navy-deep);
+  color: var(--colour-text-inverse);
+  font-size: var(--font-size-sm);
+  -webkit-app-region: drag;
+}
+
+.title-bar__mark {
+  color: var(--colour-gold-text);
+  font-size: var(--font-size-base);
+}
+
+.title-bar__controls {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+  color: #c9d3e4;
+  -webkit-app-region: no-drag;
+}
+
+.app__body {
+  display: grid;
+  grid-template-columns: var(--size-sidebar-width) 1fr;
+  min-height: 0;
+}
+
+/* ── sidebar ────────────────────────────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  background: var(--colour-navy);
+  color: var(--colour-text-inverse);
+  min-height: 0;
+}
+
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar__crest {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--colour-gold);
+  display: grid;
+  place-items: center;
+  color: var(--colour-gold-text);
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  flex: none;
+}
+
+.sidebar__name {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--colour-gold-text);
+  line-height: 1.15;
+}
+
+.sidebar__section {
+  padding: 12px 12px 6px;
+  font-size: var(--font-size-xs);
+  letter-spacing: 1px;
+  color: var(--colour-navy-muted);
+}
+
+.sidebar__items {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 8px;
+}
+
+.sidebar__foot {
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ── top bar ────────────────────────────────────────────────────────────── */
+
+.workspace {
+  display: grid;
+  grid-template-rows: var(--size-top-bar-height) 1fr;
+  min-width: 0;
+  min-height: 0;
+}
+
+.top-bar {
+  display: flex;
+  align-items: stretch;
+  background: var(--colour-surface);
+  border-bottom: 1px solid var(--colour-border);
+  min-width: 0;
+}
+
+.top-bar__modules {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  min-width: 0;
+  flex: 1;
+}
+
+.top-bar__aside {
+  display: flex;
+  align-items: center;
+  flex: none;
+  border-left: 1px solid var(--colour-border);
+}
+
+.rate-panel {
+  padding: 4px 14px;
+  border-right: 1px solid var(--colour-border);
+  min-width: 168px;
+}
+
+.rate-panel__title {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+  margin-bottom: 2px;
+}
+
+.rate-panel__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+}
+
+.rate-panel__value {
+  font-family: var(--font-numeric);
+  font-weight: 700;
+  color: var(--colour-gold);
+}
+
+.rate-panel__empty {
+  font-size: var(--font-size-sm);
+  color: var(--colour-negative);
+  line-height: 1.45;
+}
+
+.clock {
+  padding: 4px 14px;
+  border-right: 1px solid var(--colour-border);
+  text-align: center;
+  min-width: 130px;
+}
+
+.clock__day {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+}
+
+.clock__date {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.clock__time {
+  font-family: var(--font-numeric);
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+}
+
+/* ── content ────────────────────────────────────────────────────────────── */
+
+.content {
+  overflow: auto;
+  padding: 10px 12px;
+  min-height: 0;
+}
+
+.module-title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--colour-navy);
+  letter-spacing: 0.4px;
+  margin: 0 0 8px;
+}
+
+.panel {
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+}
+
+.panel__title {
+  padding: 5px 10px;
+  background: var(--colour-surface-header);
+  border-bottom: 1px solid var(--colour-border);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--colour-navy);
+}
+
+.panel__body {
+  padding: 8px 10px;
+}
+
+.tabs {
+  display: flex;
+  gap: 3px;
+  border-bottom: 1px solid var(--colour-border);
+  padding: 0 6px;
+  background: var(--colour-surface);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--colour-surface);
+}
+
+.field__label {
+  display: block;
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  margin-bottom: 3px;
+}
+
+.field__control {
+  display: flex;
+  gap: 4px;
+}
+
+.input,
+.select {
+  width: 100%;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface);
+  font-family: var(--font-ui);
+  font-size: var(--font-size-base);
+  color: var(--colour-text);
+}
+
+.input--numeric {
+  font-family: var(--font-numeric);
+  text-align: right;
+}
+
+.input:disabled,
+.select:disabled {
+  background: var(--colour-disabled-surface);
+  color: var(--colour-disabled-text);
+}
+
+/* ── tables ─────────────────────────────────────────────────────────────── */
+
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.grid th {
+  background: var(--colour-surface-header);
+  border: 1px solid var(--colour-border);
+  padding: 5px 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--colour-navy);
+  text-align: center;
+}
+
+.grid td {
+  border: 1px solid var(--colour-border);
+  padding: 4px 6px;
+}
+
+.grid td.numeric {
+  font-family: var(--font-numeric);
+  text-align: right;
+}
+
+.grid tfoot td {
+  background: var(--colour-surface-header);
+  font-weight: 700;
+}
+
+.positive {
+  color: var(--colour-positive);
+  font-weight: 600;
+}
+
+.negative {
+  color: var(--colour-negative);
+  font-weight: 600;
+}
+
+/* ── summary strip ──────────────────────────────────────────────────────── */
+
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.summary-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  font-size: var(--font-size-base);
+}
+
+.summary-line__value {
+  font-family: var(--font-numeric);
+  font-weight: 700;
+}
+
+/* ── action buttons ─────────────────────────────────────────────────────── */
+
+.action {
+  font-family: var(--font-ui);
+  font-size: var(--font-size-base);
+  border: 1px solid transparent;
+  border-radius: var(--size-radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.action:disabled {
+  cursor: not-allowed;
+}
+
+/* A control whose module is not built. Visibly, unmistakably off — the whole
+   point is that it can never be confused with a working control that failed. */
+.action:disabled:not(.action--sidebar):not(.action--topbar) {
+  background: var(--colour-disabled-surface) !important;
+  color: var(--colour-disabled-text) !important;
+  border-color: var(--colour-border) !important;
+  opacity: 1;
+}
+
+.action__lock {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--colour-disabled-text);
+  flex: none;
+}
+
+.action--sidebar {
+  width: 100%;
+  padding: 7px 12px;
+  justify-content: flex-start;
+  font-size: var(--font-size-md);
+  color: #d5deee;
+  border-radius: 0;
+}
+
+.action--sidebar:hover:not(:disabled) {
+  background: var(--colour-navy-hover);
+}
+
+.action--sidebar.is-active {
+  background: var(--colour-gold);
+  color: #22303f;
+  font-weight: 600;
+}
+
+.action--sidebar:disabled {
+  color: #61759a;
+}
+
+.action--topbar {
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 11px;
+  font-size: var(--font-size-sm);
+  border-radius: 0;
+  color: var(--colour-text);
+  min-width: 62px;
+  justify-content: center;
+}
+
+.action--topbar:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+}
+
+.action--topbar.is-active {
+  background: var(--colour-gold-bright);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.action--topbar:disabled {
+  color: var(--colour-disabled-text);
+}
+
+.action--tab {
+  padding: 6px 14px;
+  font-size: var(--font-size-base);
+  border-radius: var(--size-radius) var(--size-radius) 0 0;
+  color: var(--colour-text-muted);
+}
+
+.action--tab.is-active {
+  background: var(--colour-info);
+  color: var(--colour-text-inverse);
+  font-weight: 600;
+}
+
+.action--primary {
+  flex-direction: column;
+  gap: 1px;
+  padding: 9px 8px;
+  color: var(--colour-text-inverse);
+  font-weight: 700;
+  font-size: var(--font-size-md);
+  justify-content: center;
+  border-radius: var(--size-radius-large);
+}
+
+.action--toolbar {
+  padding: 4px 10px;
+  border: 1px solid var(--colour-border);
+  background: var(--colour-surface);
+  font-size: var(--font-size-base);
+}
+
+.action--quick {
+  padding: 7px 6px;
+  border: 1px solid var(--colour-border);
+  background: var(--colour-surface-muted);
+  font-size: var(--font-size-sm);
+  justify-content: center;
+  width: 100%;
+}
+
+.action--icon {
+  padding: 2px 5px;
+  justify-content: center;
+}
+
+.action-bar {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* ── right rail ─────────────────────────────────────────────────────────── */
+
+.workspace__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--size-preview-width);
+  gap: 10px;
+  align-items: start;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.slip {
+  font-family: var(--font-numeric);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.slip__rule {
+  border-top: 1px dashed var(--colour-border-strong);
+  margin: 5px 0;
+}
+
+.slip__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ── status bar ─────────────────────────────────────────────────────────── */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: 0 12px;
+  background: var(--colour-navy);
+  color: #cdd7e8;
+  font-size: var(--font-size-sm);
+}
+
+.status-bar__dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--colour-positive);
+  margin-left: 5px;
+}
+
+.status-bar__version {
+  margin-left: auto;
+}
+
+/* ── not-built module placeholder ───────────────────────────────────────── */
+
+.placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 340px;
+  text-align: center;
+  color: var(--colour-text-muted);
+}
+
+.placeholder__badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: var(--colour-disabled-surface);
+  color: var(--colour-disabled-text);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.placeholder__title {
+  font-size: var(--font-size-xl);
+  color: var(--colour-navy);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border: 1px solid #E6C200;
+  background: #FFF8DC;
+  border-radius: var(--size-radius);
+  font-size: var(--font-size-base);
+  color: #6B5200;
+}

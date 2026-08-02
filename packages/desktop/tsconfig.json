@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist-types",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "moduleResolution": "bundler",
+    "noEmit": false
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../domain" },
+    { "path": "../application" },
+    { "path": "../persistence" }
+  ]
+}

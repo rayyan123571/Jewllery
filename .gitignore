@@ -11,6 +11,7 @@ node_modules/
 
 # ── build output ─────────────────────────────────────────────────────────
 dist/
+dist-types/
 dist-electron/
 release/
 *.tsbuildinfo

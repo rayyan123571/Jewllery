@@ -28,6 +28,7 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      '**/dist-types/**',
       '**/dist-electron/**',
       '**/release/**',
       '**/node_modules/**',
