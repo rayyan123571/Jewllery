@@ -67,5 +67,24 @@ export {
 } from './rates/Purity.js'
 export type { GoldRate, NewGoldRate } from './rates/GoldRate.js'
 
+// ── wholesale ──────────────────────────────────────────────────────────────
+export { Katt } from './wholesale/Katt.js'
+export {
+  amountOf,
+  computeLine,
+  khalisOf,
+  totalsOf,
+  type WholesaleLineComputed,
+  type WholesaleLineInput,
+  type WholesaleTotals,
+} from './wholesale/lineMath.js'
+export {
+  MissingRateForSettlementError,
+  cashToClear,
+  computeSettlement,
+  type SettlementInput,
+  type SettlementResult,
+} from './wholesale/settlementMath.js'
+
 // ── audit ──────────────────────────────────────────────────────────────────
 export type { AuditAction, AuditEntry, NewAuditEntry } from './audit/AuditEntry.js'
