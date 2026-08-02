@@ -13,14 +13,19 @@ import {
   type Party,
   type Role,
   type User,
+  type WholesaleEntry,
+  type WholesaleEntryWithLines,
 } from '@jewellery/domain'
 import type {
   AuditRepository,
   GoldRateRepository,
   NewUser,
+  NewWholesaleEntry,
   PartyRepository,
   PartySearchResult,
+  SettingsRepository,
   UserRepository,
+  WholesaleRepository,
 } from '../abstractions/repositories.js'
 
 /**
@@ -285,4 +290,98 @@ function rank(p: Party, q: string): number {
   if (p.code.toLowerCase().startsWith(q)) return 0
   if (p.name.toLowerCase().startsWith(q)) return 1
   return 2
+}
+
+export class FakeSettingsRepository implements SettingsRepository {
+  private readonly rows = new Map<string, string>()
+  get(key: string): string | null {
+    return this.rows.get(key) ?? null
+  }
+  set(key: string, value: string): void {
+    this.rows.set(key, value)
+  }
+  all(): Record<string, string> {
+    return Object.fromEntries(this.rows)
+  }
+}
+
+/** In-memory wholesale ledger. Same delta-summing rule as the SQLite one. */
+export class FakeWholesaleRepository implements WholesaleRepository {
+  readonly entries: WholesaleEntryWithLines[] = []
+  private sequence = 0
+
+  constructor(private readonly clock: Clock) {}
+
+  post(entry: NewWholesaleEntry): WholesaleEntryWithLines {
+    if (this.entries.some((e) => e.entry.invoiceNo === entry.invoiceNo)) {
+      throw new Error(`Duplicate invoice number: ${entry.invoiceNo}`)
+    }
+    const id = `entry-${++this.sequence}`
+    const stored: WholesaleEntryWithLines = {
+      entry: {
+        ...entry,
+        id,
+        reversedByEntryId: null,
+        createdAt: toIsoTimestamp(this.clock.now()),
+      },
+      lines: entry.lines.map((line, index) => ({ ...line, id: `line-${id}-${index}` })),
+    }
+    this.entries.push(stored)
+    return stored
+  }
+
+  findById(id: string): WholesaleEntryWithLines | null {
+    return this.entries.find((e) => e.entry.id === id) ?? null
+  }
+
+  findByInvoiceNo(branchId: string, invoiceNo: string): WholesaleEntryWithLines | null {
+    return (
+      this.entries.find(
+        (e) =>
+          e.entry.branchId === branchId &&
+          e.entry.invoiceNo.toLowerCase() === invoiceNo.toLowerCase(),
+      ) ?? null
+    )
+  }
+
+  nextInvoiceNo(branchId: string, prefix: string): string {
+    const numbers = this.entries
+      .filter((e) => e.entry.branchId === branchId && e.entry.invoiceNo.startsWith(prefix))
+      .map((e) => Number(/(\d+)\s*$/.exec(e.entry.invoiceNo)?.[1] ?? 0))
+    return `${prefix}${numbers.length === 0 ? 10_001 : Math.max(...numbers) + 1}`
+  }
+
+  balances(partyId: string): { goldMg: number; cashPaisa: number } {
+    const mine = this.entries.filter((e) => e.entry.partyId === partyId)
+    return {
+      goldMg: mine.reduce((sum, e) => sum + e.entry.goldDelta.milligrams, 0),
+      cashPaisa: mine.reduce((sum, e) => sum + e.entry.cashDelta.paisa, 0),
+    }
+  }
+
+  listForParty(partyId: string, limit: number): WholesaleEntry[] {
+    return this.entries
+      .filter((e) => e.entry.partyId === partyId)
+      .map((e) => e.entry)
+      .sort((a, b) => a.entryDate.localeCompare(b.entryDate) || a.id.localeCompare(b.id))
+      .slice(0, limit)
+  }
+
+  listRecent(branchId: string, limit: number): WholesaleEntry[] {
+    return this.entries
+      .filter((e) => e.entry.branchId === branchId)
+      .map((e) => e.entry)
+      .reverse()
+      .slice(0, limit)
+  }
+
+  markReversed(originalId: string, reversalId: string): void {
+    const index = this.entries.findIndex((e) => e.entry.id === originalId)
+    const found = this.entries[index]
+    if (!found) throw new Error(`No such entry: ${originalId}`)
+    this.entries[index] = {
+      ...found,
+      entry: { ...found.entry, reversedByEntryId: reversalId },
+    }
+  }
 }
