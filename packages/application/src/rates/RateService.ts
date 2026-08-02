@@ -1,5 +1,3 @@
-import type {
-  Weight} from '@jewellery/domain';
 import {
   Money,
   businessDayOf,
@@ -9,6 +7,7 @@ import {
   type IsoDate,
   type PublicUser,
   type Purity,
+  type Weight,
 } from '@jewellery/domain'
 import type { AuditRepository, GoldRateRepository } from '../abstractions/repositories.js'
 import { PermissionError, ValidationError } from '../auth/AuthService.js'
