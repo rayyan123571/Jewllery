@@ -319,6 +319,7 @@ describe('the repository seam', () => {
       'settings',
       'shop',
       'users',
+      'wholesale',
     ])
   })
 })

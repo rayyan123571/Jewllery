@@ -2,6 +2,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 import { migration001 } from './001-initial.js'
 import { migration002 } from './002-rate-per-tola.js'
 import { migration003 } from './003-parties.js'
+import { migration004 } from './004-wholesale.js'
 
 export interface Migration {
   /** Applied in ascending order. Never renumber a released migration. */
@@ -18,7 +19,7 @@ export interface Migration {
  * reverse of a bad migration is a forward migration that corrects it, plus the
  * pre-restore backup that `restore` takes automatically.
  */
-const MIGRATIONS: readonly Migration[] = [migration001, migration002, migration003]
+const MIGRATIONS: readonly Migration[] = [migration001, migration002, migration003, migration004]
 
 /**
  * Brings the schema up to date, one migration per transaction.

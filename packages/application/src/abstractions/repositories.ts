@@ -1,5 +1,11 @@
 import type {
   AuditEntry,
+  Katt,
+  Money,
+  Weight,
+  WholesaleEntry,
+  WholesaleEntryKind,
+  WholesaleEntryWithLines,
   Branch,
   GoldRate,
   IsoDate,
@@ -128,6 +134,7 @@ export interface Repositories {
   readonly settings: SettingsRepository
   readonly backupLog: BackupLogRepository
   readonly parties: PartyRepository
+  readonly wholesale: WholesaleRepository
 }
 
 // ── parties (M1) ────────────────────────────────────────────────────────────
@@ -164,4 +171,76 @@ export interface PartyRepository {
     },
   ): Party
   setActive(id: string, isActive: boolean): Party
+}
+
+// ── wholesale (M2) ──────────────────────────────────────────────────────────
+
+/** A slip to be posted. Ids, totals and deltas are computed by the service. */
+export interface NewWholesaleEntry {
+  readonly branchId: string
+  readonly partyId: string
+  readonly kind: WholesaleEntryKind
+  readonly invoiceNo: string
+  readonly entryDate: IsoDate
+  readonly ratePerTola: Money | null
+  readonly totalGross: Weight
+  readonly totalKhalis: Weight
+  readonly totalAmount: Money
+  readonly settledGold: Weight
+  readonly settledCash: Money
+  readonly settledCashAsGold: Weight
+  readonly goldDelta: Weight
+  readonly cashDelta: Money
+  readonly isOverReturn: boolean
+  readonly confirmedByUserId: string | null
+  readonly reversesEntryId: string | null
+  readonly notes: string | null
+  readonly createdByUserId: string
+  readonly lines: readonly NewWholesaleLine[]
+}
+
+export interface NewWholesaleLine {
+  readonly lineNo: number
+  readonly itemName: string
+  readonly gross: Weight
+  readonly katt: Katt
+  readonly khalis: Weight
+  readonly ratePerTola: Money
+  readonly amount: Money
+  readonly remarks: string | null
+}
+
+export interface WholesaleRepository {
+  /**
+   * Posts a slip and its lines in ONE transaction.
+   *
+   * A half-written slip — header with no lines, or lines with no header — would
+   * put the ledger out by whatever the missing part was worth, so this is
+   * atomic or it does not happen.
+   */
+  post(entry: NewWholesaleEntry): WholesaleEntryWithLines
+
+  findById(id: string): WholesaleEntryWithLines | null
+  findByInvoiceNo(branchId: string, invoiceNo: string): WholesaleEntryWithLines | null
+
+  /** The next free slip number for the branch, e.g. "WS-10026". */
+  nextInvoiceNo(branchId: string, prefix: string): string
+
+  /**
+   * The party's current gold and cash balances.
+   *
+   * Derived by summing the deltas, never stored on the party — a stored balance
+   * that disagrees with the entries behind it is the classic accounting bug,
+   * and the entries are the half that can be audited. The party's opening
+   * balance is added by the service, not here.
+   */
+  balances(partyId: string): { goldMg: number; cashPaisa: number }
+
+  /** Entries for one party, oldest first, for the running-balance ledger. */
+  listForParty(partyId: string, limit: number): WholesaleEntry[]
+
+  listRecent(branchId: string, limit: number): WholesaleEntry[]
+
+  /** Stamps the original with the id of the entry that reversed it. */
+  markReversed(originalId: string, reversalId: string): void
 }

@@ -18,9 +18,12 @@ export type {
   Repositories,
   PartyRepository,
   PartySearchResult,
+  NewWholesaleEntry,
+  NewWholesaleLine,
   SettingsRepository,
   ShopRepository,
   UserRepository,
+  WholesaleRepository,
 } from './abstractions/repositories.js'
 export type { BackupStore, IdGenerator } from './abstractions/services.js'
 

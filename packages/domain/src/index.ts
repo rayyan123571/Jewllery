@@ -85,6 +85,13 @@ export {
   type SettlementInput,
   type SettlementResult,
 } from './wholesale/settlementMath.js'
+export type {
+  PartyLedgerRow,
+  WholesaleEntry,
+  WholesaleEntryKind,
+  WholesaleEntryWithLines,
+  WholesaleLineItem,
+} from './wholesale/WholesaleEntry.js'
 
 // ── audit ──────────────────────────────────────────────────────────────────
 export type { AuditAction, AuditEntry, NewAuditEntry } from './audit/AuditEntry.js'

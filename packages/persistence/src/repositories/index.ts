@@ -32,6 +32,7 @@ import type {
   UserRepository,
 } from '@jewellery/application'
 import type { DatabaseProvider, SqliteDatabase } from '../Database.js'
+import { SqliteWholesaleRepository } from './wholesale.js'
 import {
   fromBool,
   toAuditEntry,
@@ -639,5 +640,6 @@ export function createRepositories(
     settings: new SqliteSettingsRepository(conn, clock),
     backupLog: new SqliteBackupLogRepository(conn, clock),
     parties: new SqlitePartyRepository(conn, clock),
+    wholesale: new SqliteWholesaleRepository(conn, clock),
   }
 }

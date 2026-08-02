@@ -12,3 +12,4 @@ export { currentVersion, latestVersion, type Migration } from './migrations/runn
 export { DatabaseHandle } from './DatabaseHandle.js'
 export { createRepositories } from './repositories/index.js'
 export { SqliteBackupStore } from './backup/SqliteBackupStore.js'
+export { SqliteWholesaleRepository } from './repositories/wholesale.js'
