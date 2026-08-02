@@ -37,18 +37,7 @@ function createWindow(): BrowserWindow {
 
   window.once('ready-to-show', () => {
     window.show()
-    // Diagnostic hook: JEWELLERY_CAPTURE=<path> renders the window, writes a
-    // PNG and quits. Used to verify the shell actually launches rather than
-    // only that its tests pass — the same idea as GoldLab's dry-run print dump.
-    const capturePath = process.env.JEWELLERY_CAPTURE
-    if (capturePath) {
-      setTimeout(() => {
-        void window.webContents
-          .capturePage()
-          .then((image) => writeFileSync(capturePath, image.toPNG()))
-          .finally(() => app.quit())
-      }, 2500)
-    }
+    void runCaptureScenario(window)
   })
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -115,6 +104,47 @@ function reportFatal(error: unknown): void {
       '\n\nIf another copy of the application is already running, close it and ' +
       'try again. Your data has not been changed.',
   )
+  app.quit()
+}
+
+/**
+ * Diagnostic capture, for verifying the built application rather than only its
+ * tests — the same idea as GoldLab's dry-run print dump.
+ *
+ *   JEWELLERY_CAPTURE       directory to write PNGs into
+ *   JEWELLERY_CAPTURE_STEPS JSON: [{ name, js?, waitMs? }, ...]
+ *
+ * Each step optionally runs a snippet in the renderer, waits, then writes
+ * <name>.png. With no steps it takes a single shot, as before. Inert unless the
+ * environment variables are set, so it costs a shipped build nothing.
+ */
+async function runCaptureScenario(window: BrowserWindow): Promise<void> {
+  const dir = process.env.JEWELLERY_CAPTURE
+  if (!dir) return
+
+  const steps: Array<{ name: string; js?: string; waitMs?: number }> = process.env
+    .JEWELLERY_CAPTURE_STEPS
+    ? (JSON.parse(process.env.JEWELLERY_CAPTURE_STEPS) as Array<{
+        name: string
+        js?: string
+        waitMs?: number
+      }>)
+    : [{ name: 'shell', waitMs: 2500 }]
+
+  const pause = (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms))
+
+  for (const step of steps) {
+    try {
+      if (step.js) await window.webContents.executeJavaScript(step.js, true)
+      await pause(step.waitMs ?? 900)
+      const image = await window.webContents.capturePage()
+      writeFileSync(join(dir, `${step.name}.png`), image.toPNG())
+      console.log(`[capture] ${step.name}`)
+    } catch (error) {
+      console.error(`[capture] ${step.name} failed:`, error)
+    }
+  }
   app.quit()
 }
 

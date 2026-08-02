@@ -557,6 +557,7 @@ function InvoicePreview({
   party: PartyDto | null
   preview: PreviewDto | null
 }) {
+  const items = (preview?.lines ?? []).filter((line) => !line.error)
   return (
     <div className="panel">
       <div className="panel__title">INVOICE PREVIEW (80mm)</div>
@@ -584,30 +585,35 @@ function InvoicePreview({
           <span>Rate</span>
           <span>{preview?.rateDisplay ? `${preview.rateDisplay}/tola` : '—'}</span>
         </div>
-        <div className="slip__rule" />
-        <div className="slip__row slip__head">
-          <span>ITEM</span>
-          <span>GR</span>
-          <span>KATT</span>
-          <span>PR</span>
-        </div>
-        {(preview?.lines ?? [])
-          .filter((line) => !line.error)
-          .map((line, index) => (
-            <div className="slip__row slip__item" key={index}>
-              <span>{line.itemName}</span>
-              <span>{line.grossDisplay}</span>
-              <span>{line.kattDisplay}</span>
-              <span>{line.khalisDisplay}</span>
+        {/* The item block only prints when there are items. On the settle and
+            ledger tabs an empty table with ( 0.000 ) totals would be a slip
+            claiming nothing was issued, which is not what is happening. */}
+        {items.length > 0 ? (
+          <>
+            <div className="slip__rule" />
+            <div className="slip__row slip__head">
+              <span>ITEM</span>
+              <span>GR</span>
+              <span>KATT</span>
+              <span>PR</span>
             </div>
-          ))}
-        <div className="slip__rule" />
-        <div className="slip__row">
-          <span>Total</span>
-          <span>( {preview?.grossTotalDisplay ?? '0.000'} )</span>
-          <span />
-          <span>( {preview?.khalisTotalDisplay ?? '0.000'} )</span>
-        </div>
+            {items.map((line, index) => (
+              <div className="slip__row slip__item" key={index}>
+                <span>{line.itemName}</span>
+                <span>{line.grossDisplay}</span>
+                <span>{line.kattDisplay}</span>
+                <span>{line.khalisDisplay}</span>
+              </div>
+            ))}
+            <div className="slip__rule" />
+            <div className="slip__row">
+              <span>Total</span>
+              <span>( {preview?.grossTotalDisplay ?? '0.000'} )</span>
+              <span />
+              <span>( {preview?.khalisTotalDisplay ?? '0.000'} )</span>
+            </div>
+          </>
+        ) : null}
         <div className="slip__rule" />
         <div className="slip__row">
           <span>Previous</span>

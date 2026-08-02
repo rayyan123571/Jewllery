@@ -759,10 +759,19 @@ body {
 /* ── party selector ─────────────────────────────────────────────────────── */
 
 .party {
+  /* Two fields (name + code) inside one row of the five-column field strip.
+     Without the span they share a single column and the name box collapses to
+     a few characters, which is unusable for a type-ahead. */
+  grid-column: span 2;
   display: grid;
-  grid-template-columns: 1fr 72px;
+  grid-template-columns: minmax(0, 1fr) 76px;
   gap: 6px;
   position: relative;
+  align-items: start;
+}
+
+.field-row {
+  align-items: start;
 }
 
 .party__list {
