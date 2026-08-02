@@ -8,8 +8,34 @@ export default defineConfig({
   plugins: [
     react(),
     electron({
-      main: { entry: 'src/main/index.ts' },
-      preload: { input: 'src/preload/index.ts' },
+      main: {
+        entry: 'src/main/index.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              output: { entryFileNames: 'main.cjs', format: 'cjs' },
+              // better-sqlite3 is a native module: it must stay external and be
+              // loaded from node_modules at runtime. A .node binary cannot be
+              // inlined into a JavaScript chunk.
+              external: ['better-sqlite3', 'electron'],
+            },
+          },
+        },
+      },
+      preload: {
+        input: 'src/preload/index.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              // A sandboxed preload must be CommonJS. Electron loads it in a
+              // context with no ESM loader, so an .mjs preload silently fails
+              // and window.api is never defined.
+              output: { entryFileNames: 'preload.cjs', format: 'cjs' },
+              external: ['electron'],
+            },
+          },
+        },
+      },
     }),
   ],
   build: { outDir: 'dist' },

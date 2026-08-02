@@ -1,5 +1,6 @@
-import { BrowserWindow, app } from 'electron'
+import { BrowserWindow, app, dialog } from 'electron'
 import { join } from 'node:path'
+import { writeFileSync } from 'node:fs'
 import { createContainer, type Container } from './container.js'
 import { registerIpcHandlers, type Session } from './ipc.js'
 
@@ -26,37 +27,97 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#1B2A4A',
     title: 'Gold Jewellery Management System',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.cjs'),
+      preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
   })
 
-  window.once('ready-to-show', () => window.show())
+  window.once('ready-to-show', () => {
+    window.show()
+    // Diagnostic hook: JEWELLERY_CAPTURE=<path> renders the window, writes a
+    // PNG and quits. Used to verify the shell actually launches rather than
+    // only that its tests pass — the same idea as GoldLab's dry-run print dump.
+    const capturePath = process.env.JEWELLERY_CAPTURE
+    if (capturePath) {
+      setTimeout(() => {
+        void window.webContents
+          .capturePage()
+          .then((image) => writeFileSync(capturePath, image.toPNG()))
+          .finally(() => app.quit())
+      }, 2500)
+    }
+  })
 
   if (process.env.VITE_DEV_SERVER_URL) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
-    void window.loadFile(join(__dirname, '../../dist/index.html'))
+    void window.loadFile(join(__dirname, '../dist/index.html'))
   }
 
   return window
 }
 
-app.whenReady().then(() => {
-  // The database lives in the app's own user data directory — never on a
-  // network share (docs/DECISIONS.md §5).
-  container = createContainer({ dataDirectory: app.getPath('userData') })
+app.whenReady().then(
+  () => {
+    // The database lives in the app's own user data directory — never on a
+    // network share (docs/DECISIONS.md §5).
+    container = createContainer({ dataDirectory: app.getPath('userData') })
 
-  registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
+    registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
 
-  createWindow()
+    createWindow()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  },
+  // Without this the rejection is swallowed and the user gets a blank screen
+  // with no message and nothing in a log — the worst possible failure for an
+  // offline app, because there is no server-side trace to go and read.
+  reportFatal,
+)
+
+/**
+ * Anything that stops the application from starting.
+ *
+ * Startup can fail for reasons the shopkeeper can act on — a database file
+ * locked by another copy of the app, a disk that is full, a folder they have no
+ * permission to write. Each of those deserves a message they can read, not a
+ * window that never appears.
+ */
+function reportFatal(error: unknown): void {
+  const detail =
+    error instanceof Error ? `${error.message}\n\n${error.stack ?? ''}` : String(error)
+  console.error('[startup] failed:', detail)
+
+  // Also written to a file, because an offline application has no server-side
+  // log for anyone to go and read, and a GUI process on Windows is not attached
+  // to a console — so the dialog below is otherwise the only record, and it
+  // disappears when the user clicks OK.
+  try {
+    writeFileSync(
+      join(app.getPath('userData'), 'startup-error.log'),
+      `${new Date().toISOString()}\n${detail}\n`,
+      { flag: 'a' },
+    )
+  } catch {
+    // Nothing useful left to do — the dialog is still shown below.
+  }
+
+  dialog.showErrorBox(
+    'Gold Jewellery Manager could not start',
+    'The application could not open its database.\n\n' +
+      detail +
+      '\n\nIf another copy of the application is already running, close it and ' +
+      'try again. Your data has not been changed.',
+  )
+  app.quit()
+}
+
+process.on('uncaughtException', reportFatal)
+process.on('unhandledRejection', reportFatal)
 
 app.on('window-all-closed', () => {
   app.quit()
