@@ -3,7 +3,10 @@ import { systemClock, type Clock } from '@jewellery/domain'
 import {
   AuthService,
   BackupService,
+  PartyService,
   RateService,
+  Settings,
+  WholesaleService,
   createPasswordHasher,
   type PasswordHasher,
   type Repositories,
@@ -33,6 +36,8 @@ export interface Container {
   readonly auth: AuthService
   readonly rates: RateService
   readonly backups: BackupService
+  readonly parties: PartyService
+  readonly wholesale: WholesaleService
   readonly hasher: PasswordHasher
   readonly clock: Clock
   /** Resolved once at startup; the app ships with a single branch. */
@@ -79,6 +84,21 @@ export function createContainer(options: ContainerOptions): Container {
     clock,
   })
 
+  const parties = new PartyService({
+    parties: repositories.parties,
+    audit: repositories.audit,
+    clock,
+  })
+
+  const wholesale = new WholesaleService({
+    wholesale: repositories.wholesale,
+    parties: repositories.parties,
+    audit: repositories.audit,
+    rates,
+    settings: new Settings(repositories.settings),
+    clock,
+  })
+
   // Runs on every startup, including after a restore. Idempotent — it does
   // nothing when a branch already exists. It cannot be deferred to a wizard,
   // because without an administrator there is nobody to log in as and no
@@ -91,6 +111,8 @@ export function createContainer(options: ContainerOptions): Container {
     auth,
     rates,
     backups,
+    parties,
+    wholesale,
     hasher,
     clock,
     branchId: seed.branchId,

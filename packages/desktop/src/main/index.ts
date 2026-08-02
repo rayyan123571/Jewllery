@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { createContainer, type Container } from './container.js'
 import { registerIpcHandlers, type Session } from './ipc.js'
+import { registerWholesaleHandlers } from './wholesaleIpc.js'
 
 /**
  * Application lifecycle.
@@ -66,6 +67,7 @@ app.whenReady().then(
     container = createContainer({ dataDirectory: app.getPath('userData') })
 
     registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
+    registerWholesaleHandlers(container, session)
 
     createWindow()
 

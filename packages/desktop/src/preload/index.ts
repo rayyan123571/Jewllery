@@ -1,5 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type BackupStatusDto, type BootstrapDto, type LoginRequest, type LoginResponse, type RateDto, type RendererApi } from '../shared/ipc.js'
+import {
+  IPC,
+  IPC_M2,
+  type BackupStatusDto,
+  type BootstrapDto,
+  type LedgerRowDto,
+  type LoginRequest,
+  type LoginResponse,
+  type NewPartyDto,
+  type PartyBalanceDto,
+  type PartyDto,
+  type PostIssueRequest,
+  type PostResult,
+  type PreviewDto,
+  type RateDto,
+  type RendererApi,
+  type SetRateRequest,
+  type SettleRequest,
+} from '../shared/ipc.js'
 
 /**
  * The bridge between the sandboxed renderer and the main process.
@@ -24,6 +42,26 @@ const api: RendererApi = {
   restoreBackup: (filePath: string) =>
     ipcRenderer.invoke(IPC.backupRestore, filePath) as Promise<BackupStatusDto>,
   quit: () => ipcRenderer.invoke(IPC.quit) as Promise<void>,
+
+  searchParties: (query: string) =>
+    ipcRenderer.invoke(IPC_M2.partySearch, query) as Promise<readonly PartyDto[]>,
+  createParty: (party: NewPartyDto) =>
+    ipcRenderer.invoke(IPC_M2.partyCreate, party) as ReturnType<RendererApi['createParty']>,
+  partyBalance: (partyId: string) =>
+    ipcRenderer.invoke(IPC_M2.partyGet, partyId) as Promise<PartyBalanceDto | null>,
+  rateFor: (date: string) =>
+    ipcRenderer.invoke(IPC_M2.wholesaleRateFor, date) as ReturnType<RendererApi['rateFor']>,
+  nextInvoiceNo: () => ipcRenderer.invoke(IPC_M2.wholesaleNextInvoice) as Promise<string>,
+  previewWholesale: (request: PostIssueRequest) =>
+    ipcRenderer.invoke(IPC_M2.wholesalePreview, request) as Promise<PreviewDto>,
+  postIssue: (request: PostIssueRequest) =>
+    ipcRenderer.invoke(IPC_M2.wholesalePostIssue, request) as Promise<PostResult>,
+  settle: (request: SettleRequest) =>
+    ipcRenderer.invoke(IPC_M2.wholesaleSettle, request) as Promise<PostResult>,
+  partyLedger: (partyId: string) =>
+    ipcRenderer.invoke(IPC_M2.wholesaleLedger, partyId) as Promise<readonly LedgerRowDto[]>,
+  setRate: (request: SetRateRequest) =>
+    ipcRenderer.invoke(IPC_M2.rateSet, request) as ReturnType<RendererApi['setRate']>,
 }
 
 contextBridge.exposeInMainWorld('api', api)
