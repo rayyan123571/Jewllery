@@ -1,6 +1,10 @@
 import { describeBalance, type Katt, type Money, type Weight } from '@jewellery/domain'
 import {
   FONT_STACK,
+  ITEM_AMOUNT_PX,
+  ITEM_CELL_PADDING,
+  ITEM_LABEL_PX,
+  ITEM_VALUE_PX,
   LABEL_PX,
   LABEL_WEIGHT,
   NUMERIC_FONT,
@@ -89,6 +93,31 @@ function valueCell(text: string, align: 'center' | 'right' | 'left' = 'center', 
   )
 }
 
+/**
+ * Cells for the six-column item table, which needs smaller type than the rest of
+ * the slip to fit inside 576 dots. See ITEM_LABEL_PX for why.
+ */
+function itemLabelCell(text: string, colspan = 1): string {
+  return (
+    `<td colspan="${colspan}" style="border:2px solid #000;padding:${ITEM_CELL_PADDING};` +
+    `font:${LABEL_WEIGHT} ${ITEM_LABEL_PX}px ${FONT_STACK};text-align:center;` +
+    `white-space:nowrap;${STROKE}">${text}</td>`
+  )
+}
+
+function itemValueCell(
+  text: string,
+  align: 'center' | 'right' = 'right',
+  { amount = false, wrap = false, colspan = 1 } = {},
+): string {
+  const size = amount ? ITEM_AMOUNT_PX : ITEM_VALUE_PX
+  return (
+    `<td colspan="${colspan}" style="border:2px solid #000;padding:${ITEM_CELL_PADDING};` +
+    `font:${VALUE_WEIGHT} ${size}px ${NUMERIC_FONT};text-align:${align};` +
+    `${wrap ? 'white-space:normal;' : 'white-space:nowrap;'}${STROKE}">${text}</td>`
+  )
+}
+
 /** The bordered shop block. A blank field hides its line rather than printing empty. */
 function shopHeader(shop: ReceiptShop): string {
   const name = esc(shop.name)
@@ -150,24 +179,24 @@ export function buildWholesaleReceiptHtml(data: WholesaleReceiptData): string {
   //   ITEM | GR | KATT | RATE | خالص | AMOUNT
   const itemHeader =
     '<tr>' +
-    labelCell('آئٹم') +
-    labelCell('وزن') +
-    labelCell('کاٹ') +
-    labelCell('ریٹ') +
-    labelCell('خالص') +
-    labelCell('رقم') +
+    itemLabelCell('آئٹم') +
+    itemLabelCell('وزن') +
+    itemLabelCell('کاٹ') +
+    itemLabelCell('ریٹ') +
+    itemLabelCell('خالص') +
+    itemLabelCell('رقم') +
     '</tr>'
 
   const itemRows = data.lines
     .map(
       (line) =>
         '<tr>' +
-        valueCell(esc(line.itemName), 'right', true) +
-        valueCell(line.gross.format(), 'right') +
-        valueCell(line.katt.format(), 'right') +
-        valueCell(line.ratePerTola.formatWhole(), 'right') +
-        valueCell(line.khalis.format(), 'right') +
-        valueCell(line.amount.formatWhole(), 'right') +
+        itemValueCell(esc(line.itemName), 'right', { wrap: true }) +
+        itemValueCell(line.gross.format()) +
+        itemValueCell(line.katt.format()) +
+        itemValueCell(line.ratePerTola.formatWhole()) +
+        itemValueCell(line.khalis.format()) +
+        itemValueCell(line.amount.formatWhole(), 'right', { amount: true }) +
         '</tr>',
     )
     .join('')
@@ -175,12 +204,12 @@ export function buildWholesaleReceiptHtml(data: WholesaleReceiptData): string {
   // Totals row, in the slip's bracketed style.
   const totalsRow =
     '<tr>' +
-    labelCell('ٹوٹل') +
-    valueCell(`( ${data.totalGross.format()} )`, 'right') +
-    valueCell('') +
-    valueCell('') +
-    valueCell(`( ${data.totalKhalis.format()} )`, 'right') +
-    valueCell(data.totalAmount.formatWhole(), 'right') +
+    itemLabelCell('ٹوٹل') +
+    itemValueCell(`( ${data.totalGross.format()} )`) +
+    itemValueCell('') +
+    itemValueCell('') +
+    itemValueCell(`( ${data.totalKhalis.format()} )`) +
+    itemValueCell(data.totalAmount.formatWhole(), 'right', { amount: true }) +
     '</tr>'
 
   // The balance after this entry. Never a bare minus sign — a magnitude plus an
@@ -195,13 +224,20 @@ export function buildWholesaleReceiptHtml(data: WholesaleReceiptData): string {
         : ''
   const balanceText = drCr ? `${balance.text} /${drCr}` : balance.text
 
+  // The balance is the figure a party checks first, so it gets its own full-width
+  // band below the table rather than a cell inside it — a boxed value in a
+  // six-column row overflowed the head width and lost its own digits.
   const balanceRow =
     '<tr>' +
-    labelCell('بقایا وزن', 3) +
-    `<td colspan="3" style="border:2px solid #000;padding:5px;` +
-    `font:800 ${VALUE_PX}px ${NUMERIC_FONT};text-align:center;${STROKE}">` +
-    `<span style="border:3px solid #000;padding:2px 10px;display:inline-block">${esc(balanceText)}</span>` +
-    '</td></tr>'
+    itemLabelCell('بقایا وزن', 2) +
+    `<td colspan="4" style="border:2px solid #000;padding:4px;` +
+    `font:800 ${ITEM_LABEL_PX + 2}px ${NUMERIC_FONT};text-align:center;` +
+    // dir=ltr on the value. The slip is an RTL document, and inside it the
+    // bidi algorithm reorders a mixed string like "234.853 g (they owe) /DR"
+    // into "g (they owe) /DR 234.853" — the figure lands at the wrong end and
+    // the line stops being readable. Found by rendering, not by reading.
+    `white-space:nowrap;${STROKE}"><span dir="ltr">${esc(balanceText)}</span></td>` +
+    '</tr>'
 
   const footer =
     `<div style="font-family:${FONT_STACK};font-size:${SMALL_PX}px;text-align:center;` +

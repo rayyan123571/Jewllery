@@ -40,6 +40,20 @@ export const VALUE_PX = 22
 export const SMALL_PX = 18
 
 /**
+ * The item table carries six columns — item, gross, katt, rate, khalis, amount —
+ * and at VALUE_PX they do not fit in 576 dots: the amount column runs off the
+ * edge and the last figure is lost. Found by rendering the slip at head width
+ * and looking at it, not by reading the code.
+ *
+ * These sizes are what make six columns fit. Amounts are the widest content
+ * (seven digits plus separators), so they get their own, smallest size.
+ */
+export const ITEM_LABEL_PX = 17
+export const ITEM_VALUE_PX = 16
+export const ITEM_AMOUNT_PX = 15
+export const ITEM_CELL_PADDING = '2px 3px'
+
+/**
  * Escapes user text before it reaches the slip.
  *
  * A party name is typed by a shopkeeper and could contain `<` or `&`. Injecting

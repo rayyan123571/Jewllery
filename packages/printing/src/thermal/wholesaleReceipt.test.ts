@@ -149,6 +149,13 @@ describe('the balance after the entry', () => {
     expect(html).not.toContain('-7.310')
   })
 
+  it('forces the balance to read left-to-right inside the RTL slip', () => {
+    // Without dir=ltr the bidi algorithm renders "234.853 g (they owe) /DR" as
+    // "g (they owe) /DR 234.853" — the figure moves to the wrong end.
+    const html = buildWholesaleReceiptHtml(slip())
+    expect(html).toMatch(/<span dir="ltr">[^<]*234\.853 g \(they owe\) \/DR/)
+  })
+
   it('prints a settled balance with no CR or DR tag at all', () => {
     const html = buildWholesaleReceiptHtml(slip({ balanceAfter: Weight.ZERO }))
     expect(html).toContain('0.000 g')
