@@ -118,7 +118,18 @@ export function GoldRateScreen({
               the rate it was posted at — setting a rate today never reprices yesterday.
             </p>
 
-            <button className="login__submit" type="submit" disabled={busy} style={{ marginTop: 8 }}>
+            <button
+              className="login__submit"
+              type="submit"
+              // Carries data-action like every other control, so the rendered-DOM
+              // test can see it. It was a bare <button> and slipped through
+              // because the test only ever rendered the Whole Sale screen.
+              data-action="goldrate.set"
+              data-action-state="ready"
+              title="Save rate"
+              disabled={busy}
+              style={{ marginTop: 8 }}
+            >
               {busy ? 'Saving…' : 'Save rate'}
             </button>
 

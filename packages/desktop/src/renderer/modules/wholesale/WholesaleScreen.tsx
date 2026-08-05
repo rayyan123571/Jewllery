@@ -41,6 +41,8 @@ export function WholesaleScreen({
   const [balance, setBalance] = useState<PartyBalanceDto | null>(null)
   const [rows, setRows] = useState<LineInputDto[]>([{ ...EMPTY_ROW }, { ...EMPTY_ROW }])
   const [entryDate, setEntryDate] = useState(today)
+  // Empty means "use the rate recorded for this date". A typed value overrides it.
+  const [rateOverride, setRateOverride] = useState('')
   const [preview, setPreview] = useState<PreviewDto | null>(null)
   const [invoiceNo, setInvoiceNo] = useState('—')
   const [ledger, setLedger] = useState<readonly LedgerRowDto[]>([])
@@ -69,9 +71,15 @@ export function WholesaleScreen({
   // Live preview. The main process runs the same computeLine/totalsOf the post
   // path runs, so this is not an approximation of what will be saved — it is it.
   useEffect(() => {
-    const request = { partyId: party?.id ?? '', entryDate, lines: rows, notes: null }
+    const request = {
+      partyId: party?.id ?? '',
+      entryDate,
+      lines: rows,
+      notes: null,
+      ratePerTolaOverride: rateOverride,
+    }
     void window.api.previewWholesale(request).then(setPreview)
-  }, [rows, entryDate, party])
+  }, [rows, entryDate, party, rateOverride])
 
   const setRow = (index: number, patch: Partial<LineInputDto>): void =>
     setRows((current) =>
@@ -103,6 +111,7 @@ export function WholesaleScreen({
           entryDate,
           lines: rows,
           notes: null,
+          ratePerTolaOverride: rateOverride,
         })
         if (!result.ok) {
           setMessage({ kind: 'bad', text: result.message })
@@ -115,6 +124,7 @@ export function WholesaleScreen({
             (thenPrint ? ' Sent to printer.' : ''),
         })
         clearRows()
+        setRateOverride('')
         await Promise.all([
           refreshParty(party.id),
           window.api.nextInvoiceNo().then(setInvoiceNo),
@@ -135,7 +145,12 @@ export function WholesaleScreen({
       'wholesale.save': () => void save(false),
       'wholesale.save-and-print': () => void save(true),
       'wholesale.print': () => window.print(),
-      'wholesale.cancel': clearRows,
+      'wholesale.cancel': () => {
+        clearRows()
+        setRateOverride('')
+      },
+      // Refresh drops a typed override and goes back to the recorded rate.
+      'rate.refresh': () => setRateOverride(''),
       'wholesale.tab.new': () => setTab('new'),
       'wholesale.tab.ledger': () => setTab('ledger'),
       'wholesale.tab.return': () => setTab('settle'),
@@ -222,10 +237,16 @@ export function WholesaleScreen({
               <label className="field">
                 <span className="field__label">Gold Rate (Per Tola)</span>
                 <span className="field__control">
+                  {/* Editable. It was read-only, which made the service's
+                      rate-override support unreachable — a shop quoting a party
+                      a rate different from the day's board rate had no way to
+                      enter it. Empty falls back to the recorded rate. */}
                   <input
                     className="input input--numeric"
-                    value={preview?.rateDisplay ?? 'No rate set'}
-                    readOnly
+                    value={rateOverride}
+                    onChange={(e) => setRateOverride(e.target.value)}
+                    placeholder={preview?.rateDisplay ?? 'No rate set'}
+                    inputMode="decimal"
                     aria-label="Gold rate per tola"
                   />
                   <Action id="rate.refresh" variant="toolbar" ariaLabel="Refresh rate">

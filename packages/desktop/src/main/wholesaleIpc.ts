@@ -180,9 +180,23 @@ export function registerWholesaleHandlers(container: Container, session: Session
    * error and contributes nothing to the totals, rather than failing the whole
    * preview: half-typed input is normal, not exceptional.
    */
+  /** A typed override, or null when the box is empty or not yet a number. */
+  const overrideOf = (raw: string | undefined): Money | null => {
+    if (raw === undefined || raw.trim() === '') return null
+    try {
+      const parsed = Money.parse(raw)
+      return parsed.isPositive ? parsed : null
+    } catch {
+      // Half-typed input is normal while someone is still typing.
+      return null
+    }
+  }
+
   ipcMain.handle(IPC_M2.wholesalePreview, (_e, request: PostIssueRequest): PreviewDto => {
     const date = toIsoDate(request.entryDate)
-    const rate = container.wholesale.rateFor(container.branchId, date)
+    const rate =
+      overrideOf(request.ratePerTolaOverride) ??
+      container.wholesale.rateFor(container.branchId, date)
 
     const parsed: LinePreviewDto[] = []
     const valid: WholesaleLineInput[] = []
@@ -243,10 +257,12 @@ export function registerWholesaleHandlers(container: Container, session: Session
 
   ipcMain.handle(IPC_M2.wholesalePostIssue, (_e, request: PostIssueRequest): PostResult => {
     try {
+      const override = overrideOf(request.ratePerTolaOverride)
       const result = container.wholesale.postIssue(requireUser(), {
         branchId: container.branchId,
         partyId: request.partyId,
         entryDate: toIsoDate(request.entryDate),
+        ...(override ? { ratePerTolaOverride: override } : {}),
         lines: request.lines
           .filter((l) => l.itemName.trim() || l.grossGrams.trim())
           .map((l) => ({

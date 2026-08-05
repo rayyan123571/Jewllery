@@ -210,6 +210,15 @@ export interface PostIssueRequest {
   readonly entryDate: string
   readonly lines: readonly LineInputDto[]
   readonly notes: string | null
+  /**
+   * A rate typed on the slip itself, overriding the one recorded for the date.
+   *
+   * Shops do quote a party a different rate from the day's board rate, and the
+   * service has always supported this — the screen simply never offered it, so
+   * the field sat read-only and the feature was unreachable. Whatever is used
+   * is still stored on the entry, so history stays fixed either way.
+   */
+  readonly ratePerTolaOverride?: string
 }
 
 export interface SettleRequest {

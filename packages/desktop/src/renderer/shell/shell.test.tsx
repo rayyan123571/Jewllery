@@ -204,6 +204,28 @@ describe('no dead buttons in the rendered shell', () => {
   })
 })
 
+describe('every module screen obeys the no-dead-buttons rule', () => {
+  // The rule was only ever checked on whichever screen happened to be open —
+  // Whole Sale. That let the Gold Rate screen ship a bare <button> with no
+  // data-action, which is exactly the thing the rule exists to prevent. This
+  // walks every module in the sidebar and checks the screen behind it.
+  it.each(MODULES.map((m) => [m.label, m.id] as const))(
+    '%s renders no button without a data-action',
+    async (_label, id) => {
+      const user = userEvent.setup()
+      render(<App />)
+      await screen.findByLabelText('Main menu')
+      await user.click(within(screen.getByLabelText('Main menu')).getByTitle(_label))
+
+      const orphans = Array.from(document.querySelectorAll('button'))
+        .filter((button) => !button.getAttribute('data-action'))
+        .map((button) => `${id}: ${button.textContent?.trim() || button.outerHTML.slice(0, 80)}`)
+
+      expect(orphans).toEqual([])
+    },
+  )
+})
+
 describe('the shell shows the whole shape of the app', () => {
   it('renders every module in the sidebar, built or not', async () => {
     render(<App />)
