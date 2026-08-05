@@ -44,6 +44,7 @@ export type ActionVariant =
   | 'toolbar'
   | 'quick'
   | 'icon'
+  | 'window'
   | 'plain'
 
 interface ActionProps {

@@ -66,6 +66,22 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_M2.changePassword, current, next) as ReturnType<
       RendererApi['changePassword']
     >,
+
+  windowControls: {
+    minimize: () => ipcRenderer.invoke(IPC_M2.windowMinimize) as Promise<void>,
+    toggleMaximize: () =>
+      ipcRenderer.invoke(IPC_M2.windowToggleMaximize) as Promise<boolean>,
+    close: () => ipcRenderer.invoke(IPC_M2.windowClose) as Promise<void>,
+    isMaximized: () => ipcRenderer.invoke(IPC_M2.windowIsMaximized) as Promise<boolean>,
+    onMaximizedChange: (listener: (maximized: boolean) => void) => {
+      // The listener is wrapped rather than passed through, so the renderer
+      // never receives Electron's IpcRendererEvent — that object carries a
+      // `sender` which would be a hole straight back out of the sandbox.
+      const handler = (_event: unknown, maximized: boolean): void => listener(maximized)
+      ipcRenderer.on(IPC_M2.windowMaximizedChanged, handler)
+      return () => ipcRenderer.removeListener(IPC_M2.windowMaximizedChanged, handler)
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

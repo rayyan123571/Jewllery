@@ -1,9 +1,10 @@
-import { BrowserWindow, app, dialog } from 'electron'
+import { BrowserWindow, Menu, app, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import { createContainer, type Container } from './container.js'
 import { registerIpcHandlers, type Session } from './ipc.js'
 import { registerWholesaleHandlers } from './wholesaleIpc.js'
+import { IPC_M2 } from '../shared/ipc.js'
 
 /**
  * Application lifecycle.
@@ -27,6 +28,12 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#1B2A4A',
     title: 'Gold Jewellery Management System',
+    // Frameless: the application draws its own title bar, so there is one bar
+    // at the top of the screen instead of the OS chrome plus ours.
+    frame: false,
+    // Belt and braces on Windows — without it Alt still reveals the menu strip
+    // even though setApplicationMenu(null) removed its contents.
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -35,7 +42,22 @@ function createWindow(): BrowserWindow {
     },
   })
 
+  // Both directions are reported so the maximise button can show the right
+  // icon — a restore glyph on a maximised window and a maximise glyph
+  // otherwise. Without this the button looks wrong after the user
+  // double-clicks the drag region, which does not go through our handler.
+  const reportMaximised = (): void => {
+    if (!window.isDestroyed()) {
+      window.webContents.send(IPC_M2.windowMaximizedChanged, window.isMaximized())
+    }
+  }
+  window.on('maximize', reportMaximised)
+  window.on('unmaximize', reportMaximised)
+
   window.once('ready-to-show', () => {
+    // Opens filling the screen, like the system it replaces. A shop counter
+    // never wants a window it has to resize before it can read the grid.
+    window.maximize()
     window.show()
     void runCaptureScenario(window)
   })
@@ -51,12 +73,17 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(
   () => {
+    // No File/Edit/View strip. This is a till, not a document editor — those
+    // menus offer nothing a shopkeeper needs and a stray Ctrl+W closes the app.
+    Menu.setApplicationMenu(null)
+
     // The database lives in the app's own user data directory — never on a
     // network share (docs/DECISIONS.md §5).
     container = createContainer({ dataDirectory: app.getPath('userData') })
 
     registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
     registerWholesaleHandlers(container, session)
+    registerWindowControls()
 
     createWindow()
 
@@ -69,6 +96,35 @@ app.whenReady().then(
   // offline app, because there is no server-side trace to go and read.
   reportFatal,
 )
+
+/**
+ * The frameless window's own minimise / maximise / close.
+ *
+ * They act on the window the request came FROM rather than a captured
+ * reference: with a captured one, a second window (or a window reopened on
+ * macOS `activate`) would have its buttons quietly driving the first one.
+ */
+function registerWindowControls(): void {
+  ipcMain.handle(IPC_M2.windowMinimize, (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize()
+  })
+
+  ipcMain.handle(IPC_M2.windowToggleMaximize, (event): boolean => {
+    const target = BrowserWindow.fromWebContents(event.sender)
+    if (!target) return false
+    if (target.isMaximized()) target.unmaximize()
+    else target.maximize()
+    return target.isMaximized()
+  })
+
+  ipcMain.handle(IPC_M2.windowClose, (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close()
+  })
+
+  ipcMain.handle(IPC_M2.windowIsMaximized, (event): boolean =>
+    BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false,
+  )
+}
 
 /**
  * Anything that stops the application from starting.

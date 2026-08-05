@@ -20,6 +20,9 @@ function context(): ActionContext {
     restoreBackup: vi.fn(async () => {}),
     toggleUserMenu: vi.fn(),
     dispatch: vi.fn(),
+    minimizeWindow: vi.fn(),
+    toggleMaximizeWindow: vi.fn(),
+    closeWindow: vi.fn(),
   }
 }
 

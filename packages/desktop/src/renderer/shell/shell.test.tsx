@@ -75,6 +75,13 @@ const noopApi = {
   partyLedger: vi.fn(async () => []),
   setRate: vi.fn(),
   changePassword: vi.fn(),
+  windowControls: {
+    minimize: vi.fn(async () => {}),
+    toggleMaximize: vi.fn(async () => true),
+    close: vi.fn(async () => {}),
+    isMaximized: vi.fn(async () => true),
+    onMaximizedChange: vi.fn(() => () => {}),
+  },
 }
 
 beforeEach(() => {
@@ -95,6 +102,9 @@ function stubContext(): ActionContext {
     restoreBackup: vi.fn(async () => {}),
     toggleUserMenu: vi.fn(),
     dispatch: vi.fn(),
+    minimizeWindow: vi.fn(),
+    toggleMaximizeWindow: vi.fn(),
+    closeWindow: vi.fn(),
   }
 }
 

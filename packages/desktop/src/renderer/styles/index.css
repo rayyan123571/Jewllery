@@ -25,33 +25,63 @@ body {
 /* ── app frame ──────────────────────────────────────────────────────────── */
 
 .app {
+  /* No title-bar row: the window is frameless and the module bar carries the
+     window controls, so there is ONE bar across the top instead of three. */
   display: grid;
-  grid-template-rows: var(--size-title-bar-height) 1fr var(--size-status-bar-height);
+  grid-template-rows: 1fr var(--size-status-bar-height);
   height: 100%;
 }
 
-.title-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  background: var(--colour-navy-deep);
-  color: var(--colour-text-inverse);
-  font-size: var(--font-size-sm);
+/* ── frameless window chrome ────────────────────────────────────────────── */
+
+/* The module bar doubles as the drag region. Everything interactive inside it
+   opts out, or the buttons would move the window instead of being clicked. */
+.top-bar {
   -webkit-app-region: drag;
 }
 
-.title-bar__mark {
-  color: var(--colour-gold-text);
-  font-size: var(--font-size-base);
+.top-bar button,
+.top-bar input,
+.top-bar select,
+.top-bar a {
+  -webkit-app-region: no-drag;
 }
 
-.title-bar__controls {
-  margin-left: auto;
+.window-controls {
   display: flex;
-  gap: 14px;
-  color: #c9d3e4;
-  -webkit-app-region: no-drag;
+  align-self: stretch;
+  margin-left: 4px;
+  border-left: 1px solid var(--colour-border);
+}
+
+.action--window {
+  /* Deliberately large. These are the smallest targets on screen and the most
+     annoying to miss, and a shop counter is not a precision pointing device. */
+  width: 46px;
+  align-self: stretch;
+  justify-content: center;
+  border-radius: 0;
+  color: var(--colour-text-muted);
+}
+
+.action--window:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+  color: var(--colour-text);
+}
+
+.action--window:active:not(:disabled) {
+  background: var(--colour-border);
+}
+
+/* Close goes red on hover, the convention every Windows user already knows. */
+.window-controls__close:hover:not(:disabled) {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.window-controls__close:active:not(:disabled) {
+  background: #a4262c;
+  color: #ffffff;
 }
 
 .app__body {

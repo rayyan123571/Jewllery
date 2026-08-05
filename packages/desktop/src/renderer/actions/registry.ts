@@ -41,6 +41,10 @@ export type ActionId =
   | 'nav.tools'
   | 'app.exit'
   | 'app.user-menu'
+  // ── frameless window chrome ───────────────────────────────────────────────
+  | 'window.minimize'
+  | 'window.maximize'
+  | 'window.close'
   // ── the rate panel ────────────────────────────────────────────────────────
   | 'rate.refresh'
   // ── wholesale entry form (M2) ─────────────────────────────────────────────
@@ -105,6 +109,9 @@ export interface ActionContext {
   readonly runBackup: () => Promise<void>
   readonly restoreBackup: () => Promise<void>
   readonly toggleUserMenu: () => void
+  readonly minimizeWindow: () => void
+  readonly toggleMaximizeWindow: () => void
+  readonly closeWindow: () => void
   /**
    * Hands an action to whichever screen is mounted.
    *
@@ -174,6 +181,20 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'nav.tools': navigateTo('tools', 'Tools'),
 
     'app.exit': { kind: 'ready', label: 'EXIT', run: () => context.exit() },
+
+    // The window buttons go through the registry like everything else, so the
+    // rendered-DOM test covers them too — chrome is not an exception.
+    'window.minimize': {
+      kind: 'ready',
+      label: 'Minimise',
+      run: () => context.minimizeWindow(),
+    },
+    'window.maximize': {
+      kind: 'ready',
+      label: 'Maximise / Restore',
+      run: () => context.toggleMaximizeWindow(),
+    },
+    'window.close': { kind: 'ready', label: 'Close', run: () => context.closeWindow() },
     'app.user-menu': {
       kind: 'ready',
       label: 'Account menu',

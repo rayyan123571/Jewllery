@@ -35,9 +35,19 @@ export function App() {
   const [boot, setBoot] = useState<BootstrapDto>(EMPTY_BOOTSTRAP)
   const [now, setNow] = useState(() => new Date())
   const [busy, setBusy] = useState<string | null>(null)
+  const [maximized, setMaximized] = useState(true)
 
   useEffect(() => {
     void window.api?.bootstrap().then(setBoot).catch(() => setBoot(EMPTY_BOOTSTRAP))
+  }, [])
+
+  // Keeps the maximise glyph honest. Double-clicking the drag region maximises
+  // without going through our button, so the state has to come from the window.
+  useEffect(() => {
+    const controls = window.api?.windowControls
+    if (!controls) return
+    void controls.isMaximized().then(setMaximized)
+    return controls.onMaximizedChange(setMaximized)
   }, [])
 
   // The mockup shows a live clock in the top bar.
@@ -83,6 +93,9 @@ export function App() {
         },
         // Handed to whichever screen is mounted. The screen owns the state, so
         // the registry never has to know what any of these actually do.
+        minimizeWindow: () => void window.api?.windowControls.minimize(),
+        toggleMaximizeWindow: () => void window.api?.windowControls.toggleMaximize(),
+        closeWindow: () => void window.api?.windowControls.close(),
         dispatch: (id) =>
           window.dispatchEvent(
             id === 'wholesale.party.add'
@@ -112,11 +125,10 @@ export function App() {
   return (
     <ActionsProvider registry={registry}>
       <div className="app">
-        <TitleBar />
         <div className="app__body">
           <Sidebar active={active} />
           <div className="workspace">
-            <TopBar active={active} boot={boot} now={now} />
+            <TopBar active={active} boot={boot} now={now} maximized={maximized} />
             <main className="content">
               {busy ? <div className="banner">{busy}</div> : null}
               {active === 'wholesale' ? (
@@ -136,20 +148,6 @@ export function App() {
         <StatusBar boot={boot} />
       </div>
     </ActionsProvider>
-  )
-}
-
-function TitleBar() {
-  return (
-    <header className="title-bar">
-      <span className="title-bar__mark">◆</span>
-      <span>Gold Jewellery Management System — Premium Edition</span>
-      <span className="title-bar__controls">
-        <span>—</span>
-        <span>▢</span>
-        <span>✕</span>
-      </span>
-    </header>
   )
 }
 
@@ -192,10 +190,12 @@ function TopBar({
   active,
   boot,
   now,
+  maximized,
 }: {
   active: ModuleId
   boot: BootstrapDto
   now: Date
+  maximized: boolean
 }) {
   return (
     <header className="top-bar">
@@ -217,8 +217,46 @@ function TopBar({
         <RatePanel boot={boot} />
         <Clock now={now} />
         <UserChip boot={boot} />
+        <WindowControls maximized={maximized} />
       </div>
     </header>
+  )
+}
+
+/**
+ * Minimise / maximise / close for the frameless window.
+ *
+ * They live at the right of the module bar rather than in a strip of their own,
+ * so the application has ONE bar across the top instead of the OS chrome plus
+ * ours plus the modules. The bar itself is the drag region; these buttons opt
+ * out of it, or they would move the window instead of being clickable.
+ */
+function WindowControls({ maximized }: { maximized: boolean }) {
+  return (
+    <div className="window-controls">
+      <Action id="window.minimize" variant="window" ariaLabel="Minimise">
+        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+          <rect x="1" y="5" width="9" height="1.3" fill="currentColor" />
+        </svg>
+      </Action>
+      <Action id="window.maximize" variant="window" ariaLabel={maximized ? 'Restore' : 'Maximise'}>
+        {maximized ? (
+          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+            <rect x="1" y="3" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M3.4 3V1.4h6.2v6.2H8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          </svg>
+        ) : (
+          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+            <rect x="1.2" y="1.2" width="8.6" height="8.6" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          </svg>
+        )}
+      </Action>
+      <Action id="window.close" variant="window" className="window-controls__close" ariaLabel="Close">
+        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+          <path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" strokeWidth="1.3" />
+        </svg>
+      </Action>
+    </div>
   )
 }
 

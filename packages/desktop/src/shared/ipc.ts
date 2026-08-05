@@ -107,6 +107,22 @@ export interface RendererApi {
     current: string,
     next: string,
   ): Promise<{ ok: true } | { ok: false; message: string }>
+
+  /**
+   * The window buttons for the frameless title bar.
+   *
+   * The renderer is sandboxed and cannot touch the BrowserWindow, so these
+   * forward to main like every other capability — the same narrow bridge, not a
+   * special case.
+   */
+  readonly windowControls: {
+    minimize(): Promise<void>
+    toggleMaximize(): Promise<boolean>
+    close(): Promise<void>
+    isMaximized(): Promise<boolean>
+    /** Returns an unsubscribe function. */
+    onMaximizedChange(listener: (maximized: boolean) => void): () => void
+  }
 }
 
 declare global {
@@ -138,6 +154,12 @@ export const IPC_M2 = {
   wholesaleReverse: 'wholesale:reverse',
   rateSet: 'rates:set',
   changePassword: 'auth:changePassword',
+  windowMinimize: 'window:minimize',
+  windowToggleMaximize: 'window:toggleMaximize',
+  windowClose: 'window:close',
+  windowIsMaximized: 'window:isMaximized',
+  /** Main -> renderer, so the maximise button can show the right icon. */
+  windowMaximizedChanged: 'window:maximizedChanged',
 } as const
 
 export interface PartyDto {
