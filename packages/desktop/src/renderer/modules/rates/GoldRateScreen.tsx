@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type KeyboardEvent } from 'react'
 import { Action } from '../../actions/Action.js'
 import { DateField } from '../../components/DateField.js'
 import { EmptyState } from '../../components/EmptyState.js'
+import { useMessages } from '../../components/Messages.js'
 import { toDisplayDate } from '../../format/dates.js'
 import type { RateDto, RateHistoryDto } from '../../../shared/ipc.js'
 
@@ -33,8 +34,8 @@ export function GoldRateScreen({
   const [effectiveFrom, setEffectiveFrom] = useState(today)
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const { push } = useMessages()
   const [history, setHistory] = useState<readonly RateHistoryDto[]>([])
 
   const loadHistory = useCallback(async () => {
@@ -48,7 +49,6 @@ export function GoldRateScreen({
   async function save(): Promise<void> {
     if (busy) return
     setError(null)
-    setSaved(null)
     setBusy(true)
     try {
       const result = await window.api.setRate({
@@ -63,7 +63,8 @@ export function GoldRateScreen({
         setError(result.message)
         return
       }
-      setSaved(
+      push(
+        'ok',
         `${purity.slice(1)}K set to Rs ${amount} per tola from ${toDisplayDate(effectiveFrom)}.`,
       )
       setAmount('')
@@ -155,7 +156,6 @@ export function GoldRateScreen({
                   {error}
                 </div>
               ) : null}
-              {saved ? <div className="banner banner--good">{saved}</div> : null}
             </div>
             <div className="panel__foot">
               <Action id="goldrate.set" className="login__submit" busy={busy} onActivate={save}>

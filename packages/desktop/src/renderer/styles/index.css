@@ -514,6 +514,35 @@ a {
   background: var(--colour-gold-wash);
 }
 
+/* ── the message region ─────────────────────────────────────────────────────
+   One place where the application says what just happened, so a confirmation
+   appears in the same spot whichever screen raised it. Successes clear
+   themselves after six seconds; failures stay until dismissed. */
+.messages {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-24) 0;
+}
+
+.messages .banner {
+  margin-bottom: 0;
+}
+
+.messages__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.messages .action--icon {
+  color: inherit;
+  flex: none;
+}
+
+.messages .action--icon:hover:not(:disabled) {
+  background: rgba(31, 27, 20, 0.08);
+  color: inherit;
+}
+
 /* ── content ────────────────────────────────────────────────────────────── */
 
 .content {

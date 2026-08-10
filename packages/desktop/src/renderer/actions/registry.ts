@@ -41,6 +41,7 @@ export type ActionId =
   | 'nav.tools'
   | 'app.exit'
   | 'app.user-menu'
+  | 'message.dismiss'
   // ── sign-in ───────────────────────────────────────────────────────────────
   | 'auth.sign-in'
   | 'auth.change-password'
@@ -65,6 +66,8 @@ export type ActionId =
   | 'wholesale.tab.history'
   | 'wholesale.party.add'
   | 'wholesale.party.pick'
+  | 'wholesale.party.save'
+  | 'wholesale.party.cancel'
   | 'wholesale.invoice.search'
   | 'wholesale.row.add'
   | 'wholesale.row.clear'
@@ -224,6 +227,8 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
       label: 'Account menu',
       run: () => context.toggleUserMenu(),
     },
+    // Rendered once per message, each supplying its own onActivate.
+    'message.dismiss': screen('Dismiss', 'message.dismiss'),
 
     // M0 — live.
     'rate.refresh': {
@@ -270,6 +275,8 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'wholesale.party.add': screen('Add Party', 'wholesale.party.add'),
     // One entry for the whole match list; each row supplies its own onActivate.
     'wholesale.party.pick': screen('Select Party', 'wholesale.party.pick'),
+    'wholesale.party.save': screen('Save Party', 'wholesale.party.save'),
+    'wholesale.party.cancel': screen('Cancel', 'wholesale.party.cancel'),
     'wholesale.invoice.search': screen('Find Invoice', 'wholesale.invoice.search'),
     'wholesale.row.add': screen('Add Row', 'wholesale.row.add'),
     'wholesale.row.clear': screen('Clear Row', 'wholesale.row.clear'),

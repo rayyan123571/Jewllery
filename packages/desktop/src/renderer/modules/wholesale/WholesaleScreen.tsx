@@ -3,6 +3,7 @@ import { Action } from '../../actions/Action.js'
 import { Icon } from '../../shell/Icon.js'
 import { DateField } from '../../components/DateField.js'
 import { EmptyState } from '../../components/EmptyState.js'
+import { useMessages } from '../../components/Messages.js'
 import { toDisplayDate } from '../../format/dates.js'
 import { PartySelector } from './PartySelector.js'
 import { SettlementPanel } from './SettlementPanel.js'
@@ -60,8 +61,8 @@ export function WholesaleScreen({
   const [preview, setPreview] = useState<PreviewDto | null>(null)
   const [invoiceNo, setInvoiceNo] = useState('—')
   const [ledger, setLedger] = useState<readonly LedgerRowDto[]>([])
-  const [message, setMessage] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const { push } = useMessages()
 
   // Cell focus, for the two keyboard behaviours that matter at a counter.
   const cells = useRef(new Map<string, HTMLInputElement | null>())
@@ -150,10 +151,9 @@ export function WholesaleScreen({
     async (thenPrint: boolean) => {
       if (busy) return
       setBusy(true)
-      setMessage(null)
       try {
         if (!party) {
-          setMessage({ kind: 'bad', text: 'Choose a party before saving.' })
+          push('bad', 'Choose a party before saving.')
           return
         }
         const result = await window.api.postIssue({
@@ -164,15 +164,14 @@ export function WholesaleScreen({
           ratePerTolaOverride: rateOverride,
         })
         if (!result.ok) {
-          setMessage({ kind: 'bad', text: result.message })
+          push('bad', result.message)
           return
         }
-        setMessage({
-          kind: 'ok',
-          text:
-            `Saved ${result.invoiceNo}. ${party.name} now ${result.balanceAfter.text}.` +
+        push(
+          'ok',
+          `Saved ${result.invoiceNo}. ${party.name} now ${result.balanceAfter.text}.` +
             (thenPrint ? ' Sent to printer.' : ''),
-        })
+        )
         clearRows()
         setRateOverride('')
         await Promise.all([
@@ -184,7 +183,7 @@ export function WholesaleScreen({
         setBusy(false)
       }
     },
-    [busy, party, entryDate, rows, rateOverride, clearRows, refreshParty, onPosted],
+    [busy, party, entryDate, rows, rateOverride, clearRows, refreshParty, onPosted, push],
   )
 
   // Published so the shell's action registry can drive these buttons.
@@ -234,12 +233,6 @@ export function WholesaleScreen({
             No gold rate is recorded for {toDisplayDate(entryDate)}. Set the rate for that
             day in Gold Rate before saving — every amount depends on it, and using
             today&apos;s would price this slip wrongly.
-          </div>
-        ) : null}
-
-        {message ? (
-          <div className={message.kind === 'ok' ? 'banner banner--good' : 'banner banner--bad'}>
-            {message.text}
           </div>
         ) : null}
       </div>

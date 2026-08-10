@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Action } from '../../actions/Action.js'
 import { EmptyState } from '../../components/EmptyState.js'
+import { useMessages } from '../../components/Messages.js'
 import { Icon } from '../../shell/Icon.js'
 import { toDisplayDate } from '../../format/dates.js'
 import type { PartyBalanceDto, PartyDto } from '../../../shared/ipc.js'
@@ -31,7 +32,7 @@ export function SettlementPanel({
 }) {
   const [gold, setGold] = useState('')
   const [cash, setCash] = useState('')
-  const [message, setMessage] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null)
+  const { push } = useMessages()
   const [confirming, setConfirming] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // Double-post guard: a second click can land before the button re-renders.
@@ -41,7 +42,6 @@ export function SettlementPanel({
     if (posting.current || !party) return
     posting.current = true
     setBusy(true)
-    setMessage(null)
     try {
       const result = await window.api.settle({
         partyId: party.id,
@@ -54,10 +54,7 @@ export function SettlementPanel({
 
       if (result.ok) {
         setConfirming(null)
-        setMessage({
-          kind: 'ok',
-          text: `Settled as ${result.invoiceNo}. ${party.name} now ${result.balanceAfter.text}.`,
-        })
+        push('ok', `Settled as ${result.invoiceNo}. ${party.name} now ${result.balanceAfter.text}.`)
         setGold('')
         setCash('')
         await onSettled()
@@ -65,11 +62,12 @@ export function SettlementPanel({
       }
 
       if ('needsConfirmation' in result) {
-        // Not an error. A question with a Continue button.
+        // Not an error. A question with a Continue button, and it stays on the
+        // panel rather than becoming a toast: the operator has to act on it.
         setConfirming(result.message)
         return
       }
-      setMessage({ kind: 'bad', text: result.message })
+      push('bad', result.message)
     } finally {
       posting.current = false
       setBusy(false)
@@ -178,13 +176,6 @@ export function SettlementPanel({
               </div>
             )}
 
-            {message ? (
-              <div
-                className={message.kind === 'ok' ? 'banner banner--good' : 'banner banner--bad'}
-              >
-                {message.text}
-              </div>
-            ) : null}
           </>
         )}
       </div>

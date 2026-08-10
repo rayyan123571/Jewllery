@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Action } from '../../actions/Action.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import { GhostInput } from '../../components/GhostInput.js'
+import { Modal } from '../../components/Modal.js'
 import { Icon } from '../../shell/Icon.js'
 import type { PartyDto } from '../../../shared/ipc.js'
 
@@ -233,11 +234,16 @@ function AddPartyDialog({
   }
 
   return (
-    <div className="modal" role="dialog" aria-label="Add party">
-      <div className="modal__card">
-        <div className="panel__title">ADD PARTY</div>
-        <div className="panel__body">
-          <div className="field-row" style={{ gridTemplateColumns: '1fr 2fr', padding: 0 }}>
+    <Modal label="Add New Party" onClose={onClose} onConfirm={() => void save()} wide>
+      <h2 className="modal__title">Add New Party</h2>
+      <p className="modal__subtitle">
+        A wholesale account. The code is what you will type at the counter to find them.
+      </p>
+
+      <div className="modal__sections">
+        <section>
+          <div className="form-section__title">Identity</div>
+          <div className="form-grid">
             <label className="field">
               <span className="field__label">Code</span>
               <input
@@ -258,14 +264,18 @@ function AddPartyDialog({
               />
             </label>
           </div>
+        </section>
 
-          <div className="field-row" style={{ gridTemplateColumns: '1fr 1fr', padding: 0 }}>
+        <section>
+          <div className="form-section__title">Contact</div>
+          <div className="form-grid">
             <label className="field">
               <span className="field__label">Mobile</span>
               <input
                 className="input"
                 value={form.mobile}
                 onChange={(e) => set('mobile')(e.target.value)}
+                placeholder="0300 0000000"
               />
             </label>
             <label className="field">
@@ -274,11 +284,15 @@ function AddPartyDialog({
                 className="input"
                 value={form.city}
                 onChange={(e) => set('city')(e.target.value)}
+                placeholder="Lahore"
               />
             </label>
           </div>
+        </section>
 
-          <div className="field-row" style={{ gridTemplateColumns: '1fr 1fr', padding: 0 }}>
+        <section>
+          <div className="form-section__title">Opening Balances</div>
+          <div className="form-grid">
             <label className="field">
               <span className="field__label">Opening gold (g)</span>
               <input
@@ -286,6 +300,7 @@ function AddPartyDialog({
                 value={form.openingGoldGrams}
                 onChange={(e) => set('openingGoldGrams')(e.target.value)}
                 placeholder="0.000"
+                inputMode="decimal"
               />
             </label>
             <label className="field">
@@ -295,43 +310,39 @@ function AddPartyDialog({
                 value={form.openingCashRupees}
                 onChange={(e) => set('openingCashRupees')(e.target.value)}
                 placeholder="0.00"
+                inputMode="decimal"
               />
             </label>
           </div>
-
-          <p className="hint">
+          {/* Not grey small print. This is the one thing on the dialog that
+              cannot be undone, so it is a callout the eye lands on. */}
+          <p className="callout">
             Opening balances are what the party already owed when the shop started using
             this system. Positive means they owe you. They cannot be edited afterwards —
             a correction is a ledger entry, so slips already printed keep their meaning.
           </p>
-
-          {error ? <div className="login__error">{error}</div> : null}
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              className="action action--toolbar"
-              data-action="party.add.cancel"
-              data-action-state="ready"
-              title="Cancel"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="login__submit"
-              data-action="party.add.save"
-              data-action-state="ready"
-              title="Save party"
-              onClick={() => void save()}
-              disabled={busy}
-            >
-              {busy ? 'Saving…' : 'Save party'}
-            </button>
-          </div>
-        </div>
+        </section>
       </div>
-    </div>
+
+      {error ? (
+        <div className="login__error" role="alert">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="modal__foot">
+        <Action id="wholesale.party.cancel" variant="ghost" onActivate={onClose}>
+          Cancel
+        </Action>
+        <Action
+          id="wholesale.party.save"
+          className="login__submit"
+          busy={busy}
+          onActivate={() => void save()}
+        >
+          {busy ? 'Saving…' : 'Save Party'}
+        </Action>
+      </div>
+    </Modal>
   )
 }

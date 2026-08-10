@@ -7,6 +7,7 @@ import { ModulePlaceholder } from './shell/ModulePlaceholder.js'
 import { WholesaleScreen } from './modules/wholesale/WholesaleScreen.js'
 import { GoldRateScreen } from './modules/rates/GoldRateScreen.js'
 import { LoginScreen } from './modules/auth/LoginScreen.js'
+import { MessageRegion, MessagesProvider } from './components/Messages.js'
 import { isoOf, isoToday, toDisplayDate } from './format/dates.js'
 import type { BootstrapDto, UserDto } from '../shared/ipc.js'
 
@@ -31,7 +32,20 @@ const EMPTY_BOOTSTRAP: BootstrapDto = {
   appVersion: '0.0.0',
 }
 
+/**
+ * The provider seam. Kept as a thin wrapper so the shell below it can call
+ * useMessages from anywhere, and so <App /> stays self-contained — the shell
+ * test renders it directly and must not have to know about the providers.
+ */
 export function App() {
+  return (
+    <MessagesProvider>
+      <AppShell />
+    </MessagesProvider>
+  )
+}
+
+function AppShell() {
   const [active, setActive] = useState<ModuleId>('wholesale')
   const [boot, setBoot] = useState<BootstrapDto>(EMPTY_BOOTSTRAP)
   const [now, setNow] = useState(() => new Date())
@@ -139,6 +153,9 @@ export function App() {
           <Sidebar active={active} />
           <div className="workspace">
             <TopBar boot={boot} now={now} maximized={maximized} onRateSaved={() => void reload()} />
+            {/* One region for what just happened, so a confirmation appears in
+                the same place whichever screen raised it. */}
+            <MessageRegion />
             <main className="content">
               {busy ? <div className="banner">{busy}</div> : null}
               {active === 'wholesale' ? (
