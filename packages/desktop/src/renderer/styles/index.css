@@ -716,6 +716,36 @@ a {
   gap: var(--space-8);
 }
 
+/* A field row already inside a padded card body. */
+.field-row--flush {
+  padding: 0;
+}
+
+.field-row--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* The footer strip of a card: one primary control, separated by a rule. */
+.panel__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-12);
+  padding: var(--space-16);
+  border-top: 1px solid var(--colour-border);
+}
+
+.panel__foot--flush {
+  padding: var(--space-16) 0 0;
+  border-top: none;
+}
+
+.panel__foot .login__submit {
+  width: auto;
+  min-width: 180px;
+  height: var(--size-button-height);
+  padding: 0 var(--space-24);
+}
+
 .input,
 .select {
   width: 100%;

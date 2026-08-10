@@ -39,6 +39,22 @@ export interface RateDto {
   readonly display: string
 }
 
+/**
+ * One recorded rate row.
+ *
+ * A rate is never updated in place — a correction is a new row (DECISIONS §6),
+ * which is exactly why this history is worth showing: it is the record of what
+ * the shop was quoting and when, and it is the only place a mistyped rate that
+ * has since been corrected is still visible.
+ */
+export interface RateHistoryDto {
+  readonly id: string
+  readonly purity: string
+  readonly effectiveFrom: string
+  readonly display: string
+  readonly note: string | null
+}
+
 export interface UserDto {
   readonly id: string
   readonly name: string
@@ -103,6 +119,7 @@ export interface RendererApi {
   settle(request: SettleRequest): Promise<PostResult>
   partyLedger(partyId: string): Promise<readonly LedgerRowDto[]>
   setRate(request: SetRateRequest): Promise<{ ok: true } | { ok: false; message: string }>
+  rateHistory(): Promise<readonly RateHistoryDto[]>
   changePassword(
     current: string,
     next: string,
@@ -153,6 +170,8 @@ export const IPC_M2 = {
   wholesaleRecent: 'wholesale:recent',
   wholesaleReverse: 'wholesale:reverse',
   rateSet: 'rates:set',
+  /** Read-only. Every recorded rate, newest first, for the Gold Rate screen. */
+  rateHistory: 'rates:history',
   changePassword: 'auth:changePassword',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggleMaximize',

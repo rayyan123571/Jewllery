@@ -2,9 +2,11 @@ import { ipcMain } from 'electron'
 import {
   Katt,
   Money,
+  PURITIES,
   Weight,
   computeLine,
   describeBalance,
+  formatPurity,
   parsePurity,
   toIsoDate,
   totalsOf,
@@ -25,6 +27,7 @@ import {
   type PostIssueRequest,
   type PostResult,
   type PreviewDto,
+  type RateHistoryDto,
   type SetRateRequest,
   type SettleRequest,
 } from '../shared/ipc.js'
@@ -164,6 +167,26 @@ export function registerWholesaleHandlers(container: Container, session: Session
       return { ok: false as const, message: messageOf(error) }
     }
   })
+
+  /**
+   * Every recorded rate, newest first.
+   *
+   * Read-only and derived entirely from RateService.history, which the service
+   * already exposed and nothing had yet asked for. A rate is never updated in
+   * place — a correction is a new row — so this is the only place a mistyped
+   * rate that has since been corrected is still visible.
+   */
+  ipcMain.handle(IPC_M2.rateHistory, (): RateHistoryDto[] =>
+    PURITIES.flatMap((purity) =>
+      container.rates.history(container.branchId, purity, 50).map((rate) => ({
+        id: rate.id,
+        purity: formatPurity(purity),
+        effectiveFrom: rate.effectiveFrom,
+        display: `Rs. ${rate.ratePerTola.formatWhole()}`,
+        note: rate.note,
+      })),
+    ).sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom)),
+  )
 
   // ── wholesale ─────────────────────────────────────────────────────────────
 

@@ -74,6 +74,9 @@ const noopApi = {
   settle: vi.fn(),
   partyLedger: vi.fn(async () => []),
   setRate: vi.fn(),
+  // The Gold Rate screen asks for this on mount. An empty answer is enough:
+  // this suite is about which controls exist and whether they are wired.
+  rateHistory: vi.fn(async () => []),
   changePassword: vi.fn(),
   windowControls: {
     minimize: vi.fn(async () => {}),

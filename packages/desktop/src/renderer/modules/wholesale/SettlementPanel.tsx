@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react'
+import { Action } from '../../actions/Action.js'
+import { EmptyState } from '../../components/EmptyState.js'
 import { Icon } from '../../shell/Icon.js'
 import { toDisplayDate } from '../../format/dates.js'
 import type { PartyBalanceDto, PartyDto } from '../../../shared/ipc.js'
@@ -88,25 +90,29 @@ export function SettlementPanel({
       <div className="panel__title">RETURN / RECEIVE — SETTLE A GOLD DEBT</div>
       <div className="panel__body">
         {!party ? (
-          <p className="hint">Choose a party first.</p>
+          <EmptyState
+            title="No party chosen"
+            line="Settling reduces a party's gold debt, so there has to be a party. Choose one on the New Whole Sale tab."
+            actionId="wholesale.tab.new"
+            actionLabel="Go to New Whole Sale"
+          />
         ) : (
           <>
-            <div className="summary-line">
-              <span>Currently owed</span>
-              <span
-                className={`summary-line__value ${
-                  balance?.gold.direction === 'shop-owes-party' ? 'negative' : 'positive'
-                }`}
-              >
-                {balance?.gold.text ?? '—'}{' '}
-                {balance?.gold.drCr ? `/${balance.gold.drCr}` : ''}
-              </span>
+            <div className="stat-strip">
+              <div className="stat-cell">
+                <span className="stat-cell__label">Currently owed</span>
+                <span
+                  className={`stat-cell__value ${
+                    balance?.gold.direction === 'shop-owes-party' ? 'negative' : 'positive'
+                  }`}
+                >
+                  {balance?.gold.text ?? '—'}
+                  {balance?.gold.drCr ? ` /${balance.gold.drCr}` : ''}
+                </span>
+              </div>
             </div>
 
-            <div
-              className="field-row"
-              style={{ gridTemplateColumns: '1fr 1fr', padding: '8px 0 0' }}
-            >
+            <div className="field-row field-row--flush field-row--pair">
               <label className="field">
                 <span className="field__label">Khalis gold given (g)</span>
                 <input
@@ -141,49 +147,40 @@ export function SettlementPanel({
               <div className="confirm" role="alertdialog" aria-label="Confirm over-return">
                 <div className="confirm__text">{confirming}</div>
                 <div className="confirm__actions">
-                  <button
-                    type="button"
-                    className="action action--toolbar"
-                    data-action="settle.confirm.back"
-                    data-action-state="ready"
-                    title="Go back and change the amounts"
-                    onClick={() => setConfirming(null)}
+                  <Action
+                    id="wholesale.settle.back"
+                    variant="ghost"
+                    onActivate={() => setConfirming(null)}
                   >
                     Go back
-                  </button>
-                  <button
-                    type="button"
+                  </Action>
+                  <Action
+                    id="wholesale.settle.confirm"
                     className="login__submit"
-                    data-action="settle.confirm.continue"
-                    data-action-state="ready"
-                    title="Post this settlement anyway"
-                    onClick={() => void post(true)}
-                    disabled={busy}
+                    busy={busy}
+                    onActivate={() => void post(true)}
                   >
                     Continue
-                  </button>
+                  </Action>
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                className="login__submit"
-                data-action="wholesale.settle"
-                data-action-state="ready"
-                title="Post this settlement"
-                onClick={() => void post(false)}
-                disabled={busy || (!gold.trim() && !cash.trim())}
-                style={{ marginTop: 8 }}
-              >
-                <Icon name="save" size={15} />
-                {busy ? 'Posting…' : 'Post settlement'}
-              </button>
+              <div className="panel__foot panel__foot--flush">
+                <Action
+                  id="wholesale.settle"
+                  className="login__submit"
+                  busy={busy || (!gold.trim() && !cash.trim())}
+                  onActivate={() => void post(false)}
+                >
+                  <Icon name="save" size={16} />
+                  {busy ? 'Posting…' : 'Post settlement'}
+                </Action>
+              </div>
             )}
 
             {message ? (
               <div
                 className={message.kind === 'ok' ? 'banner banner--good' : 'banner banner--bad'}
-                style={{ marginTop: 10 }}
               >
                 {message.text}
               </div>

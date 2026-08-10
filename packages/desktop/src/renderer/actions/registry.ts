@@ -78,6 +78,10 @@ export type ActionId =
   | 'wholesale.cancel'
   | 'wholesale.ledger.view-full'
   | 'wholesale.ledger.view-entry'
+  // ── settling a gold debt ──────────────────────────────────────────────────
+  | 'wholesale.settle'
+  | 'wholesale.settle.confirm'
+  | 'wholesale.settle.back'
   // ── quick actions panel ───────────────────────────────────────────────────
   | 'quick.wholesale-ledger'
   | 'quick.return-receive'
@@ -277,6 +281,12 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'wholesale.cancel': screen('CANCEL', 'wholesale.cancel'),
     'wholesale.ledger.view-full': screen('View Full Ledger', 'wholesale.ledger.view-full'),
     'wholesale.ledger.view-entry': screen('View Entry', 'wholesale.ledger.view-entry'),
+
+    // Settling. The over-return path is a question with a Continue button, so
+    // both answers are real controls rather than one button and a dismiss.
+    'wholesale.settle': screen('Post settlement', 'wholesale.settle'),
+    'wholesale.settle.confirm': screen('Post this settlement anyway', 'wholesale.settle.confirm'),
+    'wholesale.settle.back': screen('Go back and change the amounts', 'wholesale.settle.back'),
 
     // Belong to other modules even though they appear on the wholesale screen.
     // Labelling them by their real owner is the point: "Import from Stock" is
