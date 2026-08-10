@@ -57,6 +57,16 @@ interface ActionProps {
   readonly style?: CSSProperties
   /** Accessible name when the control renders only an icon. */
   readonly ariaLabel?: string
+  /**
+   * A handler for controls that need per-instance context the registry cannot
+   * hold — a rate row knows WHICH purity it is, and the registry is a flat list
+   * of controls, not a list of rows.
+   *
+   * When given, it runs instead of the entry's own `run`. The entry must still
+   * exist and still be `ready`, so both tests keep their grip: the id resolves,
+   * the button is enabled, and it is not a silent no-op.
+   */
+  readonly onActivate?: () => void
 }
 
 export function Action({
@@ -67,6 +77,7 @@ export function Action({
   className,
   style,
   ariaLabel,
+  onActivate,
 }: ActionProps) {
   const registry = useActions()
   const action = registry[id]
@@ -91,7 +102,8 @@ export function Action({
         notBuilt
           ? undefined
           : () => {
-              void action.run()
+              if (onActivate) onActivate()
+              else void action.run()
             }
       }
     >

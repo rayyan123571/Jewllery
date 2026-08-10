@@ -96,7 +96,10 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--colour-navy);
-  color: var(--colour-text-inverse);
+  /* Was text-inverse (white) for the dark navy sidebar. The chrome is now a
+     warm near-white, so the text has to be the dark one. */
+  color: var(--colour-text);
+  border-right: 1px solid var(--colour-border);
   min-height: 0;
 }
 
@@ -105,7 +108,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--colour-border);
 }
 
 .sidebar__crest {
@@ -145,7 +148,7 @@ body {
 
 .sidebar__foot {
   padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--colour-border);
 }
 
 /* ── top bar ────────────────────────────────────────────────────────────── */
@@ -165,12 +168,9 @@ body {
   min-width: 0;
 }
 
-.top-bar__modules {
-  display: flex;
-  align-items: stretch;
-  overflow-x: auto;
-  min-width: 0;
+.top-bar__drag {
   flex: 1;
+  min-width: 0;
 }
 
 .top-bar__aside {
@@ -203,7 +203,27 @@ body {
 .rate-panel__value {
   font-family: var(--font-numeric);
   font-weight: 700;
-  color: var(--colour-gold);
+  color: var(--colour-gold-text);
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.rate-panel__value:hover:not(:disabled) {
+  background: var(--colour-gold-soft);
+}
+
+.rate-panel__input {
+  width: 82px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--colour-gold);
+  border-radius: 3px;
+  background: var(--colour-surface);
+  font-family: var(--font-numeric);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-align: right;
+  color: var(--colour-text);
 }
 
 .rate-panel__empty {
@@ -430,7 +450,7 @@ body {
   padding: 7px 12px;
   justify-content: flex-start;
   font-size: var(--font-size-md);
-  color: #d5deee;
+  color: var(--colour-text);
   border-radius: 0;
 }
 
@@ -440,12 +460,13 @@ body {
 
 .action--sidebar.is-active {
   background: var(--colour-gold);
-  color: #22303f;
+  /* Dark on gold. White here fails contrast badly against #C9A227. */
+  color: #2B2620;
   font-weight: 600;
 }
 
 .action--sidebar:disabled {
-  color: #61759a;
+  color: var(--colour-disabled-text);
 }
 
 .action--topbar {
@@ -465,7 +486,7 @@ body {
 
 .action--topbar.is-active {
   background: var(--colour-gold-bright);
-  color: #ffffff;
+  color: #2B2620;
   font-weight: 600;
 }
 
@@ -570,8 +591,9 @@ body {
   align-items: center;
   gap: 26px;
   padding: 0 12px;
-  background: var(--colour-navy);
-  color: #cdd7e8;
+  background: var(--colour-navy-deep);
+  color: var(--colour-text-muted);
+  border-top: 1px solid var(--colour-border);
   font-size: var(--font-size-sm);
 }
 
@@ -642,9 +664,10 @@ body {
 .login__card {
   width: 380px;
   background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
   border-radius: var(--size-radius-large);
   padding: 22px 24px 24px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 14px 40px rgba(120, 96, 30, 0.16);
 }
 
 .login__brand {

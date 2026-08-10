@@ -120,7 +120,12 @@ export function App() {
     )
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  // Local date, not toISOString(). The rate service resolves "today" with
+  // businessDayOf(), which uses the machine's own calendar because the shop PC
+  // sits in the shop. toISOString() is UTC, so for part of every day the two
+  // disagreed and a rate could be saved against the wrong business day —
+  // showing as "No rate set" on a slip dated today. en-CA gives YYYY-MM-DD.
+  const today = new Date().toLocaleDateString('en-CA')
 
   return (
     <ActionsProvider registry={registry}>
@@ -128,7 +133,7 @@ export function App() {
         <div className="app__body">
           <Sidebar active={active} />
           <div className="workspace">
-            <TopBar active={active} boot={boot} now={now} maximized={maximized} />
+            <TopBar boot={boot} now={now} maximized={maximized} onRateSaved={() => void reload()} />
             <main className="content">
               {busy ? <div className="banner">{busy}</div> : null}
               {active === 'wholesale' ? (
@@ -187,34 +192,25 @@ function Sidebar({ active }: { active: ModuleId }) {
 }
 
 function TopBar({
-  active,
   boot,
   now,
   maximized,
+  onRateSaved,
 }: {
-  active: ModuleId
   boot: BootstrapDto
   now: Date
   maximized: boolean
+  onRateSaved: () => void
 }) {
   return (
     <header className="top-bar">
-      <div className="top-bar__modules">
-        {MODULES.filter((m) => m.inTopBar).map((module) => (
-          <Action
-            key={module.id}
-            id={`nav.${module.id}` as ActionId}
-            variant="topbar"
-            active={active === module.id}
-          >
-            <Icon name={module.icon} size={18} />
-            <span>{module.label}</span>
-          </Action>
-        ))}
-      </div>
+      {/* No module buttons here. Every module is already in the sidebar, and
+          listing them twice cost a whole band of screen height for nothing.
+          The left side is now empty space that doubles as the drag region. */}
+      <div className="top-bar__drag" />
 
       <div className="top-bar__aside">
-        <RatePanel boot={boot} />
+        <RatePanel boot={boot} onSaved={onRateSaved} />
         <Clock now={now} />
         <UserChip boot={boot} />
         <WindowControls maximized={maximized} />
@@ -260,7 +256,45 @@ function WindowControls({ maximized }: { maximized: boolean }) {
   )
 }
 
-function RatePanel({ boot }: { boot: BootstrapDto }) {
+/**
+ * The rate panel, with each figure editable in place.
+ *
+ * Saving goes through the SAME setRate IPC the Gold Rate screen uses, with
+ * effectiveFrom = today — there is no second rate store and no shortcut. A rate
+ * set here is a new row in gold_rates exactly as if it had been typed on the
+ * full screen, so history and the effective-date model are untouched.
+ */
+function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void }) {
+  const [editing, setEditing] = useState<string | null>(null)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const begin = (purity: string, display: string): void => {
+    setEditing(purity)
+    // Seed with digits only — a user editing "Rs. 358,000" wants to retype the
+    // number, not delete the currency and the separators first.
+    setDraft(display.replace(/[^\d.]/g, ''))
+  }
+
+  const commit = async (purityLabel: string): Promise<void> => {
+    if (saving) return
+    setSaving(true)
+    try {
+      // "22K" is the display form; the service wants the stored form, "K22".
+      const purity = `K${purityLabel.replace(/K$/i, '')}`
+      const result = await window.api.setRate({
+        purity,
+        ratePerTolaRupees: draft,
+        effectiveFrom: new Date().toLocaleDateString('en-CA'),
+        note: 'edited from the rate panel',
+      })
+      if (result.ok) onSaved()
+    } finally {
+      setSaving(false)
+      setEditing(null)
+    }
+  }
+
   return (
     <div className="rate-panel">
       <div className="rate-panel__title">
@@ -277,7 +311,32 @@ function RatePanel({ boot }: { boot: BootstrapDto }) {
         boot.rates.map((rate) => (
           <div className="rate-panel__row" key={rate.purity}>
             <span>{rate.purity}</span>
-            <span className="rate-panel__value">{rate.display}</span>
+            {editing === rate.purity ? (
+              <input
+                className="rate-panel__input"
+                value={draft}
+                autoFocus
+                inputMode="decimal"
+                aria-label={`${rate.purity} rate per tola`}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => void commit(rate.purity)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void commit(rate.purity)
+                  // Escape abandons the edit without writing a rate row.
+                  if (e.key === 'Escape') setEditing(null)
+                }}
+              />
+            ) : (
+              <Action
+                id="rate.edit"
+                variant="plain"
+                className="rate-panel__value"
+                ariaLabel={`Edit ${rate.purity} rate`}
+                onActivate={() => begin(rate.purity, rate.display)}
+              >
+                {rate.display}
+              </Action>
+            )}
           </div>
         ))
       )}

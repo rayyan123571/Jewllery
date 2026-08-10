@@ -26,7 +26,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 700,
     show: false,
-    backgroundColor: '#1B2A4A',
+    backgroundColor: '#FFFCF4',
     title: 'Gold Jewellery Management System',
     // Frameless: the application draws its own title bar, so there is one bar
     // at the top of the screen instead of the OS chrome plus ours.

@@ -14,33 +14,39 @@
 export const theme = {
   colour: {
     // ── chrome ──────────────────────────────────────────────────────────────
-    /** Title bar, sidebar and status bar. The dark navy spine of the app. */
-    navy: '#1B2A4A',
-    navyDeep: '#16233D',
-    navyHover: '#243A63',
+    // Sidebar, top bar and status bar. These were a dark navy spine; the shop
+    // asked for golden-and-white, so they are now warm near-whites. The token
+    // NAMES are kept deliberately: renaming them would mean editing every rule
+    // that uses them, and the point of a token file is that a re-theme is a
+    // change to these values alone.
+    navy: '#FFFCF4',
+    navyDeep: '#F7EEDB',
+    navyHover: '#F3E6C9',
     /** Sidebar section labels and muted chrome text. */
-    navyMuted: '#8FA0BF',
+    navyMuted: '#9A8347',
 
     // ── gold ────────────────────────────────────────────────────────────────
-    /** The active sidebar item and the active module in the top bar. */
-    gold: '#D4A029',
-    goldBright: '#E8A83A',
-    goldSoft: '#F0C755',
-    /** Rate figures in the top-right panel, and the logo mark. */
-    goldText: '#E3B341',
+    /** The active sidebar item and accents throughout. */
+    gold: '#C9A227',
+    goldBright: '#DDB63C',
+    goldSoft: '#F2E3B4',
+    /** Rate figures and the logo mark. Darkened to stay readable on white. */
+    goldText: '#9C7A12',
 
     // ── surfaces ────────────────────────────────────────────────────────────
-    canvas: '#EEF1F5',
+    canvas: '#FBF7EE',
     surface: '#FFFFFF',
-    surfaceMuted: '#F7F9FC',
+    surfaceMuted: '#FDFAF3',
     /** Table header rows and the summary panel headers. */
-    surfaceHeader: '#F1F4F9',
-    border: '#D8DEE6',
-    borderStrong: '#B9C2CF',
+    surfaceHeader: '#F8F0DD',
+    border: '#E6D9BA',
+    borderStrong: '#CDBA8E',
 
     // ── text ────────────────────────────────────────────────────────────────
-    text: '#1F2937',
-    textMuted: '#6B7280',
+    /** Charcoal, not black — easier to read for a whole shift. */
+    text: '#2B2620',
+    textMuted: '#6E6355',
+    /** Stays white: it is used on the coloured action buttons, not on chrome. */
     textInverse: '#FFFFFF',
 
     // ── semantic ────────────────────────────────────────────────────────────
@@ -59,8 +65,8 @@ export const theme = {
     actionCancel: '#DC2626',
 
     /** A control that exists but whose module is not built yet. */
-    disabledSurface: '#E5E9F0',
-    disabledText: '#9AA5B4',
+    disabledSurface: '#F1EBDC',
+    disabledText: '#A89C85',
   },
 
   size: {

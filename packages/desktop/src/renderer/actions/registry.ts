@@ -47,6 +47,7 @@ export type ActionId =
   | 'window.close'
   // ── the rate panel ────────────────────────────────────────────────────────
   | 'rate.refresh'
+  | 'rate.edit'
   // ── wholesale entry form (M2) ─────────────────────────────────────────────
   | 'wholesale.tab.new'
   | 'wholesale.tab.ledger'
@@ -207,6 +208,9 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
       label: 'Refresh gold rate',
       run: () => context.refreshRates(),
     },
+    // Rendered once per rate row, each supplying its own onActivate — the
+    // registry holds the control, the row holds which purity it is.
+    'rate.edit': screen('Edit rate', 'rate.edit'),
     'backup.run': { kind: 'ready', label: 'Back Up Now', run: () => context.runBackup() },
     'backup.restore': {
       kind: 'ready',
