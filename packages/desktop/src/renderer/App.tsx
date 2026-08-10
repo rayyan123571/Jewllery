@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Action, ActionsProvider } from './actions/Action.js'
 import { createActionRegistry, type ActionId } from './actions/registry.js'
 import { Icon } from './shell/Icon.js'
@@ -172,19 +172,28 @@ function Sidebar({ active }: { active: ModuleId }) {
           GOLD JEWELLERS
         </span>
       </div>
-      <div className="sidebar__section">MAIN MENU</div>
       <div className="sidebar__items">
-        {MODULES.map((module) => (
-          <Action
-            key={module.id}
-            id={`nav.${module.id}` as ActionId}
-            variant="sidebar"
-            active={active === module.id}
-          >
-            <Icon name={module.icon} />
-            <span>{module.label}</span>
-          </Action>
-        ))}
+        {/* MODULES is walked in its own order and a heading is emitted where
+            the group changes. The groups are contiguous runs of the existing
+            list, so nothing is reordered — grouping is presentation only. */}
+        {MODULES.map((module, index) => {
+          const previous = index === 0 ? undefined : MODULES[index - 1]?.group
+          return (
+            <Fragment key={module.id}>
+              {module.group && module.group !== previous ? (
+                <div className="sidebar__section">{module.group}</div>
+              ) : null}
+              <Action
+                id={`nav.${module.id}` as ActionId}
+                variant="sidebar"
+                active={active === module.id}
+              >
+                <Icon name={module.icon} size={20} />
+                <span>{module.label}</span>
+              </Action>
+            </Fragment>
+          )
+        })}
       </div>
       <div className="sidebar__foot">
         <Action id="app.exit" variant="sidebar" className="sidebar__exit">
@@ -392,16 +401,75 @@ function Clock({ now }: { now: Date }) {
 }
 
 function UserChip({ boot }: { boot: BootstrapDto }) {
+  const [open, setOpen] = useState(false)
+  const wrapper = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (event: MouseEvent): void => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const name = boot.user?.name ?? 'Not signed in'
+
   return (
-    <Action id="app.user-menu" variant="plain" className="user-chip">
-      <Icon name="user" size={20} />
-      <span className="user-chip__text">
-        <strong className="user-chip__name">{boot.user?.name ?? 'Not signed in'}</strong>
-        <span className="user-chip__role">{boot.user?.role ?? '—'}</span>
-      </span>
-      <Icon name="chevron" size={14} />
-    </Action>
+    <div className="user-chip-wrap" ref={wrapper}>
+      <Action
+        id="app.user-menu"
+        variant="plain"
+        className="user-chip"
+        onActivate={() => setOpen((current) => !current)}
+      >
+        <span className="user-chip__avatar" aria-hidden="true">
+          {initialsOf(name)}
+        </span>
+        <span className="user-chip__text">
+          <strong className="user-chip__name">{name}</strong>
+          <span className="user-chip__role">{boot.user?.role ?? '—'}</span>
+        </span>
+        <Icon name="chevron" size={12} />
+      </Action>
+      {open ? (
+        <div className="popover" role="menu" aria-label="Account">
+          {/* Both belong to Users & Permissions, whose screen is not drawn.
+              Shown and visibly off rather than omitted: a menu that opens onto
+              nothing is worse than one that says what is coming. */}
+          <Action id="users.switch" variant="menu">
+            <Icon name="users" size={16} />
+            <span>Switch user</span>
+          </Action>
+          <Action id="users.sign-out" variant="menu">
+            <Icon name="exit" size={16} />
+            <span>Sign out</span>
+          </Action>
+        </div>
+      ) : null}
+    </div>
   )
+}
+
+/**
+ * Up to two initials for the avatar.
+ *
+ * "Administrator" gives A, "Haji Abdul Rehman" gives HR — the first and last
+ * word, which is how a name is abbreviated at a counter.
+ */
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '—'
+  const first = words[0]?.[0] ?? ''
+  const last = words.length > 1 ? (words[words.length - 1]?.[0] ?? '') : ''
+  return (first + last).toUpperCase()
 }
 
 function StatusBar({ boot }: { boot: BootstrapDto }) {

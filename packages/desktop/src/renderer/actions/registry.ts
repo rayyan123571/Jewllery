@@ -88,6 +88,8 @@ export type ActionId =
   | 'backup.restore'
   | 'settings.shop-profile.save'
   | 'users.add'
+  | 'users.switch'
+  | 'users.sign-out'
   | 'goldrate.set'
 
 /** A control that works, end to end. */
@@ -249,6 +251,11 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     // Still-undrawn M0 screens. The feature works; the form does not exist yet.
     'settings.shop-profile.save': notBuilt('Save Shop Profile', 'settings'),
     'users.add': notBuilt('Add User', 'users'),
+    // The account popover. Both belong to Users & Permissions, whose screen is
+    // not drawn — so they are visibly off and say which module owns them,
+    // rather than being omitted and leaving the chip a menu with nothing in it.
+    'users.switch': notBuilt('Switch user', 'users'),
+    'users.sign-out': notBuilt('Sign out', 'users'),
 
     // M2 — Whole Sale. Built, so these are live. Each hands off to the screen
     // that owns the state (see ActionContext.dispatch).

@@ -224,11 +224,11 @@ a {
    findable when scanned and take almost no vertical budget, because 14 modules
    plus their headings have to fit 768px without a scrollbar. */
 .sidebar__section {
-  margin: var(--space-8) 0 var(--space-4);
+  margin: var(--space-12) 0 6px;
   padding: 0 var(--space-16);
   font-size: var(--font-size-xxs);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--colour-navy-muted);
 }
@@ -433,6 +433,12 @@ a {
 
 /* ── the user chip ──────────────────────────────────────────────────────── */
 
+.user-chip-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
 .user-chip {
   align-self: center;
   gap: var(--space-12);
@@ -448,10 +454,11 @@ a {
 }
 
 .user-chip__avatar {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   flex: none;
   border-radius: 50%;
+  border: 1px solid var(--colour-gold);
   background: var(--colour-gold-soft);
   color: var(--colour-gold-text);
   display: grid;
@@ -475,6 +482,36 @@ a {
 .user-chip__role {
   font-size: var(--font-size-xs);
   color: var(--colour-text-muted);
+}
+
+/* ── popover menu ───────────────────────────────────────────────────────── */
+
+.popover {
+  position: absolute;
+  top: calc(100% + var(--space-4));
+  right: var(--space-8);
+  z-index: 50;
+  min-width: 200px;
+  padding: var(--space-4);
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border-strong);
+  border-radius: var(--size-radius);
+  box-shadow: var(--shadow-lg);
+  -webkit-app-region: no-drag;
+}
+
+.action--menu {
+  width: 100%;
+  height: var(--size-control-height);
+  padding: 0 var(--space-12);
+  gap: var(--space-12);
+  justify-content: flex-start;
+  font-size: var(--font-size-base);
+  border-radius: var(--size-radius);
+}
+
+.action--menu:hover:not(:disabled) {
+  background: var(--colour-gold-wash);
 }
 
 /* ── content ────────────────────────────────────────────────────────────── */

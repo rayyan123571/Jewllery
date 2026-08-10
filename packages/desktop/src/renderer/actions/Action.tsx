@@ -48,6 +48,8 @@ export type ActionVariant =
   | 'icon'
   /** Attached to an input, sharing its border — the "+" and the search glyph. */
   | 'segment'
+  /** A row in a popover menu. */
+  | 'menu'
   | 'window'
   | 'plain'
 
