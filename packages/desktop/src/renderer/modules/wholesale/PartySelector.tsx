@@ -70,7 +70,10 @@ export function PartySelector({
     <div className="party">
       <label className="field">
         <span className="field__label">Party / Customer</span>
-        <span className="field__control">
+        {/* The type-ahead and its "add" button share ONE outline and focus
+            together. They were two separate boxes of two different heights
+            sitting next to each other, which read as two unrelated controls. */}
+        <span className="input-group">
           <GhostInput
             value={query}
             onChange={(next) => {
@@ -98,8 +101,8 @@ export function PartySelector({
               if (event.key === 'Escape') setOpen(false)
             }}
           />
-          <Action id="wholesale.party.add" variant="toolbar" ariaLabel="Add a new party">
-            <Icon name="plus" size={13} />
+          <Action id="wholesale.party.add" variant="segment" ariaLabel="Add a new party">
+            <Icon name="plus" size={16} />
           </Action>
         </span>
 
@@ -107,32 +110,32 @@ export function PartySelector({
           <ul className="party__list">
             {matches.map((match) => (
               <li key={match.id}>
-                <button
-                  type="button"
+                {/* mousedown, not click: blur would close the list first. */}
+                <Action
+                  id="wholesale.party.pick"
+                  variant="plain"
                   className="party__option"
-                  data-action="wholesale.party.pick"
-                  data-action-state="ready"
-                  title={`Select ${match.name}`}
-                  onMouseDown={(event) => {
-                    // mousedown, not click: blur would close the list first.
-                    event.preventDefault()
-                    pick(match)
-                  }}
+                  ariaLabel={`Select ${match.name}`}
+                  activateOnMouseDown
+                  onActivate={() => pick(match)}
                 >
                   <span className="party__code">{match.code}</span>
                   <span>{match.name}</span>
                   {match.city ? <span className="party__city">{match.city}</span> : null}
-                </button>
+                </Action>
               </li>
             ))}
           </ul>
         ) : null}
       </label>
 
+      {/* Derived, not broken. It fills itself in from the party above, so it
+          shows a dash and a dashed, flat ground rather than the same grey an
+          unavailable control uses. */}
       <label className="field party__codefield">
         <span className="field__label">Code</span>
         <input
-          className="input"
+          className="input input--derived"
           value={code}
           readOnly
           disabled

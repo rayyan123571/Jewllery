@@ -1,4 +1,7 @@
 import { useState, type FormEvent } from 'react'
+import { Action } from '../../actions/Action.js'
+import { DateField } from '../../components/DateField.js'
+import { toDisplayDate } from '../../format/dates.js'
 import type { RateDto } from '../../../shared/ipc.js'
 
 /**
@@ -46,7 +49,7 @@ export function GoldRateScreen({
         setError(result.message)
         return
       }
-      setSaved(`${purity} set to Rs ${amount} per tola from ${effectiveFrom}.`)
+      setSaved(`${purity} set to Rs ${amount} per tola from ${toDisplayDate(effectiveFrom)}.`)
       setAmount('')
       setNote('')
       onSaved()
@@ -92,15 +95,12 @@ export function GoldRateScreen({
                 />
               </label>
 
-              <label className="field">
-                <span className="field__label">Effective from</span>
-                <input
-                  className="input"
-                  type="date"
-                  value={effectiveFrom}
-                  onChange={(e) => setEffectiveFrom(e.target.value)}
-                />
-              </label>
+              <DateField
+                value={effectiveFrom}
+                onChange={setEffectiveFrom}
+                label="Effective from"
+                ariaLabel="Effective from"
+              />
 
               <label className="field">
                 <span className="field__label">Note (optional)</span>
@@ -118,20 +118,13 @@ export function GoldRateScreen({
               the rate it was posted at — setting a rate today never reprices yesterday.
             </p>
 
-            <button
-              className="login__submit"
-              type="submit"
-              // Carries data-action like every other control, so the rendered-DOM
-              // test can see it. It was a bare <button> and slipped through
-              // because the test only ever rendered the Whole Sale screen.
-              data-action="goldrate.set"
-              data-action-state="ready"
-              title="Save rate"
-              disabled={busy}
-              style={{ marginTop: 8 }}
-            >
+            {/* Goes through <Action> like every other control now. It was a
+                hand-written <button> carrying a data-action attribute, which
+                satisfied the test without satisfying the rule the test exists
+                for. `type="submit"` keeps Enter-in-a-field submitting. */}
+            <Action id="goldrate.set" className="login__submit" type="submit" busy={busy}>
               {busy ? 'Saving…' : 'Save rate'}
-            </button>
+            </Action>
 
             {error ? <div className="login__error">{error}</div> : null}
             {saved ? <div className="banner banner--good">{saved}</div> : null}

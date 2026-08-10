@@ -37,6 +37,8 @@ const PATHS: Record<string, string> = {
   barcode: 'M4 5v14M7 5v14M10 5v10M13 5v14M16 5v10M20 5v14',
   calendar: 'M4 6h16v14H4zM4 10h16M8 4v4M16 4v4',
   chevron: 'M7 10l5 5 5-5',
+  'chevron-left': 'M14 7l-5 5 5 5',
+  'chevron-right': 'M10 7l5 5-5 5',
 }
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {

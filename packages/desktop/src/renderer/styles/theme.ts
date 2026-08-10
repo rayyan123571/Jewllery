@@ -112,11 +112,43 @@ export const theme = {
     buttonHeight: '44px',
     /** The five slip actions and the login submit: the biggest targets. */
     buttonHeightLarge: '48px',
-    sidebarItemHeight: '44px',
+    /** 14 modules must fit 768px of screen without the sidebar scrolling. */
+    sidebarItemHeight: '40px',
+    /** The attached segment on an input group — the "+" and the search glyph. */
+    inputGroupButton: '36px',
 
     radius: '8px',
     radiusLarge: '14px',
     radiusPill: '999px',
+
+    /** Scrollbars. 8px, no stepper buttons — see the ::-webkit rules. */
+    scrollbar: '8px',
+
+    // ── item-details columns ────────────────────────────────────────────────
+    // The table is `table-layout: fixed`, so these ARE the layout. Widths live
+    // here rather than on the <th> elements because a column that is one pixel
+    // too narrow clips a heading, and that is a dimension like any other.
+    // These are a budget, not eight independent choices: they are subtracted
+    // from the table's width and whatever is left becomes Item Name, which has
+    // no token because it is the column that should absorb the slack. The first
+    // cut summed to 854px of a 860px table and left Item Name 6px wide.
+    colIndex: '36px',
+    colGross: '88px',
+    colKatt: '88px',
+    colKhalis: '92px',
+    colRate: '96px',
+    colAmount: '112px',
+    colRemarks: '92px',
+    /** 64px ellipsised its own "Action" heading. This fits it with room over. */
+    colAction: '76px',
+    /**
+     * The floor under Item Name, the one column with no width of its own.
+     *
+     * Below the sum of the fixed columns plus this, the table scrolls sideways
+     * inside its card instead of squeezing the name to a few pixels — which is
+     * what happened at 1366px wide, where the fixed columns alone left it 22px.
+     */
+    colNameMin: '180px',
   },
 
   /** The spacing scale. Every gap and pad in the application is one of these. */
@@ -150,6 +182,8 @@ export const theme = {
     /** Weights and amounts. Tabular figures keep decimal points in a column. */
     numeric: "'Segoe UI Variable Text', 'Consolas', monospace",
     size: {
+      /** Sidebar section headings only. Nothing readable-as-prose goes here. */
+      xxs: '11px',
       xs: '12px',
       sm: '13px',
       base: '14px',

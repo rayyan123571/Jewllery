@@ -48,12 +48,20 @@ export type ActionId =
   // ── the rate panel ────────────────────────────────────────────────────────
   | 'rate.refresh'
   | 'rate.edit'
+  // ── the date field ────────────────────────────────────────────────────────
+  // Rendered once per date field and once per day cell, each supplying its own
+  // onActivate — the registry holds the control, the field holds which day it is.
+  | 'date.pick'
+  | 'date.day'
+  | 'date.prev-month'
+  | 'date.next-month'
   // ── wholesale entry form (M2) ─────────────────────────────────────────────
   | 'wholesale.tab.new'
   | 'wholesale.tab.ledger'
   | 'wholesale.tab.return'
   | 'wholesale.tab.history'
   | 'wholesale.party.add'
+  | 'wholesale.party.pick'
   | 'wholesale.invoice.search'
   | 'wholesale.row.add'
   | 'wholesale.row.clear'
@@ -211,6 +219,14 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     // Rendered once per rate row, each supplying its own onActivate — the
     // registry holds the control, the row holds which purity it is.
     'rate.edit': screen('Edit rate', 'rate.edit'),
+
+    // The date field and its calendar. Like rate.edit, each instance supplies
+    // its own onActivate because the registry is a flat list of controls, not a
+    // list of the days in a month.
+    'date.pick': screen('Choose a date', 'date.pick'),
+    'date.day': screen('Choose this day', 'date.day'),
+    'date.prev-month': screen('Previous month', 'date.prev-month'),
+    'date.next-month': screen('Next month', 'date.next-month'),
     'backup.run': { kind: 'ready', label: 'Back Up Now', run: () => context.runBackup() },
     'backup.restore': {
       kind: 'ready',
@@ -232,6 +248,8 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'wholesale.tab.return': screen('Return / Receive', 'wholesale.tab.return'),
     'wholesale.tab.history': screen('History', 'wholesale.tab.history'),
     'wholesale.party.add': screen('Add Party', 'wholesale.party.add'),
+    // One entry for the whole match list; each row supplies its own onActivate.
+    'wholesale.party.pick': screen('Select Party', 'wholesale.party.pick'),
     'wholesale.invoice.search': screen('Find Invoice', 'wholesale.invoice.search'),
     'wholesale.row.add': screen('Add Row', 'wholesale.row.add'),
     'wholesale.row.clear': screen('Clear Row', 'wholesale.row.clear'),

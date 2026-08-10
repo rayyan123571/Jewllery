@@ -75,6 +75,40 @@ a {
   transition: background-color 120ms ease;
 }
 
+/* ── scrollbars ─────────────────────────────────────────────────────────────
+   Chromium's default has stepper arrows at both ends and a grey trough, which
+   is Windows-95 chrome sitting inside a 2026 product. Global, because the
+   moment one scroller is styled and another is not, the unstyled one looks
+   broken rather than merely default. */
+::-webkit-scrollbar {
+  width: var(--size-scrollbar);
+  height: var(--size-scrollbar);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--colour-border-strong);
+  border-radius: var(--size-radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--colour-gold);
+}
+
+/* The stepper arrows. `display: none` alone leaves a reserved gap in Chromium. */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ── app frame ──────────────────────────────────────────────────────────── */
 
 .app {
@@ -186,13 +220,21 @@ a {
   line-height: var(--line-heading);
 }
 
+/* 11px and tight margins. These are wayfinding, not content: they have to be
+   findable when scanned and take almost no vertical budget, because 14 modules
+   plus their headings have to fit 768px without a scrollbar. */
 .sidebar__section {
-  padding: var(--space-16) var(--space-16) var(--space-8);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  margin: var(--space-8) 0 var(--space-4);
+  padding: 0 var(--space-16);
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--colour-navy-muted);
+}
+
+.sidebar__section:first-child {
+  margin-top: var(--space-4);
 }
 
 /* A section heading that follows another group needs air above it, so the
@@ -206,7 +248,7 @@ a {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: var(--space-12);
+  padding-bottom: var(--space-8);
 }
 
 .sidebar__foot {
@@ -240,6 +282,9 @@ a {
 .top-bar {
   display: flex;
   align-items: stretch;
+  /* The rate panel starts here, 24px off the sidebar edge, rather than floating
+     in the middle of 450px of dead space. */
+  padding-left: var(--space-24);
   background: var(--colour-surface);
   border-bottom: 1px solid var(--colour-border);
   box-shadow: var(--shadow-sm);
@@ -263,10 +308,9 @@ a {
 .rate-panel {
   align-self: center;
   display: flex;
-  align-items: center;
-  gap: var(--space-16);
-  margin-right: var(--space-16);
-  padding: var(--space-8) var(--space-16);
+  align-items: stretch;
+  flex: none;
+  padding: var(--space-8) var(--space-12);
   border: 1px solid var(--colour-border);
   border-radius: var(--size-radius);
   background: var(--colour-surface-muted);
@@ -276,6 +320,7 @@ a {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  padding-right: var(--space-12);
   font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -290,15 +335,26 @@ a {
   height: 24px;
 }
 
+/* Label above, figure below. 12px of padding a side puts 24px between two
+   purities with the divider sitting in the middle of it. */
 .rate-panel__row {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 var(--space-12);
   line-height: var(--line-heading);
+}
+
+.rate-panel__row + .rate-panel__row {
+  border-left: 1px solid var(--colour-border);
 }
 
 .rate-panel__row > span:first-child {
   font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--colour-text-muted);
 }
 
@@ -306,7 +362,7 @@ a {
   font-size: 20px;
   font-weight: 700;
   color: var(--colour-gold-text);
-  padding: 0 var(--space-4);
+  padding: 0;
   border-radius: var(--size-radius);
   line-height: var(--line-heading);
 }
@@ -408,9 +464,100 @@ a {
 /* ── content ────────────────────────────────────────────────────────────── */
 
 .content {
+  display: flex;
+  flex-direction: column;
   overflow: auto;
   padding: var(--space-24);
   min-height: 0;
+}
+
+/* ── the no-page-scroll contract ────────────────────────────────────────────
+   A data-entry screen that scrolls as a whole is a screen where the totals are
+   below the fold while you are typing the figures that produce them. So the
+   window height is a budget: the head takes what it needs, the body takes the
+   rest, and exactly ONE region inside the body is allowed to overflow — the
+   line-items table, which is the only part whose length the operator controls.
+
+   Everything here is `min-height: 0`. Without it a flex or grid child refuses
+   to shrink below its content and the overflow reappears at the page level,
+   which is the whole defect. */
+.screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-16);
+  flex: 1;
+  min-height: 0;
+}
+
+.screen__head {
+  display: grid;
+  gap: var(--space-12);
+}
+
+.screen__head .module-title {
+  margin: 0;
+}
+
+.screen__body {
+  min-height: 0;
+}
+
+/* The left-hand column of the split. The card marked --fill absorbs whatever
+   height is left over; everything else keeps its natural size. */
+.entry-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  min-height: 0;
+  /* At 1080 nothing here scrolls: the item table absorbs the slack and the
+     column ends exactly at the status bar. Below about 900px of window the
+     fixed blocks alone exceed the budget, and then the column gives way rather
+     than the page — an inner scroll on one region, not an outer one on all of
+     it, with the item table still holding its four-row floor. */
+  overflow-y: auto;
+}
+
+.entry-column > * {
+  flex: none;
+}
+
+.entry-column > .panel--fill {
+  flex: 1 1 auto;
+}
+
+.table-scroll {
+  min-height: calc(var(--size-row-height) * 4);
+}
+
+/* The card that absorbs the leftover height.
+ *
+ * The min-height is not decoration, it is the floor that stops flex from
+ * solving an over-budget column by crushing this card to nothing — which is
+ * exactly what `min-height: 0` here did: the table vanished entirely and the
+ * card's own `overflow: hidden` erased the evidence. The floor is its own
+ * chrome (title + toolbar + padding) plus five rows: a header and four to
+ * type into. Below that the COLUMN scrolls; the table never disappears. */
+.panel--fill {
+  flex: 1 1 auto;
+  min-height: calc(
+    var(--size-row-height) * 5 + var(--size-button-height) + var(--space-48) + var(--space-32)
+  );
+  display: flex;
+  flex-direction: column;
+}
+
+.panel--fill .panel__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.panel--fill .table-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 
 .module-title {
@@ -437,7 +584,7 @@ a {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  min-height: 44px;
+  min-height: 36px;
   padding: var(--space-8) var(--space-16);
   background: var(--colour-surface-header);
   border-bottom: 1px solid var(--colour-border);
@@ -476,13 +623,26 @@ a {
 .field-row {
   /* Was a rigid five-column grid, which meant every field was as narrow as the
      narrowest useful one and none could breathe. Auto-fit lets the row reflow
-     at any window width instead of squeezing. */
+     at any window width instead of squeezing.
+
+     150px, not 200px: at 200px the five column-units (Party spans two) needed
+     more width than the workspace has beside a 248px sidebar and a 320px rail,
+     so the Gold Rate field wrapped onto a second line and cost the entry card
+     76px of height that the item table needed. 160px missed a fifth column by
+     four pixels — measured, not guessed: the row is 860px wide and five 160px
+     columns with four 16px gaps need 864. */
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: var(--space-16);
   padding: var(--space-16) var(--space-16) var(--space-16);
   background: var(--colour-surface);
   align-items: start;
+}
+
+/* Relative so a calendar or a match list can hang off the field it belongs to. */
+.field {
+  position: relative;
+  min-width: 0;
 }
 
 .field__label {
@@ -530,6 +690,150 @@ a {
   color: var(--colour-disabled-text);
 }
 
+/* A field that is filled in for you, not one that failed. The dash placeholder
+   and the flat ground say "derived" rather than "broken". */
+.input--derived:disabled {
+  background: var(--colour-surface-muted);
+  color: var(--colour-text-muted);
+  border-style: dashed;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ── input groups ───────────────────────────────────────────────────────────
+   A control and its one attached button read as ONE thing: they share an
+   outline, the button is a segment of it, and the pair focuses together. Six
+   controls of six widths floating in a row is what this replaces. */
+.input-group {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  height: var(--size-control-height);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface);
+  overflow: hidden;
+}
+
+.input-group:hover {
+  border-color: var(--colour-border-strong);
+}
+
+/* The ring goes on the group, so an attached button never draws a second box. */
+.input-group:focus-within {
+  border-color: var(--colour-gold);
+  box-shadow: var(--shadow-focus);
+}
+
+.input-group .input,
+.input-group .ghost .input {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.input-group .input:focus-visible,
+.input-group .input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.input-group .ghost {
+  display: flex;
+}
+
+.action--segment {
+  width: var(--size-input-group-button);
+  flex: none;
+  justify-content: center;
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid var(--colour-border);
+  background: var(--colour-surface-muted);
+  color: var(--colour-text-muted);
+}
+
+.action--segment:hover:not(:disabled) {
+  background: var(--colour-gold-soft);
+  color: var(--colour-gold-text);
+}
+
+.action--segment:focus-visible {
+  box-shadow: none;
+  background: var(--colour-gold-soft);
+  color: var(--colour-gold-text);
+}
+
+/* ── calendar ───────────────────────────────────────────────────────────── */
+
+.calendar {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 40;
+  margin-top: var(--space-4);
+  padding: var(--space-12);
+  width: 268px;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border-strong);
+  border-radius: var(--size-radius-large);
+  box-shadow: var(--shadow-lg);
+}
+
+.calendar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+}
+
+.calendar__month {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.calendar__weekdays,
+.calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.calendar__weekdays span {
+  text-align: center;
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
+  padding-bottom: var(--space-4);
+}
+
+.calendar__day {
+  height: 32px;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  border-radius: var(--size-radius);
+}
+
+.calendar__day:hover:not(:disabled) {
+  background: var(--colour-gold-wash);
+}
+
+.calendar__day.is-today {
+  border-color: var(--colour-border-strong);
+}
+
+.calendar__day.is-selected {
+  background: var(--colour-gold-soft);
+  border-color: var(--colour-gold);
+  color: var(--colour-gold-text);
+  font-weight: 700;
+}
+
 /* ── tables ─────────────────────────────────────────────────────────────── */
 
 /* Wraps a .grid to give it a sticky header and its own scroll, so the column
@@ -544,6 +848,46 @@ a {
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--font-size-base);
+}
+
+/* Column widths come from the tokens via <colgroup>, not from the content.
+   Auto layout let a long item name push the Action column off the edge of the
+   card, which clipped the heading and pressed the delete icon into the border. */
+.grid--fixed {
+  table-layout: fixed;
+  /* Every fixed column plus a floor for Item Name. Narrower than this and the
+     table scrolls horizontally inside .table-scroll rather than crushing the
+     one column that has no width of its own. */
+  min-width: calc(
+    var(--size-col-index) + var(--size-col-gross) + var(--size-col-katt) +
+      var(--size-col-khalis) + var(--size-col-rate) + var(--size-col-amount) +
+      var(--size-col-remarks) + var(--size-col-action) + var(--size-col-name-min)
+  );
+}
+
+.col--index {
+  width: var(--size-col-index);
+}
+.col--gross {
+  width: var(--size-col-gross);
+}
+.col--katt {
+  width: var(--size-col-katt);
+}
+.col--khalis {
+  width: var(--size-col-khalis);
+}
+.col--rate {
+  width: var(--size-col-rate);
+}
+.col--amount {
+  width: var(--size-col-amount);
+}
+.col--remarks {
+  width: var(--size-col-remarks);
+}
+.col--action {
+  width: var(--size-col-action);
 }
 
 .grid th {
@@ -599,8 +943,20 @@ a {
   color: var(--colour-text-muted);
 }
 
+/* 64px minus the standard 12px sides leaves 40px, and "Action" needs 42px.
+   Its own tighter padding is what keeps the heading off the card border. */
 .grid__action {
   text-align: center;
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+}
+
+/* Fixed layout means a cell cannot grow to fit; it must clip cleanly instead. */
+.grid--fixed td,
+.grid--fixed th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .positive {
@@ -613,23 +969,35 @@ a {
   font-weight: 600;
 }
 
-/* A cell editor. Invisible until it has focus, so a table of inputs still
-   reads as a table rather than as a wall of boxes. */
+/* A cell editor, in three states.
+ *
+ * It was fully invisible at rest, which meant row 1 showed a bare "0.000" with
+ * nothing to say it was typeable — the operator could not tell a figure they
+ * had entered from one the app had computed. So: a writing line at rest, a
+ * full box the moment the pointer is over it, and the standard gold ring on
+ * focus. Enough affordance to find, not enough to make the table a wall of
+ * boxes. */
 .input--cell {
   height: calc(var(--size-row-height) - 12px);
   border-color: transparent;
+  border-bottom-color: var(--colour-border-strong);
+  border-radius: var(--size-radius) var(--size-radius) 0 0;
   background: transparent;
   padding: 0 var(--space-8);
 }
 
 .input--cell:hover:not(:disabled) {
-  border-color: var(--colour-border);
+  border-color: var(--colour-border-strong);
+  border-radius: var(--size-radius);
   background: var(--colour-surface);
 }
 
-.input--cell:focus {
+.input--cell:focus,
+.input--cell:focus-visible {
   border-color: var(--colour-gold);
+  border-radius: var(--size-radius);
   background: var(--colour-surface);
+  box-shadow: var(--shadow-focus);
   outline: none;
 }
 
@@ -687,12 +1055,27 @@ a {
   margin-top: var(--space-16);
 }
 
+/* Inside the entry column the flex `gap` already provides the rhythm; these
+   margins would double it and push the totals back below the fold. */
+.entry-column .summary-row,
+.entry-column .action-bar,
+.entry-column > .panel + .panel {
+  margin-top: 0;
+}
+
+/* The summary cards carry two or three lines each. At the standard 16px body
+   padding they were taller than the figures in them justified, and every pixel
+   here comes off the item table. */
+.summary-row .panel__body {
+  padding: var(--space-8) var(--space-16);
+}
+
 .summary-line {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: var(--space-16);
-  padding: var(--space-8) 0;
+  padding: var(--space-4) 0;
   font-size: var(--font-size-base);
   color: var(--colour-text-muted);
 }
@@ -951,13 +1334,25 @@ a {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--size-preview-width);
   gap: var(--space-16);
-  align-items: start;
+  align-items: stretch;
+  min-height: 0;
+}
+
+/* Only the split that IS a screen body fills its row. On a short screen like
+   Gold Rate the same class must still size to its content. */
+.screen__body.workspace__split {
+  height: 100%;
 }
 
 .rail {
   display: flex;
   flex-direction: column;
   gap: var(--space-16);
+  min-height: 0;
+  /* A safety valve, not a design. At any reasonable window height the rail
+     fits and no scrollbar is drawn; below that, the rail gives way rather
+     than pushing the page into an outer scroll. */
+  overflow-y: auto;
 }
 
 .quick-actions {

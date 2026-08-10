@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Icon } from '../../shell/Icon.js'
+import { toDisplayDate } from '../../format/dates.js'
 import type { PartyBalanceDto, PartyDto } from '../../../shared/ipc.js'
 
 /**
@@ -83,7 +84,7 @@ export function SettlementPanel({
           : null
 
   return (
-    <div className="panel" style={{ marginTop: 10 }}>
+    <div className="panel">
       <div className="panel__title">RETURN / RECEIVE — SETTLE A GOLD DEBT</div>
       <div className="panel__body">
         {!party ? (
@@ -132,7 +133,7 @@ export function SettlementPanel({
 
             <p className="hint">
               {kind
-                ? `Settling in ${kind}. Both portions reduce the gold debt — cash is converted at the rate for ${entryDate}, which is stored on the entry so this settlement always means the same thing.`
+                ? `Settling in ${kind}. Both portions reduce the gold debt — cash is converted at the rate for ${toDisplayDate(entryDate)}, which is stored on the entry so this settlement always means the same thing.`
                 : 'Enter gold, cash, or both. Whichever you use, the gold debt is what reduces.'}
             </p>
 

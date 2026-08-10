@@ -7,6 +7,7 @@ import { ModulePlaceholder } from './shell/ModulePlaceholder.js'
 import { WholesaleScreen } from './modules/wholesale/WholesaleScreen.js'
 import { GoldRateScreen } from './modules/rates/GoldRateScreen.js'
 import { LoginScreen } from './modules/auth/LoginScreen.js'
+import { isoOf, isoToday, toDisplayDate } from './format/dates.js'
 import type { BootstrapDto, UserDto } from '../shared/ipc.js'
 
 /**
@@ -124,8 +125,8 @@ export function App() {
   // businessDayOf(), which uses the machine's own calendar because the shop PC
   // sits in the shop. toISOString() is UTC, so for part of every day the two
   // disagreed and a rate could be saved against the wrong business day —
-  // showing as "No rate set" on a slip dated today. en-CA gives YYYY-MM-DD.
-  const today = new Date().toLocaleDateString('en-CA')
+  // showing as "No rate set" on a slip dated today. See format/dates.ts.
+  const today = isoToday()
 
   return (
     <ActionsProvider registry={registry}>
@@ -206,11 +207,17 @@ function TopBar({
     <header className="top-bar">
       {/* No module buttons here. Every module is already in the sidebar, and
           listing them twice cost a whole band of screen height for nothing.
-          The left side is now empty space that doubles as the drag region. */}
+
+          The rate leads, hard against the sidebar edge: it is the figure every
+          amount on the screen below is derived from. It used to float in the
+          middle with 450px of dead bar to its left. The drag region is now the
+          gap between the rate and the clock, so there is still somewhere to
+          grab the window. */}
+      <RatePanel boot={boot} onSaved={onRateSaved} />
+
       <div className="top-bar__drag" />
 
       <div className="top-bar__aside">
-        <RatePanel boot={boot} onSaved={onRateSaved} />
         <Clock now={now} />
         <UserChip boot={boot} />
         <WindowControls maximized={maximized} />
@@ -285,7 +292,7 @@ function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void 
       const result = await window.api.setRate({
         purity,
         ratePerTolaRupees: draft,
-        effectiveFrom: new Date().toLocaleDateString('en-CA'),
+        effectiveFrom: isoToday(),
         note: 'edited from the rate panel',
       })
       if (result.ok) onSaved()
@@ -346,11 +353,10 @@ function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void 
 
 function Clock({ now }: { now: Date }) {
   const day = now.toLocaleDateString('en-GB', { weekday: 'long' })
-  const date = now.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  })
+  // DD-MM-YYYY, the one date format in the application. "10 August 2026" here
+  // while the slip below said 2026-08-10 and the picker said 10/08/2026 gave
+  // the operator three formats to reconcile on one screen.
+  const date = toDisplayDate(isoOf(now))
   const time = now.toLocaleTimeString('en-GB', { hour12: true })
   return (
     <div className="clock">

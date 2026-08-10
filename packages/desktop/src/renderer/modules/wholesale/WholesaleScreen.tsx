@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Action } from '../../actions/Action.js'
 import { Icon } from '../../shell/Icon.js'
+import { DateField } from '../../components/DateField.js'
+import { toDisplayDate } from '../../format/dates.js'
 import { PartySelector } from './PartySelector.js'
 import { SettlementPanel } from './SettlementPanel.js'
 import type {
@@ -175,25 +177,27 @@ export function WholesaleScreen({
   )
 
   return (
-    <>
-      <h1 className="module-title">WHOLE SALE MODULE</h1>
+    <div className="screen">
+      <div className="screen__head">
+        <h1 className="module-title">WHOLE SALE MODULE</h1>
 
-      {preview?.rateMissing ? (
-        <div className="banner">
-          No gold rate is recorded for {entryDate}. Set the rate for that day in Gold Rate
-          before saving — every amount depends on it, and using today&apos;s would price
-          this slip wrongly.
-        </div>
-      ) : null}
+        {preview?.rateMissing ? (
+          <div className="banner">
+            No gold rate is recorded for {toDisplayDate(entryDate)}. Set the rate for that
+            day in Gold Rate before saving — every amount depends on it, and using
+            today&apos;s would price this slip wrongly.
+          </div>
+        ) : null}
 
-      {message ? (
-        <div className={message.kind === 'ok' ? 'banner banner--good' : 'banner banner--bad'}>
-          {message.text}
-        </div>
-      ) : null}
+        {message ? (
+          <div className={message.kind === 'ok' ? 'banner banner--good' : 'banner banner--bad'}>
+            {message.text}
+          </div>
+        ) : null}
+      </div>
 
-      <div className="workspace__split">
-        <div>
+      <div className="workspace__split screen__body">
+        <div className="entry-column">
           <div className="panel">
             <div className="tabs">
               <Action id="wholesale.tab.new" variant="tab" active={tab === 'new'}>
@@ -213,30 +217,28 @@ export function WholesaleScreen({
             <div className="field-row">
               <PartySelector selected={party} onSelect={setParty} />
 
+              {/* Invoice number and its search share one outline, so the pair
+                  reads as one control rather than as a box beside a button. */}
               <label className="field">
                 <span className="field__label">Invoice No.</span>
-                <span className="field__control">
+                <span className="input-group">
                   <input className="input" value={invoiceNo} readOnly aria-label="Invoice number" />
-                  <Action id="wholesale.invoice.search" variant="toolbar" ariaLabel="Find invoice">
-                    <Icon name="search" size={13} />
+                  <Action id="wholesale.invoice.search" variant="segment" ariaLabel="Find invoice">
+                    <Icon name="search" size={16} />
                   </Action>
                 </span>
               </label>
 
-              <label className="field">
-                <span className="field__label">Date</span>
-                <input
-                  className="input"
-                  type="date"
-                  value={entryDate}
-                  onChange={(e) => setEntryDate(e.target.value)}
-                  aria-label="Entry date"
-                />
-              </label>
+              <DateField
+                value={entryDate}
+                onChange={setEntryDate}
+                label="Date"
+                ariaLabel="Entry date"
+              />
 
               <label className="field">
                 <span className="field__label">Gold Rate (Per Tola)</span>
-                <span className="field__control">
+                <span className="input-group">
                   {/* Editable. It was read-only, which made the service's
                       rate-override support unreachable — a shop quoting a party
                       a rate different from the day's board rate had no way to
@@ -249,8 +251,8 @@ export function WholesaleScreen({
                     inputMode="decimal"
                     aria-label="Gold rate per tola"
                   />
-                  <Action id="rate.refresh" variant="toolbar" ariaLabel="Refresh rate">
-                    <Icon name="refresh" size={13} />
+                  <Action id="rate.refresh" variant="segment" ariaLabel="Refresh rate">
+                    <Icon name="refresh" size={16} />
                   </Action>
                 </span>
               </label>
@@ -259,34 +261,49 @@ export function WholesaleScreen({
 
           {tab === 'new' ? (
             <>
-              <div className="panel" style={{ marginTop: 10 }}>
+              <div className="panel panel--fill">
                 <div className="panel__title">ITEM DETAILS</div>
                 <div className="panel__body">
-                  <table className="grid">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 28 }}>#</th>
-                        <th>Item Name</th>
-                        <th style={{ width: 96 }}>Gross Weight (g)</th>
-                        <th style={{ width: 104 }}>Katt (ratti/tola)</th>
-                        <th style={{ width: 96 }}>Khalis Weight (g)</th>
-                        <th style={{ width: 92 }}>Rate (per tola)</th>
-                        <th style={{ width: 110 }}>Amount (Rs.)</th>
-                        <th style={{ width: 90 }}>Remarks</th>
-                        <th style={{ width: 46 }}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  {/* The one region on this screen allowed to overflow. Its
+                      header stays put while the operator works down the slip. */}
+                  <div className="table-scroll">
+                    <table className="grid grid--fixed">
+                      <colgroup>
+                        <col className="col--index" />
+                        <col />
+                        <col className="col--gross" />
+                        <col className="col--katt" />
+                        <col className="col--khalis" />
+                        <col className="col--rate" />
+                        <col className="col--amount" />
+                        <col className="col--remarks" />
+                        <col className="col--action" />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th className="grid__index">#</th>
+                          <th>Item Name</th>
+                          <th className="numeric">Gross (g)</th>
+                          <th className="numeric">Katt (r/t)</th>
+                          <th className="numeric">Khalis (g)</th>
+                          <th className="numeric">Rate/tola</th>
+                          <th className="numeric">Amount (Rs.)</th>
+                          <th>Remarks</th>
+                          <th className="grid__action">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                       {rows.map((row, index) => {
                         const computed = preview?.lines[index]
                         return (
                           <tr key={index} className={computed?.error ? 'row--error' : undefined}>
-                            <td style={{ textAlign: 'center' }}>{index + 1}</td>
+                            <td className="grid__index">{index + 1}</td>
                             <td>
                               <input
                                 className="input input--cell"
                                 value={row.itemName}
                                 onChange={(e) => setRow(index, { itemName: e.target.value })}
+                                placeholder="Item name"
                                 aria-label={`Item name row ${index + 1}`}
                               />
                             </td>
@@ -320,38 +337,45 @@ export function WholesaleScreen({
                                 className="input input--cell"
                                 value={row.remarks ?? ''}
                                 onChange={(e) => setRow(index, { remarks: e.target.value })}
+                                placeholder="—"
                                 aria-label={`Remarks row ${index + 1}`}
                               />
                             </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
-                                type="button"
-                                className="action action--icon"
-                                data-action="wholesale.row.delete"
-                                data-action-state="ready"
-                                title="Delete this row"
-                                aria-label={`Delete row ${index + 1}`}
-                                onClick={() => deleteRow(index)}
+                            <td className="grid__action">
+                              <Action
+                                id="wholesale.row.delete"
+                                variant="icon"
+                                className="is-danger"
+                                ariaLabel={`Delete row ${index + 1}`}
+                                onActivate={() => deleteRow(index)}
                               >
-                                <Icon name="trash" size={14} />
-                              </button>
+                                <Icon name="trash" size={16} />
+                              </Action>
                             </td>
                           </tr>
                         )
                       })}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colSpan={2}>Total</td>
-                        <td className="numeric">( {totals.gross} )</td>
-                        <td />
-                        <td className="numeric positive">( {totals.khalis} )</td>
-                        <td />
-                        <td className="numeric">{totals.amount}</td>
-                        <td colSpan={2} />
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </tbody>
+                      {/* No parentheses. In accounting a bracketed figure means
+                          a negative one, and these were bracketed AND green —
+                          two contradictory signals on a number that is neither.
+                          The magnitude-plus-label rule (DECISIONS §4) is kept by
+                          the formatters upstream, which never emit a sign. */}
+                      <tfoot>
+                        <tr>
+                          <td className="grid__index" />
+                          <td>Total</td>
+                          <td className="numeric">{totals.gross}</td>
+                          <td />
+                          <td className="numeric positive">{totals.khalis}</td>
+                          <td />
+                          <td className="numeric">{totals.amount}</td>
+                          <td />
+                          <td className="grid__action" />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
 
                   {preview?.lines.some((l) => l.error) ? (
                     <p className="hint hint--bad">
@@ -359,19 +383,19 @@ export function WholesaleScreen({
                     </p>
                   ) : null}
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <div className="toolbar">
                     <Action id="wholesale.row.add" variant="toolbar">
-                      <Icon name="plus" size={13} /> Add Row
+                      <Icon name="plus" size={16} /> Add Row
                     </Action>
                     <Action id="wholesale.row.clear" variant="toolbar">
-                      <Icon name="cross" size={13} /> Clear Row
+                      <Icon name="cross" size={16} /> Clear Row
                     </Action>
-                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                    <span className="toolbar__end">
                       <Action id="wholesale.import-from-stock" variant="toolbar">
-                        <Icon name="upload" size={13} /> Import from Stock
+                        <Icon name="upload" size={16} /> Import from Stock
                       </Action>
                       <Action id="wholesale.scan-barcode" variant="toolbar">
-                        <Icon name="barcode" size={13} /> Scan Barcode
+                        <Icon name="barcode" size={16} /> Scan Barcode
                       </Action>
                     </span>
                   </div>
@@ -562,7 +586,7 @@ export function WholesaleScreen({
           </div>
         </aside>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -583,12 +607,12 @@ function InvoicePreview({
     <div className="panel">
       <div className="panel__title">INVOICE PREVIEW (80mm)</div>
       <div className="panel__body slip">
-        <div style={{ textAlign: 'center', fontWeight: 700 }}>
+        <div className="slip__brand">
           AL-HARAM
           <br />
           GOLD JEWELLERS
         </div>
-        <div style={{ textAlign: 'center' }}>Trust in Purity</div>
+        <div className="slip__centre">Trust in Purity</div>
         <div className="slip__rule" />
         <div className="slip__row">
           <span>Invoice No.</span>
@@ -596,7 +620,7 @@ function InvoicePreview({
         </div>
         <div className="slip__row">
           <span>Date</span>
-          <span>{date}</span>
+          <span>{toDisplayDate(date)}</span>
         </div>
         <div className="slip__row">
           <span>Party</span>
@@ -644,7 +668,7 @@ function InvoicePreview({
           <span>Current Issued</span>
           <span>{preview?.khalisTotalDisplay ?? '0.000'} g</span>
         </div>
-        <div className="slip__row" style={{ fontWeight: 700 }}>
+        <div className="slip__row slip__total">
           <span>End Balance</span>
           <span>
             {preview?.endBalance?.text ?? '—'}
@@ -652,7 +676,7 @@ function InvoicePreview({
           </span>
         </div>
         <div className="slip__rule" />
-        <div style={{ textAlign: 'center' }}>Thank You! Visit Again</div>
+        <div className="slip__centre">Thank You! Visit Again</div>
       </div>
     </div>
   )
@@ -668,10 +692,10 @@ function LedgerTable({
   compact?: boolean
 }) {
   return (
-    <div className="panel" style={{ marginTop: 10 }}>
-      <div className="panel__title" style={{ display: 'flex', alignItems: 'center' }}>
+    <div className="panel">
+      <div className="panel__title">
         <span>PARTY WHOLE SALE LEDGER {party ? `(${party.name})` : ''}</span>
-        <span style={{ marginLeft: 'auto' }}>
+        <span className="toolbar__end">
           <Action id="wholesale.ledger.view-full" variant="toolbar">
             View Full Ledger
           </Action>
@@ -683,25 +707,40 @@ function LedgerTable({
             {party ? 'No entries yet for this party.' : 'Choose a party to see their ledger.'}
           </p>
         ) : (
-          <table className="grid">
+          <table className="grid grid--fixed">
+            <colgroup>
+              <col className="col--rate" />
+              <col />
+              <col className="col--khalis" />
+              <col className="col--gross" />
+              <col className="col--gross" />
+              <col className="col--katt" />
+              <col className="col--amount" />
+              <col className="col--katt" />
+              <col className="col--katt" />
+              <col className="col--action" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Invoice No.</th>
                 <th>Type</th>
-                <th>Gross (g)</th>
-                <th>Khalis (g)</th>
-                <th>Settled Gold (g)</th>
-                <th>Settled Cash (Rs)</th>
-                <th>Previous</th>
-                <th>End Balance</th>
-                <th style={{ width: 46 }}>Action</th>
+                <th className="numeric">Gross (g)</th>
+                <th className="numeric">Khalis (g)</th>
+                <th className="numeric">Settled Gold</th>
+                <th className="numeric">Settled Cash</th>
+                <th className="numeric">Previous</th>
+                <th className="numeric">End Balance</th>
+                <th className="grid__action">Action</th>
               </tr>
             </thead>
             <tbody>
-              {(compact ? rows.slice(-4) : rows).map((row) => (
+              {/* Three rows on the entry tab, not four. The entry screen's
+                  height is a budget, and every row here is a row the operator
+                  cannot type into. The full list is one click away on Ledger. */}
+              {(compact ? rows.slice(-3) : rows).map((row) => (
                 <tr key={row.entryId} className={row.isReversed ? 'row--reversed' : undefined}>
-                  <td>{row.date}</td>
+                  <td className="numeric">{toDisplayDate(row.date)}</td>
                   <td>{row.invoiceNo}</td>
                   <td>
                     {row.kind}
@@ -716,7 +755,7 @@ function LedgerTable({
                   <td className={`numeric ${row.endDrCr === 'CR' ? 'negative' : 'positive'}`}>
                     {row.endDisplay} {row.endDrCr ? `/${row.endDrCr}` : ''}
                   </td>
-                  <td style={{ textAlign: 'center' }}>
+                  <td className="grid__action">
                     <Action
                       id="wholesale.ledger.view-entry"
                       variant="icon"
