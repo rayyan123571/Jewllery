@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Action } from '../../actions/Action.js'
+import { EmptyState } from '../../components/EmptyState.js'
 import { GhostInput } from '../../components/GhostInput.js'
 import { Icon } from '../../shell/Icon.js'
 import type { PartyDto } from '../../../shared/ipc.js'
@@ -105,6 +106,21 @@ export function PartySelector({
             <Icon name="plus" size={16} />
           </Action>
         </span>
+
+        {/* A search that finds nothing says so and offers the way out. Silently
+            not rendering the list left the operator typing into a box that had
+            stopped responding, with no way to tell "no such party" from "still
+            looking". */}
+        {open && matches.length === 0 && query.trim().length > 0 ? (
+          <div className="party__list party__list--empty">
+            <EmptyState
+              title="No party matches"
+              line={`Nothing found for "${query.trim()}".`}
+              actionId="wholesale.party.add"
+              actionLabel="Add New Party"
+            />
+          </div>
+        ) : null}
 
         {open && matches.length > 0 ? (
           <ul className="party__list">

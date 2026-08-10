@@ -1693,6 +1693,11 @@ a {
   color: var(--colour-text-muted);
 }
 
+.placeholder__mark {
+  color: var(--colour-border-strong);
+  margin-bottom: var(--space-24);
+}
+
 .placeholder__badge {
   display: inline-block;
   padding: var(--space-4) var(--space-16);
@@ -1949,6 +1954,15 @@ a {
   border: 1px solid var(--colour-border-strong);
   border-radius: var(--size-radius);
   box-shadow: var(--shadow-lg);
+}
+
+.party__list--empty {
+  max-height: none;
+  padding: 0;
+}
+
+.party__list--empty .empty {
+  padding: var(--space-24) var(--space-16);
 }
 
 .party__option {
