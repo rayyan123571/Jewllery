@@ -42,6 +42,8 @@ export type ActionVariant =
   | 'tab'
   | 'primary'
   | 'secondary'
+  /** Same size as primary, but its semantic colour on the border and label only. */
+  | 'outline'
   | 'toolbar'
   | 'ghost'
   | 'quick'

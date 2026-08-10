@@ -657,6 +657,11 @@ a {
   padding: 0;
 }
 
+.panel__body--flush > .hint {
+  padding: 0 var(--space-16) var(--space-12);
+  margin-top: var(--space-8);
+}
+
 .panel + .panel,
 .panel + .stat-row,
 .stat-row + .panel {
@@ -667,7 +672,7 @@ a {
   display: flex;
   gap: var(--space-4);
   border-bottom: 1px solid var(--colour-border);
-  padding: var(--space-8) var(--space-12) 0;
+  padding: 0 var(--space-12);
   background: var(--colour-surface-muted);
 }
 
@@ -1099,6 +1104,92 @@ a {
   color: var(--colour-text-muted);
 }
 
+/* ── the summary strip ──────────────────────────────────────────────────────
+   Three stacked cards became one 60px strip. Nothing left the screen doing it:
+   the gross total is in the table's own totals row, the rate is in the entry
+   card and the top bar, and the previous balance is in the rail. What the three
+   cards were mostly holding was their own headers and padding. */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  min-height: var(--size-stat-strip-height);
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius-large);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.stat-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: 0 var(--space-16);
+  min-width: 0;
+}
+
+.stat-cell + .stat-cell {
+  border-left: 1px solid var(--colour-border);
+}
+
+.stat-cell__label {
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+}
+
+.stat-cell__value {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: var(--line-heading);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── empty states ───────────────────────────────────────────────────────────
+   A built screen with no data. Distinct from ModulePlaceholder, which means the
+   screen does not exist yet — confusing the two teaches the operator that empty
+   means broken. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-32) var(--space-24);
+  text-align: center;
+  color: var(--colour-text-muted);
+  min-height: 0;
+  flex: 1;
+}
+
+.empty__mark {
+  color: var(--colour-border-strong);
+  margin-bottom: var(--space-8);
+}
+
+.empty__title {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--colour-text);
+}
+
+.empty__line {
+  margin: 0 0 var(--space-8);
+  max-width: 380px;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-body);
+}
+
 /* ── summary lines ──────────────────────────────────────────────────────── */
 
 .summary-row {
@@ -1244,30 +1335,34 @@ a {
   color: var(--colour-disabled-text);
 }
 
+/* A tab is a label with a gold underline, not a coloured chip. The active tab
+   was solid blue, which was the only blue left in the application and read as a
+   selected row rather than the current section. */
 .action--tab {
-  height: var(--size-button-height);
+  height: var(--size-tab-height);
   padding: 0 var(--space-16);
   font-size: var(--font-size-base);
   font-weight: 600;
-  border-radius: var(--size-radius) var(--size-radius) 0 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
   color: var(--colour-text-muted);
+  margin-bottom: -1px;
 }
 
 .action--tab:hover:not(:disabled) {
   color: var(--colour-text);
-  background: var(--colour-surface);
+  border-bottom-color: var(--colour-border-strong);
 }
 
 .action--tab.is-active {
   background: var(--colour-surface);
   color: var(--colour-gold-text);
-  border-color: var(--colour-border);
-  border-bottom-color: var(--colour-surface);
-  margin-bottom: -1px;
+  border-bottom-color: var(--colour-gold);
 }
 
-/* The five slip actions. Solid, but flat and desaturated — a row of buttons,
-   not a row of warnings. */
+/* The one dominant action. Solid, flat, and the only filled button in the row. */
 .action--primary {
   height: var(--size-button-height-large);
   padding: 0 var(--space-16);
@@ -1277,6 +1372,50 @@ a {
   font-size: var(--font-size-base);
   justify-content: center;
   box-shadow: var(--shadow-sm);
+}
+
+.action--primary.is-save {
+  background: var(--colour-action-save);
+  border-color: var(--colour-action-save);
+}
+
+/* The other four. Their semantic colour lives on the border and the label, not
+   in a fill: five solid colour blocks is a toolbar, every control shouting at
+   the same volume, so none of them is the answer. */
+.action--outline {
+  height: var(--size-button-height-large);
+  padding: 0 var(--space-12);
+  gap: var(--space-8);
+  justify-content: center;
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  background: var(--colour-surface);
+  border-color: var(--colour-border-strong);
+  color: var(--colour-text);
+}
+
+.action--outline:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+}
+
+.action--outline.is-save-print {
+  border-color: var(--colour-action-save-print);
+  color: var(--colour-action-save-print);
+}
+
+.action--outline.is-print {
+  border-color: var(--colour-action-print);
+  color: var(--colour-action-print);
+}
+
+.action--outline.is-hold {
+  border-color: var(--colour-action-hold);
+  color: var(--colour-action-hold-text);
+}
+
+.action--outline.is-cancel {
+  border-color: var(--colour-action-cancel);
+  color: var(--colour-action-cancel);
 }
 
 /* Everything that is not THE save. Outline rather than a fifth solid block. */
@@ -1363,9 +1502,23 @@ a {
 
 .action-bar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--space-12);
+  /* Always five across. auto-fit reflowed them into two rows at 1366px, and a
+     slip's actions splitting across two lines is how the wrong one gets hit. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-8);
   margin-top: var(--space-16);
+}
+
+.action-bar .action {
+  line-height: var(--line-heading);
+  text-align: center;
+}
+
+/* The bar lives inside the entry card, so it needs the card's own inset. */
+.panel > .action-bar {
+  margin-top: 0;
+  padding: var(--space-16);
+  border-top: 1px solid var(--colour-border);
 }
 
 .toolbar {

@@ -84,6 +84,8 @@ export const theme = {
     actionSavePrint: '#2D64E1',
     actionPrint: '#8144E4',
     actionHold: '#D6A638',
+    /** The hold colour is too light to read as a label on white. This is not. */
+    actionHoldText: '#8A6A10',
     actionCancel: '#D23232',
     /** EXIT, in the sidebar foot. The one control that closes the application. */
     actionExit: '#B3261E',
@@ -116,6 +118,9 @@ export const theme = {
     buttonHeightLarge: '48px',
     /** 14 modules must fit 768px of screen without the sidebar scrolling. */
     sidebarItemHeight: '40px',
+    tabHeight: '40px',
+    /** The whole summary strip. One line: label left, figure right. */
+    statStripHeight: '60px',
     /** The attached segment on an input group — the "+" and the search glyph. */
     inputGroupButton: '36px',
 

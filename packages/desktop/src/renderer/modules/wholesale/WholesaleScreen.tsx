@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { Action } from '../../actions/Action.js'
 import { Icon } from '../../shell/Icon.js'
 import { DateField } from '../../components/DateField.js'
+import { EmptyState } from '../../components/EmptyState.js'
 import { toDisplayDate } from '../../format/dates.js'
 import { PartySelector } from './PartySelector.js'
 import { SettlementPanel } from './SettlementPanel.js'
@@ -25,9 +26,20 @@ import type {
  * amount, totals, balances — is computed in the main process by the same code
  * that will post the slip, and arrives preformatted. That is why what the
  * operator sees while typing is exactly what gets saved.
+ *
+ * ── The height budget ──────────────────────────────────────────────────────
+ * The window height is a budget and the item table is what it is spent on. Head
+ * and the fixed cards take what they need; the table absorbs the rest and is the
+ * only region allowed to scroll. The party ledger is deliberately NOT on this
+ * tab — it is the whole content of the Whole Sale Ledger tab, and the same rows
+ * shown twice cost the table a third of its height to tell the operator nothing
+ * new.
  */
 
 const EMPTY_ROW: LineInputDto = { itemName: '', grossGrams: '', kattRatti: '', remarks: null }
+
+/** The typeable columns, in tab order. Khalis, rate and amount are computed. */
+const COLUMNS = ['itemName', 'grossGrams', 'kattRatti', 'remarks'] as const
 
 type Tab = 'new' | 'ledger' | 'settle' | 'history'
 
@@ -50,6 +62,10 @@ export function WholesaleScreen({
   const [ledger, setLedger] = useState<readonly LedgerRowDto[]>([])
   const [message, setMessage] = useState<{ kind: 'ok' | 'bad'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // Cell focus, for the two keyboard behaviours that matter at a counter.
+  const cells = useRef(new Map<string, HTMLInputElement | null>())
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null)
 
   const refreshParty = useCallback(async (id: string | null) => {
     if (!id) {
@@ -83,20 +99,52 @@ export function WholesaleScreen({
     void window.api.previewWholesale(request).then(setPreview)
   }, [rows, entryDate, party, rateOverride])
 
+  // A row added by Tab has to exist before it can be focused, so the focus is
+  // deferred to the render that contains it.
+  useEffect(() => {
+    if (!pendingFocus) return
+    cells.current.get(pendingFocus)?.focus()
+    setPendingFocus(null)
+  }, [pendingFocus, rows.length])
+
   const setRow = (index: number, patch: Partial<LineInputDto>): void =>
-    setRows((current) =>
-      current.map((row, i) => (i === index ? { ...row, ...patch } : row)),
-    )
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)))
 
   const addRow = useCallback(() => setRows((c) => [...c, { ...EMPTY_ROW }]), [])
-  const clearRows = useCallback(
-    () => setRows([{ ...EMPTY_ROW }, { ...EMPTY_ROW }]),
-    [],
-  )
+  const clearRows = useCallback(() => setRows([{ ...EMPTY_ROW }, { ...EMPTY_ROW }]), [])
   const deleteRow = (index: number): void =>
     setRows((current) =>
       current.length <= 1 ? [{ ...EMPTY_ROW }] : current.filter((_, i) => i !== index),
     )
+
+  /**
+   * The two keyboard behaviours a counter operator actually uses.
+   *
+   * Enter walks DOWN a column, because a slip is entered a column at a time —
+   * six gross weights, then six katts — not a row at a time. Tab off the last
+   * cell of the last row opens a new one and lands in its first cell, so a long
+   * slip never needs the mouse. Both matter more than anything visual on this
+   * screen: they are the difference between typing a slip and operating a form.
+   */
+  const onCellKeyDown = (
+    rowIndex: number,
+    columnIndex: number,
+    event: KeyboardEvent<HTMLInputElement>,
+  ): void => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const below = cells.current.get(`${rowIndex + 1}:${columnIndex}`)
+      below?.focus()
+      below?.select()
+      return
+    }
+    const lastCell = rowIndex === rows.length - 1 && columnIndex === COLUMNS.length - 1
+    if (event.key === 'Tab' && !event.shiftKey && lastCell) {
+      event.preventDefault()
+      addRow()
+      setPendingFocus(`${rowIndex + 1}:0`)
+    }
+  }
 
   const save = useCallback(
     async (thenPrint: boolean) => {
@@ -136,7 +184,7 @@ export function WholesaleScreen({
         setBusy(false)
       }
     },
-    [busy, party, entryDate, rows, clearRows, refreshParty, onPosted],
+    [busy, party, entryDate, rows, rateOverride, clearRows, refreshParty, onPosted],
   )
 
   // Published so the shell's action registry can drive these buttons.
@@ -214,11 +262,11 @@ export function WholesaleScreen({
               </Action>
             </div>
 
+            <div className="panel__title">ENTRY DETAILS</div>
+
             <div className="field-row">
               <PartySelector selected={party} onSelect={setParty} />
 
-              {/* Invoice number and its search share one outline, so the pair
-                  reads as one control rather than as a box beside a button. */}
               <label className="field">
                 <span className="field__label">Invoice No.</span>
                 <span className="input-group">
@@ -257,15 +305,34 @@ export function WholesaleScreen({
                 </span>
               </label>
             </div>
+
+            {tab === 'new' ? <ActionBar busy={busy} /> : null}
           </div>
 
           {tab === 'new' ? (
             <>
               <div className="panel panel--fill">
-                <div className="panel__title">ITEM DETAILS</div>
-                <div className="panel__body">
-                  {/* The one region on this screen allowed to overflow. Its
-                      header stays put while the operator works down the slip. */}
+                <div className="panel__title">
+                  <span>ITEM DETAILS</span>
+                  {/* The row tools live in the card header rather than under the
+                      table. Below it they cost 56px of table height on every
+                      screen size, and they are used once per slip. */}
+                  <span className="toolbar__end">
+                    <Action id="wholesale.row.add" variant="toolbar">
+                      <Icon name="plus" size={16} /> Add Row
+                    </Action>
+                    <Action id="wholesale.row.clear" variant="toolbar">
+                      <Icon name="cross" size={16} /> Clear Row
+                    </Action>
+                    <Action id="wholesale.import-from-stock" variant="toolbar">
+                      <Icon name="upload" size={16} /> Import
+                    </Action>
+                    <Action id="wholesale.scan-barcode" variant="toolbar">
+                      <Icon name="barcode" size={16} /> Scan
+                    </Action>
+                  </span>
+                </div>
+                <div className="panel__body panel__body--flush">
                   <div className="table-scroll">
                     <table className="grid grid--fixed">
                       <colgroup>
@@ -293,74 +360,83 @@ export function WholesaleScreen({
                         </tr>
                       </thead>
                       <tbody>
-                      {rows.map((row, index) => {
-                        const computed = preview?.lines[index]
-                        return (
-                          <tr key={index} className={computed?.error ? 'row--error' : undefined}>
-                            <td className="grid__index">{index + 1}</td>
-                            <td>
-                              <input
-                                className="input input--cell"
-                                value={row.itemName}
-                                onChange={(e) => setRow(index, { itemName: e.target.value })}
-                                placeholder="Item name"
-                                aria-label={`Item name row ${index + 1}`}
-                              />
-                            </td>
-                            <td>
-                              <input
-                                className="input input--cell input--numeric"
-                                value={row.grossGrams}
-                                onChange={(e) => setRow(index, { grossGrams: e.target.value })}
-                                placeholder="0.000"
-                                inputMode="decimal"
-                                aria-label={`Gross weight row ${index + 1}`}
-                              />
-                            </td>
-                            <td>
-                              <input
-                                className="input input--cell input--numeric"
-                                value={row.kattRatti}
-                                onChange={(e) => setRow(index, { kattRatti: e.target.value })}
-                                placeholder="0.000"
-                                inputMode="decimal"
-                                aria-label={`Katt row ${index + 1}`}
-                              />
-                            </td>
-                            <td className="numeric positive" title={computed?.purityDisplay}>
-                              {computed?.khalisDisplay ?? '—'}
-                            </td>
-                            <td className="numeric">{computed?.rateDisplay ?? '—'}</td>
-                            <td className="numeric">{computed?.amountDisplay ?? '—'}</td>
-                            <td>
-                              <input
-                                className="input input--cell"
-                                value={row.remarks ?? ''}
-                                onChange={(e) => setRow(index, { remarks: e.target.value })}
-                                placeholder="—"
-                                aria-label={`Remarks row ${index + 1}`}
-                              />
-                            </td>
-                            <td className="grid__action">
-                              <Action
-                                id="wholesale.row.delete"
-                                variant="icon"
-                                className="is-danger"
-                                ariaLabel={`Delete row ${index + 1}`}
-                                onActivate={() => deleteRow(index)}
-                              >
-                                <Icon name="trash" size={16} />
-                              </Action>
-                            </td>
-                          </tr>
-                        )
-                      })}
+                        {rows.map((row, index) => {
+                          const computed = preview?.lines[index]
+                          const cell = (columnIndex: number) => ({
+                            ref: (node: HTMLInputElement | null) => {
+                              cells.current.set(`${index}:${columnIndex}`, node)
+                            },
+                            onKeyDown: (event: KeyboardEvent<HTMLInputElement>) =>
+                              onCellKeyDown(index, columnIndex, event),
+                          })
+                          return (
+                            <tr key={index} className={computed?.error ? 'row--error' : undefined}>
+                              <td className="grid__index">{index + 1}</td>
+                              <td>
+                                <input
+                                  className="input input--cell"
+                                  value={row.itemName}
+                                  onChange={(e) => setRow(index, { itemName: e.target.value })}
+                                  placeholder="Item name"
+                                  aria-label={`Item name row ${index + 1}`}
+                                  {...cell(0)}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  className="input input--cell input--numeric"
+                                  value={row.grossGrams}
+                                  onChange={(e) => setRow(index, { grossGrams: e.target.value })}
+                                  placeholder="0.000"
+                                  inputMode="decimal"
+                                  aria-label={`Gross weight row ${index + 1}`}
+                                  {...cell(1)}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  className="input input--cell input--numeric"
+                                  value={row.kattRatti}
+                                  onChange={(e) => setRow(index, { kattRatti: e.target.value })}
+                                  placeholder="0.000"
+                                  inputMode="decimal"
+                                  aria-label={`Katt row ${index + 1}`}
+                                  {...cell(2)}
+                                />
+                              </td>
+                              <td className="numeric positive" title={computed?.purityDisplay}>
+                                {computed?.khalisDisplay ?? '—'}
+                              </td>
+                              <td className="numeric">{computed?.rateDisplay ?? '—'}</td>
+                              <td className="numeric">{computed?.amountDisplay ?? '—'}</td>
+                              <td>
+                                <input
+                                  className="input input--cell"
+                                  value={row.remarks ?? ''}
+                                  onChange={(e) => setRow(index, { remarks: e.target.value })}
+                                  placeholder="—"
+                                  aria-label={`Remarks row ${index + 1}`}
+                                  {...cell(3)}
+                                />
+                              </td>
+                              <td className="grid__action">
+                                <Action
+                                  id="wholesale.row.delete"
+                                  variant="icon"
+                                  className="is-danger"
+                                  ariaLabel={`Delete row ${index + 1}`}
+                                  onActivate={() => deleteRow(index)}
+                                >
+                                  <Icon name="trash" size={16} />
+                                </Action>
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
-                      {/* No parentheses. In accounting a bracketed figure means
-                          a negative one, and these were bracketed AND green —
-                          two contradictory signals on a number that is neither.
-                          The magnitude-plus-label rule (DECISIONS §4) is kept by
-                          the formatters upstream, which never emit a sign. */}
+                      {/* No parentheses. In accounting a bracketed figure means a
+                          negative one, and these were bracketed AND green — two
+                          contradictory signals on a number that is neither. */}
                       <tfoot>
                         <tr>
                           <td className="grid__index" />
@@ -378,132 +454,35 @@ export function WholesaleScreen({
                   </div>
 
                   {preview?.lines.some((l) => l.error) ? (
-                    <p className="hint hint--bad">
-                      {preview.lines.find((l) => l.error)?.error}
-                    </p>
+                    <p className="hint hint--bad">{preview.lines.find((l) => l.error)?.error}</p>
                   ) : null}
-
-                  <div className="toolbar">
-                    <Action id="wholesale.row.add" variant="toolbar">
-                      <Icon name="plus" size={16} /> Add Row
-                    </Action>
-                    <Action id="wholesale.row.clear" variant="toolbar">
-                      <Icon name="cross" size={16} /> Clear Row
-                    </Action>
-                    <span className="toolbar__end">
-                      <Action id="wholesale.import-from-stock" variant="toolbar">
-                        <Icon name="upload" size={16} /> Import from Stock
-                      </Action>
-                      <Action id="wholesale.scan-barcode" variant="toolbar">
-                        <Icon name="barcode" size={16} /> Scan Barcode
-                      </Action>
-                    </span>
-                  </div>
                 </div>
               </div>
 
-              <div className="summary-row">
-                <div className="panel">
-                  <div className="panel__title">WEIGHT SUMMARY</div>
-                  <div className="panel__body">
-                    <div className="summary-line">
-                      <span>Total Gross Weight</span>
-                      <span className="summary-line__value">{totals.gross} g</span>
-                    </div>
-                    <div className="summary-line">
-                      <span>Total Khalis Weight</span>
-                      <span className="summary-line__value positive">{totals.khalis} g</span>
-                    </div>
-                  </div>
+              {/* One strip, three figures. Gross is already in the totals row,
+                  the rate is in the entry card and the top bar, and the previous
+                  balance is in the rail — so nothing left this screen when the
+                  three stacked cards became one 60px strip. */}
+              <div className="stat-strip">
+                <div className="stat-cell">
+                  <span className="stat-cell__label">Total Khalis</span>
+                  <span className="stat-cell__value positive">{totals.khalis} g</span>
                 </div>
-
-                <div className="panel">
-                  <div className="panel__title">AMOUNT SUMMARY</div>
-                  <div className="panel__body">
-                    <div className="summary-line">
-                      <span>Rate (per tola)</span>
-                      <span className="summary-line__value">
-                        {preview?.rateDisplay ?? '—'}
-                      </span>
-                    </div>
-                    <div className="summary-line">
-                      <span>Total Amount</span>
-                      <span className="summary-line__value">Rs. {totals.amount}</span>
-                    </div>
-                  </div>
+                <div className="stat-cell">
+                  <span className="stat-cell__label">Total Amount</span>
+                  <span className="stat-cell__value">Rs. {totals.amount}</span>
                 </div>
-
-                <div className="panel">
-                  <div className="panel__title">BALANCE</div>
-                  <div className="panel__body">
-                    <div className="summary-line">
-                      <span>Previous</span>
-                      <span className="summary-line__value">
-                        {preview?.previousBalance?.text ?? '—'}
-                      </span>
-                    </div>
-                    <div className="summary-line">
-                      <span>Current Issued</span>
-                      <span className="summary-line__value">{totals.khalis} g</span>
-                    </div>
-                    <div className="summary-line">
-                      <span>End Balance</span>
-                      <span
-                        className={`summary-line__value ${
-                          preview?.endBalance?.direction === 'shop-owes-party'
-                            ? 'negative'
-                            : 'positive'
-                        }`}
-                      >
-                        {preview?.endBalance?.text ?? '—'}{' '}
-                        {preview?.endBalance?.drCr ? `/${preview.endBalance.drCr}` : ''}
-                      </span>
-                    </div>
-                  </div>
+                <div className="stat-cell">
+                  <span className="stat-cell__label">End Balance</span>
+                  <span
+                    className={`stat-cell__value ${
+                      preview?.endBalance?.direction === 'shop-owes-party' ? 'negative' : 'positive'
+                    }`}
+                  >
+                    {preview?.endBalance?.text ?? '—'}
+                    {preview?.endBalance?.drCr ? ` /${preview.endBalance.drCr}` : ''}
+                  </span>
                 </div>
-              </div>
-
-              <div className="action-bar">
-                <Action
-                  id="wholesale.save"
-                  variant="primary"
-                  style={{ background: 'var(--colour-action-save)' }}
-                >
-                  <Icon name="save" size={17} />
-                  <span>SAVE (F5)</span>
-                </Action>
-                <Action
-                  id="wholesale.save-and-print"
-                  variant="primary"
-                  style={{ background: 'var(--colour-action-save-print)' }}
-                >
-                  <Icon name="print" size={17} />
-                  <span>SAVE &amp; PRINT (F6)</span>
-                </Action>
-                <Action
-                  id="wholesale.print"
-                  variant="primary"
-                  style={{ background: 'var(--colour-action-print)' }}
-                >
-                  <Icon name="print" size={17} />
-                  <span>PRINT (F7)</span>
-                </Action>
-                <Action
-                  id="wholesale.hold"
-                  variant="primary"
-                  style={{ background: 'var(--colour-action-hold)' }}
-                >
-                  <Icon name="pause" size={17} />
-                  <span>HOLD (F8)</span>
-                </Action>
-                <Action
-                  id="wholesale.cancel"
-                  variant="primary"
-                  style={{ background: 'var(--colour-action-cancel)' }}
-                >
-                  <Icon name="cross" size={17} />
-                  <span>CANCEL</span>
-                </Action>
               </div>
             </>
           ) : null}
@@ -523,8 +502,6 @@ export function WholesaleScreen({
           {tab === 'ledger' || tab === 'history' ? (
             <LedgerTable rows={ledger} party={party} />
           ) : null}
-
-          {tab === 'new' ? <LedgerTable rows={ledger} party={party} compact /> : null}
         </div>
 
         <aside className="rail">
@@ -580,12 +557,55 @@ export function WholesaleScreen({
                   </div>
                 </>
               ) : (
-                <p className="hint">Choose a party to see their balance.</p>
+                <EmptyState
+                  title="No party chosen"
+                  line="Search for a party above to see what they owe."
+                />
               )}
             </div>
           </div>
         </aside>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The five slip actions.
+ *
+ * One solid button and four outlined ones. Five solid colour blocks is a
+ * toolbar — every control shouting at the same volume, so none of them is the
+ * answer. Save is the answer; the rest keep their semantic colour on the border
+ * and the label, which is enough to tell them apart without competing.
+ */
+function ActionBar({ busy }: { busy: boolean }) {
+  return (
+    <div className="action-bar">
+      <Action id="wholesale.save" variant="primary" className="is-save" busy={busy}>
+        <Icon name="save" size={18} />
+        <span>SAVE (F5)</span>
+      </Action>
+      <Action
+        id="wholesale.save-and-print"
+        variant="outline"
+        className="is-save-print"
+        busy={busy}
+      >
+        <Icon name="print" size={18} />
+        <span>SAVE &amp; PRINT (F6)</span>
+      </Action>
+      <Action id="wholesale.print" variant="outline" className="is-print">
+        <Icon name="print" size={18} />
+        <span>PRINT (F7)</span>
+      </Action>
+      <Action id="wholesale.hold" variant="outline" className="is-hold">
+        <Icon name="pause" size={18} />
+        <span>HOLD (F8)</span>
+      </Action>
+      <Action id="wholesale.cancel" variant="outline" className="is-cancel">
+        <Icon name="cross" size={18} />
+        <span>CANCEL</span>
+      </Action>
     </div>
   )
 }
@@ -605,7 +625,7 @@ function InvoicePreview({
   const items = (preview?.lines ?? []).filter((line) => !line.error)
   return (
     <div className="panel">
-      <div className="panel__title">INVOICE PREVIEW (80mm)</div>
+      <div className="panel__title">INVOICE PREVIEW (80MM)</div>
       <div className="panel__body slip">
         <div className="slip__brand">
           AL-HARAM
@@ -651,6 +671,9 @@ function InvoicePreview({
               </div>
             ))}
             <div className="slip__rule" />
+            {/* The parentheses stay HERE and only here: this is a facsimile of
+                the paper, and the thermal renderer prints them. The on-screen
+                totals row does not. */}
             <div className="slip__row">
               <span>Total</span>
               <span>( {preview?.grossTotalDisplay ?? '0.000'} )</span>
@@ -682,17 +705,9 @@ function InvoicePreview({
   )
 }
 
-function LedgerTable({
-  rows,
-  party,
-  compact,
-}: {
-  rows: readonly LedgerRowDto[]
-  party: PartyDto | null
-  compact?: boolean
-}) {
+function LedgerTable({ rows, party }: { rows: readonly LedgerRowDto[]; party: PartyDto | null }) {
   return (
-    <div className="panel">
+    <div className="panel panel--fill">
       <div className="panel__title">
         <span>PARTY WHOLE SALE LEDGER {party ? `(${party.name})` : ''}</span>
         <span className="toolbar__end">
@@ -701,73 +716,79 @@ function LedgerTable({
           </Action>
         </span>
       </div>
-      <div className="panel__body">
+      <div className="panel__body panel__body--flush">
         {rows.length === 0 ? (
-          <p className="hint">
-            {party ? 'No entries yet for this party.' : 'Choose a party to see their ledger.'}
-          </p>
+          <EmptyState
+            title={party ? 'No entries yet' : 'No party chosen'}
+            line={
+              party
+                ? `Nothing has been posted for ${party.name}. Saved slips and settlements appear here.`
+                : 'Choose a party on the New Whole Sale tab to see their ledger.'
+            }
+            actionId="wholesale.tab.new"
+            actionLabel="Go to New Whole Sale"
+          />
         ) : (
-          <table className="grid grid--fixed">
-            <colgroup>
-              <col className="col--rate" />
-              <col />
-              <col className="col--khalis" />
-              <col className="col--gross" />
-              <col className="col--gross" />
-              <col className="col--katt" />
-              <col className="col--amount" />
-              <col className="col--katt" />
-              <col className="col--katt" />
-              <col className="col--action" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Invoice No.</th>
-                <th>Type</th>
-                <th className="numeric">Gross (g)</th>
-                <th className="numeric">Khalis (g)</th>
-                <th className="numeric">Settled Gold</th>
-                <th className="numeric">Settled Cash</th>
-                <th className="numeric">Previous</th>
-                <th className="numeric">End Balance</th>
-                <th className="grid__action">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* Three rows on the entry tab, not four. The entry screen's
-                  height is a budget, and every row here is a row the operator
-                  cannot type into. The full list is one click away on Ledger. */}
-              {(compact ? rows.slice(-3) : rows).map((row) => (
-                <tr key={row.entryId} className={row.isReversed ? 'row--reversed' : undefined}>
-                  <td className="numeric">{toDisplayDate(row.date)}</td>
-                  <td>{row.invoiceNo}</td>
-                  <td>
-                    {row.kind}
-                    {row.isOverReturn ? <span className="badge badge--warn">over</span> : null}
-                    {row.isReversed ? <span className="badge">reversed</span> : null}
-                  </td>
-                  <td className="numeric">{row.grossDisplay}</td>
-                  <td className="numeric">{row.khalisDisplay}</td>
-                  <td className="numeric">{row.settledGoldDisplay}</td>
-                  <td className="numeric">{row.settledCashDisplay}</td>
-                  <td className="numeric">{row.previousDisplay}</td>
-                  <td className={`numeric ${row.endDrCr === 'CR' ? 'negative' : 'positive'}`}>
-                    {row.endDisplay} {row.endDrCr ? `/${row.endDrCr}` : ''}
-                  </td>
-                  <td className="grid__action">
-                    <Action
-                      id="wholesale.ledger.view-entry"
-                      variant="icon"
-                      ariaLabel={`View ${row.invoiceNo}`}
-                    >
-                      <Icon name="eye" size={14} />
-                    </Action>
-                  </td>
+          <div className="table-scroll">
+            <table className="grid grid--fixed">
+              <colgroup>
+                <col className="col--rate" />
+                <col />
+                <col className="col--khalis" />
+                <col className="col--gross" />
+                <col className="col--gross" />
+                <col className="col--katt" />
+                <col className="col--amount" />
+                <col className="col--katt" />
+                <col className="col--katt" />
+                <col className="col--action" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Invoice No.</th>
+                  <th>Type</th>
+                  <th className="numeric">Gross (g)</th>
+                  <th className="numeric">Khalis (g)</th>
+                  <th className="numeric">Settled Gold</th>
+                  <th className="numeric">Settled Cash</th>
+                  <th className="numeric">Previous</th>
+                  <th className="numeric">End Balance</th>
+                  <th className="grid__action">Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.entryId} className={row.isReversed ? 'row--reversed' : undefined}>
+                    <td className="numeric">{toDisplayDate(row.date)}</td>
+                    <td>{row.invoiceNo}</td>
+                    <td>
+                      {row.kind}
+                      {row.isOverReturn ? <span className="badge badge--warn">over</span> : null}
+                      {row.isReversed ? <span className="badge">reversed</span> : null}
+                    </td>
+                    <td className="numeric">{row.grossDisplay}</td>
+                    <td className="numeric">{row.khalisDisplay}</td>
+                    <td className="numeric">{row.settledGoldDisplay}</td>
+                    <td className="numeric">{row.settledCashDisplay}</td>
+                    <td className="numeric">{row.previousDisplay}</td>
+                    <td className={`numeric ${row.endDrCr === 'CR' ? 'negative' : 'positive'}`}>
+                      {row.endDisplay} {row.endDrCr ? `/${row.endDrCr}` : ''}
+                    </td>
+                    <td className="grid__action">
+                      <Action
+                        id="wholesale.ledger.view-entry"
+                        variant="icon"
+                        ariaLabel={`View ${row.invoiceNo}`}
+                      >
+                        <Icon name="eye" size={16} />
+                      </Action>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
