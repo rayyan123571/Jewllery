@@ -1,6 +1,17 @@
-/* Layout for the shell. Every colour and dimension comes from a token defined
-   in theme.ts and injected as a CSS custom property — nothing here invents one,
-   so matching the mockup exactly is a change to that file, not a sweep. */
+/* The whole visual system.
+
+   Every colour, dimension, spacing step and shadow comes from a token defined in
+   theme.ts and injected as a CSS custom property — nothing here invents one, so
+   a re-theme is a change to that file, not a sweep through this one.
+
+   Three rules the file holds itself to:
+
+     1. ONE focus treatment, applied globally. Not per-control.
+     2. 120ms on background, border and shadow. Nothing else animates: no
+        transforms, no keyframes, no gradients on large surfaces. A tool that
+        moves while you work is a tool you fight.
+     3. Density comes from the token scale, never from a literal. If a row wants
+        to be taller, --size-row-height changes and every row follows. */
 
 * {
   box-sizing: border-box;
@@ -17,15 +28,57 @@ body,
 body {
   font-family: var(--font-ui);
   font-size: var(--font-size-base);
+  line-height: var(--line-body);
   color: var(--colour-text);
   background: var(--colour-canvas);
   -webkit-font-smoothing: antialiased;
 }
 
+/* Every figure on the screen. Tabular digits keep decimal points in a column,
+   which is the difference between a ledger you can scan and one you can't. */
+.numeric,
+.input--numeric,
+.summary-line__value,
+.rate-panel__value,
+.rate-panel__input,
+.stat__value,
+.clock__time,
+.slip {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── one focus treatment, everywhere ────────────────────────────────────────
+   The default outline is a hairline that disappears against a warm ground.
+   This is the same ring on a button, an input, a table cell editor and a
+   sidebar item, so keyboard position is never ambiguous. */
+*:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-color: var(--colour-gold);
+}
+
+button,
+input,
+select,
+textarea,
+a {
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease;
+}
+
+.grid tbody tr {
+  transition: background-color 120ms ease;
+}
+
 /* ── app frame ──────────────────────────────────────────────────────────── */
 
 .app {
-  /* No title-bar row: the window is frameless and the module bar carries the
+  /* No title-bar row: the window is frameless and the top bar carries the
      window controls, so there is ONE bar across the top instead of three. */
   display: grid;
   grid-template-rows: 1fr var(--size-status-bar-height);
@@ -34,7 +87,7 @@ body {
 
 /* ── frameless window chrome ────────────────────────────────────────────── */
 
-/* The module bar doubles as the drag region. Everything interactive inside it
+/* The top bar doubles as the drag region. Everything interactive inside it
    opts out, or the buttons would move the window instead of being clicked. */
 .top-bar {
   -webkit-app-region: drag;
@@ -50,14 +103,14 @@ body {
 .window-controls {
   display: flex;
   align-self: stretch;
-  margin-left: 4px;
+  margin-left: var(--space-4);
   border-left: 1px solid var(--colour-border);
 }
 
 .action--window {
   /* Deliberately large. These are the smallest targets on screen and the most
      annoying to miss, and a shop counter is not a precision pointing device. */
-  width: 46px;
+  width: 48px;
   align-self: stretch;
   justify-content: center;
   border-radius: 0;
@@ -75,13 +128,13 @@ body {
 
 /* Close goes red on hover, the convention every Windows user already knows. */
 .window-controls__close:hover:not(:disabled) {
-  background: #c42b1c;
-  color: #ffffff;
+  background: var(--colour-action-cancel);
+  color: var(--colour-text-inverse);
 }
 
 .window-controls__close:active:not(:disabled) {
-  background: #a4262c;
-  color: #ffffff;
+  background: var(--colour-negative);
+  color: var(--colour-text-inverse);
 }
 
 .app__body {
@@ -96,8 +149,6 @@ body {
   display: flex;
   flex-direction: column;
   background: var(--colour-navy);
-  /* Was text-inverse (white) for the dark navy sidebar. The chrome is now a
-     warm near-white, so the text has to be the dark one. */
   color: var(--colour-text);
   border-right: 1px solid var(--colour-border);
   min-height: 0;
@@ -106,49 +157,75 @@ body {
 .sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--space-16);
   border-bottom: 1px solid var(--colour-border);
 }
 
 .sidebar__crest {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 2px solid var(--colour-gold);
+  border: 1.5px solid var(--colour-gold);
   display: grid;
   place-items: center;
   color: var(--colour-gold-text);
+  font-family: var(--font-brand);
   font-weight: 700;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
+  letter-spacing: 0.02em;
   flex: none;
 }
 
 .sidebar__name {
+  font-family: var(--font-brand);
   font-size: var(--font-size-md);
   font-weight: 700;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.01em;
   color: var(--colour-gold-text);
-  line-height: 1.15;
+  line-height: var(--line-heading);
 }
 
 .sidebar__section {
-  padding: 12px 12px 6px;
+  padding: var(--space-16) var(--space-16) var(--space-8);
   font-size: var(--font-size-xs);
-  letter-spacing: 1px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--colour-navy-muted);
+}
+
+/* A section heading that follows another group needs air above it, so the
+   groups read as groups rather than as one list with labels in it. */
+.sidebar__section + .sidebar__group,
+.sidebar__group + .sidebar__section {
+  margin-top: var(--space-4);
 }
 
 .sidebar__items {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: 8px;
+  padding-bottom: var(--space-12);
 }
 
 .sidebar__foot {
-  padding: 10px;
+  padding: var(--space-12);
   border-top: 1px solid var(--colour-border);
+}
+
+.sidebar__exit {
+  background: var(--colour-action-exit);
+  color: var(--colour-text-inverse);
+  border-radius: var(--size-radius);
+  justify-content: center;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.sidebar__exit:hover:not(:disabled) {
+  background: var(--colour-action-cancel);
+  color: var(--colour-text-inverse);
 }
 
 /* ── top bar ────────────────────────────────────────────────────────────── */
@@ -165,7 +242,9 @@ body {
   align-items: stretch;
   background: var(--colour-surface);
   border-bottom: 1px solid var(--colour-border);
+  box-shadow: var(--shadow-sm);
   min-width: 0;
+  z-index: 1;
 }
 
 .top-bar__drag {
@@ -175,37 +254,61 @@ body {
 
 .top-bar__aside {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   flex: none;
-  border-left: 1px solid var(--colour-border);
 }
 
+/* The rate panel is a card sitting in the bar, not a strip of the bar. It is
+   the one figure on this screen that changes the value of everything below it. */
 .rate-panel {
-  padding: 4px 14px;
-  border-right: 1px solid var(--colour-border);
-  min-width: 168px;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: var(--space-16);
+  margin-right: var(--space-16);
+  padding: var(--space-8) var(--space-16);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface-muted);
 }
 
 .rate-panel__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
   font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--colour-text-muted);
-  margin-bottom: 2px;
+  max-width: 92px;
+  line-height: var(--line-heading);
+}
+
+.rate-panel__title .action--icon {
+  width: 24px;
+  height: 24px;
 }
 
 .rate-panel__row {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: var(--font-size-sm);
-  line-height: 1.45;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: var(--line-heading);
+}
+
+.rate-panel__row > span:first-child {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
 }
 
 .rate-panel__value {
-  font-family: var(--font-numeric);
+  font-size: 20px;
   font-weight: 700;
   color: var(--colour-gold-text);
-  padding: 0 2px;
-  border-radius: 3px;
+  padding: 0 var(--space-4);
+  border-radius: var(--size-radius);
+  line-height: var(--line-heading);
 }
 
 .rate-panel__value:hover:not(:disabled) {
@@ -213,14 +316,13 @@ body {
 }
 
 .rate-panel__input {
-  width: 82px;
-  height: 18px;
-  padding: 0 4px;
+  width: 110px;
+  height: 28px;
+  padding: 0 var(--space-8);
   border: 1px solid var(--colour-gold);
-  border-radius: 3px;
+  border-radius: var(--size-radius);
   background: var(--colour-surface);
-  font-family: var(--font-numeric);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-lg);
   font-weight: 700;
   text-align: right;
   color: var(--colour-text);
@@ -228,30 +330,78 @@ body {
 
 .rate-panel__empty {
   font-size: var(--font-size-sm);
+  font-weight: 600;
   color: var(--colour-negative);
-  line-height: 1.45;
 }
 
+/* Secondary by design. The clock is orientation, not information — it must
+   recede rather than compete with the rate. */
 .clock {
-  padding: 4px 14px;
-  border-right: 1px solid var(--colour-border);
-  text-align: center;
-  min-width: 130px;
+  align-self: center;
+  padding: 0 var(--space-16);
+  text-align: right;
+  min-width: 156px;
+  color: var(--colour-text-muted);
+  line-height: var(--line-heading);
 }
 
 .clock__day {
-  font-size: var(--font-size-sm);
-  color: var(--colour-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .clock__date {
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-sm);
   font-weight: 600;
+  color: var(--colour-text);
 }
 
 .clock__time {
-  font-family: var(--font-numeric);
+  font-size: var(--font-size-xs);
+}
+
+/* ── the user chip ──────────────────────────────────────────────────────── */
+
+.user-chip {
+  align-self: center;
+  gap: var(--space-12);
+  padding: var(--space-4) var(--space-12);
+  margin: 0 var(--space-8);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius-pill);
+  background: var(--colour-surface);
+}
+
+.user-chip:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+}
+
+.user-chip__avatar {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--colour-gold-soft);
+  color: var(--colour-gold-text);
+  display: grid;
+  place-items: center;
   font-size: var(--font-size-sm);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.user-chip__text {
+  text-align: left;
+  line-height: var(--line-heading);
+}
+
+.user-chip__name {
+  display: block;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.user-chip__role {
+  font-size: var(--font-size-xs);
   color: var(--colour-text-muted);
 }
 
@@ -259,71 +409,100 @@ body {
 
 .content {
   overflow: auto;
-  padding: 10px 12px;
+  padding: var(--space-24);
   min-height: 0;
 }
 
 .module-title {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-brand);
+  font-size: var(--font-size-xl);
   font-weight: 700;
-  color: var(--colour-navy);
-  letter-spacing: 0.4px;
-  margin: 0 0 8px;
+  line-height: var(--line-heading);
+  color: var(--colour-text);
+  letter-spacing: 0.01em;
+  margin: 0 0 var(--space-16);
 }
+
+/* ── cards ──────────────────────────────────────────────────────────────── */
 
 .panel {
   background: var(--colour-surface);
   border: 1px solid var(--colour-border);
-  border-radius: var(--size-radius);
+  border-radius: var(--size-radius-large);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .panel__title {
-  padding: 5px 10px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: 44px;
+  padding: var(--space-8) var(--space-16);
   background: var(--colour-surface-header);
   border-bottom: 1px solid var(--colour-border);
   font-size: var(--font-size-sm);
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  color: var(--colour-navy);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--colour-text);
 }
 
 .panel__body {
-  padding: 8px 10px;
+  padding: var(--space-16);
+}
+
+/* A body whose only child is a table: the table draws its own edges. */
+.panel__body--flush {
+  padding: 0;
+}
+
+.panel + .panel,
+.panel + .stat-row,
+.stat-row + .panel {
+  margin-top: var(--space-16);
 }
 
 .tabs {
   display: flex;
-  gap: 3px;
+  gap: var(--space-4);
   border-bottom: 1px solid var(--colour-border);
-  padding: 0 6px;
-  background: var(--colour-surface);
+  padding: var(--space-8) var(--space-12) 0;
+  background: var(--colour-surface-muted);
 }
 
+/* ── fields ─────────────────────────────────────────────────────────────── */
+
 .field-row {
+  /* Was a rigid five-column grid, which meant every field was as narrow as the
+     narrowest useful one and none could breathe. Auto-fit lets the row reflow
+     at any window width instead of squeezing. */
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  padding: 8px 10px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-16) var(--space-16);
   background: var(--colour-surface);
+  align-items: start;
 }
 
 .field__label {
   display: block;
   font-size: var(--font-size-sm);
+  font-weight: 600;
   color: var(--colour-text-muted);
-  margin-bottom: 3px;
+  margin-bottom: var(--space-4);
 }
 
 .field__control {
   display: flex;
-  gap: 4px;
+  gap: var(--space-8);
 }
 
 .input,
 .select {
   width: 100%;
-  height: 26px;
-  padding: 0 7px;
+  height: var(--size-control-height);
+  padding: 0 var(--space-12);
   border: 1px solid var(--colour-border);
   border-radius: var(--size-radius);
   background: var(--colour-surface);
@@ -332,8 +511,12 @@ body {
   color: var(--colour-text);
 }
 
+.input:hover:not(:disabled),
+.select:hover:not(:disabled) {
+  border-color: var(--colour-border-strong);
+}
+
 .input--numeric {
-  font-family: var(--font-numeric);
   text-align: right;
 }
 
@@ -343,37 +526,81 @@ body {
   color: var(--colour-disabled-text);
 }
 
+.input::placeholder {
+  color: var(--colour-disabled-text);
+}
+
 /* ── tables ─────────────────────────────────────────────────────────────── */
+
+/* Wraps a .grid to give it a sticky header and its own scroll, so the column
+   titles stay put while the operator works down a long slip. */
+.table-scroll {
+  overflow: auto;
+  max-height: calc(var(--size-row-height) * 13);
+}
 
 .grid {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: var(--font-size-base);
 }
 
 .grid th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--colour-surface-header);
-  border: 1px solid var(--colour-border);
-  padding: 5px 6px;
+  /* Horizontal rules only. Full gridlines read as a spreadsheet, not a product. */
+  border-bottom: 1px solid var(--colour-border);
+  padding: var(--size-cell-padding);
   font-size: var(--font-size-sm);
   font-weight: 600;
-  color: var(--colour-navy);
-  text-align: center;
+  letter-spacing: 0.04em;
+  color: var(--colour-text-muted);
+  text-align: left;
+  white-space: nowrap;
 }
 
 .grid td {
-  border: 1px solid var(--colour-border);
-  padding: 4px 6px;
+  border-bottom: 1px solid var(--colour-border);
+  padding: var(--size-cell-padding);
+  height: var(--size-row-height);
 }
 
-.grid td.numeric {
-  font-family: var(--font-numeric);
+.grid tbody tr:nth-child(even) td {
+  background: var(--colour-surface-muted);
+}
+
+.grid tbody tr:hover td {
+  background: var(--colour-gold-wash);
+}
+
+/* The row being typed into. A 2px gold edge, not a fill: the operator needs to
+   see where they are without losing the reading of the figures. */
+.grid tbody tr:focus-within td:first-child {
+  box-shadow: inset 2px 0 0 var(--colour-gold);
+}
+
+.grid td.numeric,
+.grid th.numeric {
   text-align: right;
 }
 
 .grid tfoot td {
   background: var(--colour-surface-header);
+  border-top: 1px solid var(--colour-border-strong);
+  border-bottom: none;
   font-weight: 700;
+}
+
+.grid__index {
+  text-align: center;
+  color: var(--colour-text-muted);
+}
+
+.grid__action {
+  text-align: center;
 }
 
 .positive {
@@ -386,26 +613,98 @@ body {
   font-weight: 600;
 }
 
-/* ── summary strip ──────────────────────────────────────────────────────── */
+/* A cell editor. Invisible until it has focus, so a table of inputs still
+   reads as a table rather than as a wall of boxes. */
+.input--cell {
+  height: calc(var(--size-row-height) - 12px);
+  border-color: transparent;
+  background: transparent;
+  padding: 0 var(--space-8);
+}
+
+.input--cell:hover:not(:disabled) {
+  border-color: var(--colour-border);
+  background: var(--colour-surface);
+}
+
+.input--cell:focus {
+  border-color: var(--colour-gold);
+  background: var(--colour-surface);
+  outline: none;
+}
+
+.row--error td {
+  background: var(--colour-negative-soft);
+}
+
+.row--reversed td {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+/* ── stat tiles ─────────────────────────────────────────────────────────── */
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-16);
+}
+
+.stat {
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius-large);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-16);
+}
+
+.stat__label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
+}
+
+.stat__value {
+  font-size: var(--font-size-xxl);
+  font-weight: 700;
+  line-height: var(--line-heading);
+  margin-top: var(--space-4);
+}
+
+.stat__note {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+}
+
+/* ── summary lines ──────────────────────────────────────────────────────── */
 
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-16);
+  margin-top: var(--space-16);
 }
 
 .summary-line {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 3px 0;
+  align-items: baseline;
+  gap: var(--space-16);
+  padding: var(--space-8) 0;
   font-size: var(--font-size-base);
+  color: var(--colour-text-muted);
+}
+
+.summary-line + .summary-line {
+  border-top: 1px solid var(--colour-border);
 }
 
 .summary-line__value {
-  font-family: var(--font-numeric);
   font-weight: 700;
+  color: var(--colour-text);
+  text-align: right;
 }
 
 /* ── action buttons ─────────────────────────────────────────────────────── */
@@ -420,7 +719,7 @@ body {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-8);
   position: relative;
 }
 
@@ -434,12 +733,13 @@ body {
   background: var(--colour-disabled-surface) !important;
   color: var(--colour-disabled-text) !important;
   border-color: var(--colour-border) !important;
+  box-shadow: none !important;
   opacity: 1;
 }
 
 .action__lock {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--colour-disabled-text);
   flex: none;
@@ -447,7 +747,9 @@ body {
 
 .action--sidebar {
   width: 100%;
-  padding: 7px 12px;
+  height: var(--size-sidebar-item-height);
+  padding: 0 var(--space-16);
+  gap: var(--space-12);
   justify-content: flex-start;
   font-size: var(--font-size-md);
   color: var(--colour-text);
@@ -455,14 +757,26 @@ body {
 }
 
 .action--sidebar:hover:not(:disabled) {
-  background: var(--colour-navy-hover);
+  background: var(--colour-surface-muted);
 }
 
+/* Active is a soft ground plus a gold indicator bar, NOT a solid gold block:
+   gold at full strength across a 248px item is loud, and dark text on it does
+   not clear contrast comfortably for an eight-hour shift. */
 .action--sidebar.is-active {
-  background: var(--colour-gold);
-  /* Dark on gold. White here fails contrast badly against #C9A227. */
-  color: #2B2620;
+  background: var(--colour-gold-soft);
+  color: var(--colour-gold-text);
   font-weight: 600;
+}
+
+.action--sidebar.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--colour-gold);
 }
 
 .action--sidebar:disabled {
@@ -472,11 +786,11 @@ body {
 .action--topbar {
   flex-direction: column;
   gap: 2px;
-  padding: 6px 11px;
+  padding: var(--space-8) var(--space-12);
   font-size: var(--font-size-sm);
   border-radius: 0;
   color: var(--colour-text);
-  min-width: 62px;
+  min-width: 72px;
   justify-content: center;
 }
 
@@ -485,8 +799,8 @@ body {
 }
 
 .action--topbar.is-active {
-  background: var(--colour-gold-bright);
-  color: #2B2620;
+  background: var(--colour-gold-soft);
+  color: var(--colour-gold-text);
   font-weight: 600;
 }
 
@@ -495,55 +809,140 @@ body {
 }
 
 .action--tab {
-  padding: 6px 14px;
+  height: var(--size-button-height);
+  padding: 0 var(--space-16);
   font-size: var(--font-size-base);
+  font-weight: 600;
   border-radius: var(--size-radius) var(--size-radius) 0 0;
   color: var(--colour-text-muted);
 }
 
-.action--tab.is-active {
-  background: var(--colour-info);
-  color: var(--colour-text-inverse);
-  font-weight: 600;
+.action--tab:hover:not(:disabled) {
+  color: var(--colour-text);
+  background: var(--colour-surface);
 }
 
+.action--tab.is-active {
+  background: var(--colour-surface);
+  color: var(--colour-gold-text);
+  border-color: var(--colour-border);
+  border-bottom-color: var(--colour-surface);
+  margin-bottom: -1px;
+}
+
+/* The five slip actions. Solid, but flat and desaturated — a row of buttons,
+   not a row of warnings. */
 .action--primary {
-  flex-direction: column;
-  gap: 1px;
-  padding: 9px 8px;
+  height: var(--size-button-height-large);
+  padding: 0 var(--space-16);
+  gap: var(--space-8);
   color: var(--colour-text-inverse);
-  font-weight: 700;
-  font-size: var(--font-size-md);
+  font-weight: 600;
+  font-size: var(--font-size-base);
   justify-content: center;
-  border-radius: var(--size-radius-large);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Everything that is not THE save. Outline rather than a fifth solid block. */
+.action--secondary {
+  height: var(--size-button-height-large);
+  padding: 0 var(--space-16);
+  gap: var(--space-8);
+  justify-content: center;
+  font-weight: 600;
+  background: var(--colour-surface);
+  border-color: var(--colour-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.action--secondary:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
 }
 
 .action--toolbar {
-  padding: 4px 10px;
+  height: var(--size-button-height);
+  padding: 0 var(--space-16);
   border: 1px solid var(--colour-border);
   background: var(--colour-surface);
   font-size: var(--font-size-base);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
+.action--toolbar:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+  border-color: var(--colour-border-strong);
+}
+
+/* A borderless button for cancel-shaped choices, so a dialog never shows two
+   controls of equal weight when only one of them is the expected answer. */
+.action--ghost {
+  height: var(--size-button-height);
+  padding: 0 var(--space-16);
+  font-weight: 600;
+  color: var(--colour-text-muted);
+  justify-content: center;
+}
+
+.action--ghost:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+  color: var(--colour-text);
 }
 
 .action--quick {
-  padding: 7px 6px;
+  min-height: var(--size-button-height);
+  padding: var(--space-8) var(--space-12);
   border: 1px solid var(--colour-border);
   background: var(--colour-surface-muted);
   font-size: var(--font-size-sm);
+  font-weight: 600;
   justify-content: center;
+  text-align: center;
   width: 100%;
 }
 
+.action--quick:hover:not(:disabled) {
+  background: var(--colour-gold-wash);
+  border-color: var(--colour-border-strong);
+}
+
 .action--icon {
-  padding: 2px 5px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   justify-content: center;
+  color: var(--colour-text-muted);
+}
+
+.action--icon:hover:not(:disabled) {
+  background: var(--colour-surface-muted);
+  color: var(--colour-text);
+}
+
+/* Row delete. Red only on hover, so a table of them is not a table of alarms. */
+.action--icon.is-danger:hover:not(:disabled) {
+  background: var(--colour-negative-soft);
+  color: var(--colour-negative);
 }
 
 .action-bar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-12);
+  margin-top: var(--space-16);
+}
+
+.toolbar {
+  display: flex;
+  gap: var(--space-12);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.toolbar__end {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-12);
 }
 
 /* ── right rail ─────────────────────────────────────────────────────────── */
@@ -551,37 +950,68 @@ body {
 .workspace__split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--size-preview-width);
-  gap: 10px;
+  gap: var(--space-16);
   align-items: start;
 }
 
 .rail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-16);
 }
 
 .quick-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: var(--space-8);
 }
 
 .slip {
-  font-family: var(--font-numeric);
   font-size: var(--font-size-xs);
-  line-height: 1.5;
+  line-height: var(--line-body);
 }
 
 .slip__rule {
   border-top: 1px dashed var(--colour-border-strong);
-  margin: 5px 0;
+  margin: var(--space-8) 0;
 }
 
 .slip__row {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-8);
+}
+
+.slip__head {
+  font-weight: 700;
+  border-bottom: 1px solid var(--colour-border);
+  padding-bottom: 2px;
+}
+
+.slip__item span:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slip__row span {
+  min-width: 0;
+}
+
+.slip__brand {
+  text-align: center;
+  font-family: var(--font-brand);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+}
+
+.slip__centre {
+  text-align: center;
+}
+
+.slip__total {
+  font-weight: 700;
 }
 
 /* ── status bar ─────────────────────────────────────────────────────────── */
@@ -589,21 +1019,32 @@ body {
 .status-bar {
   display: flex;
   align-items: center;
-  gap: 26px;
-  padding: 0 12px;
-  background: var(--colour-navy-deep);
+  gap: var(--space-32);
+  padding: 0 var(--space-24);
+  background: var(--colour-surface-muted);
   color: var(--colour-text-muted);
   border-top: 1px solid var(--colour-border);
   font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.status-bar strong {
+  font-weight: 600;
+  color: var(--colour-text-muted);
 }
 
 .status-bar__dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--colour-positive);
-  margin-left: 5px;
+  margin-left: var(--space-8);
+}
+
+.status-bar__dot--off {
+  background: var(--colour-negative);
 }
 
 .status-bar__version {
@@ -616,40 +1057,103 @@ body {
   display: grid;
   place-items: center;
   height: 100%;
-  min-height: 340px;
+  min-height: 420px;
   text-align: center;
   color: var(--colour-text-muted);
 }
 
 .placeholder__badge {
   display: inline-block;
-  padding: 3px 10px;
-  border-radius: 10px;
-  background: var(--colour-disabled-surface);
-  color: var(--colour-disabled-text);
-  font-size: var(--font-size-sm);
+  padding: var(--space-4) var(--space-16);
+  border-radius: var(--size-radius-pill);
+  background: var(--colour-gold-soft);
+  color: var(--colour-gold-text);
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  margin-bottom: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-16);
 }
 
 .placeholder__title {
-  font-size: var(--font-size-xl);
-  color: var(--colour-navy);
+  font-family: var(--font-brand);
+  font-size: var(--font-size-xxl);
+  line-height: var(--line-heading);
+  color: var(--colour-text);
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-8);
 }
+
+.placeholder__body {
+  max-width: 460px;
+  margin: 0 auto;
+  font-size: var(--font-size-md);
+  line-height: var(--line-body);
+}
+
+/* ── banners, callouts and hints ────────────────────────────────────────── */
 
 .banner {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
-  border: 1px solid #E6C200;
-  background: #FFF8DC;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+  margin-bottom: var(--space-16);
+  border: 1px solid var(--colour-warn-border);
+  background: var(--colour-warn-soft);
   border-radius: var(--size-radius);
   font-size: var(--font-size-base);
-  color: #6B5200;
+  color: var(--colour-warn-text);
+}
+
+.banner--good {
+  background: var(--colour-positive-soft);
+  border-color: var(--colour-positive);
+  color: var(--colour-positive);
+}
+
+.banner--bad {
+  background: var(--colour-negative-soft);
+  border-color: var(--colour-negative);
+  color: var(--colour-negative);
+}
+
+/* An explanation that has to be read, not grey small print stepped over. */
+.callout {
+  padding: var(--space-12) var(--space-16);
+  background: var(--colour-gold-soft);
+  border-left: 3px solid var(--colour-gold);
+  border-radius: 0 var(--size-radius) var(--size-radius) 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-body);
+  color: var(--colour-gold-text);
+}
+
+.hint {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  line-height: var(--line-body);
+  margin: var(--space-12) 0 0;
+}
+
+.hint--bad {
+  color: var(--colour-negative);
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: var(--space-8);
+  padding: 0 var(--space-8);
+  border-radius: var(--size-radius-pill);
+  font-size: var(--font-size-xs);
+  background: var(--colour-disabled-surface);
+  color: var(--colour-disabled-text);
+}
+
+.badge--warn {
+  background: var(--colour-negative-soft);
+  color: var(--colour-negative);
 }
 
 /* ── login ──────────────────────────────────────────────────────────────── */
@@ -658,172 +1162,126 @@ body {
   display: grid;
   place-items: center;
   height: 100%;
-  background: var(--colour-navy);
+  /* The canvas, not the sidebar colour. A card floats on the paper. */
+  background: var(--colour-canvas);
 }
 
 .login__card {
-  width: 380px;
+  width: 440px;
   background: var(--colour-surface);
   border: 1px solid var(--colour-border);
   border-radius: var(--size-radius-large);
-  padding: 22px 24px 24px;
-  box-shadow: 0 14px 40px rgba(120, 96, 30, 0.16);
+  padding: var(--space-32);
+  box-shadow: var(--shadow-lg);
 }
 
 .login__brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding-bottom: 14px;
+  gap: var(--space-12);
+  text-align: center;
+  padding-bottom: var(--space-24);
   border-bottom: 1px solid var(--colour-border);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-24);
+}
+
+.login__brand .sidebar__crest {
+  width: 56px;
+  height: 56px;
+  font-size: var(--font-size-lg);
 }
 
 .login__brand .sidebar__name {
-  color: var(--colour-navy);
+  font-size: var(--font-size-xl);
+  text-align: center;
 }
 
 .login__title {
+  font-family: var(--font-brand);
   font-size: var(--font-size-xl);
-  margin: 0 0 12px;
-  color: var(--colour-navy);
+  line-height: var(--line-heading);
+  margin: 0 0 var(--space-8);
+  color: var(--colour-text);
 }
 
 .login__note {
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
   color: var(--colour-text-muted);
-  line-height: 1.5;
-  margin: 0 0 14px;
+  line-height: var(--line-body);
+  margin: 0 0 var(--space-16);
 }
 
 .login__field {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-16);
 }
 
 .login__field > span {
   display: block;
   font-size: var(--font-size-sm);
+  font-weight: 600;
   color: var(--colour-text-muted);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-4);
 }
 
 .login__field .input {
-  height: 32px;
+  height: var(--size-button-height);
 }
 
 .login__submit {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: var(--space-8);
   width: 100%;
-  height: 34px;
-  border: none;
+  height: var(--size-button-height-large);
+  border: 1px solid var(--colour-gold);
   border-radius: var(--size-radius);
-  background: var(--colour-action-save);
-  color: #fff;
+  background: var(--colour-gold);
+  color: var(--colour-text-inverse);
   font-family: var(--font-ui);
   font-size: var(--font-size-md);
   font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.login__submit:hover:not(:disabled) {
+  background: var(--colour-gold-text);
+  border-color: var(--colour-gold-text);
 }
 
 .login__submit:disabled {
   background: var(--colour-disabled-surface);
+  border-color: var(--colour-border);
   color: var(--colour-disabled-text);
   cursor: not-allowed;
 }
 
+/* Never red on red: a tinted ground, a solid left bar, and readable text. */
 .login__error {
-  margin-top: 12px;
-  padding: 7px 10px;
-  border-radius: var(--size-radius);
-  background: #fdecec;
-  border: 1px solid #f0b4b4;
-  color: #8c1d18;
-  font-size: var(--font-size-base);
-}
-
-/* ── banners and hints ──────────────────────────────────────────────────── */
-
-.banner--good {
-  background: #e8f6ec;
-  border-color: #9ed3ae;
-  color: #14532d;
-}
-
-.banner--bad {
-  background: #fdecec;
-  border-color: #f0b4b4;
-  color: #8c1d18;
-}
-
-.hint {
-  font-size: var(--font-size-sm);
-  color: var(--colour-text-muted);
-  line-height: 1.5;
-  margin: 8px 0 0;
-}
-
-.hint--bad {
+  margin-top: var(--space-16);
+  padding: var(--space-12) var(--space-16);
+  border-radius: 0 var(--size-radius) var(--size-radius) 0;
+  background: var(--colour-negative-soft);
+  border-left: 3px solid var(--colour-negative);
   color: var(--colour-negative);
-}
-
-/* ── grid cells ─────────────────────────────────────────────────────────── */
-
-.input--cell {
-  height: 22px;
-  border-color: transparent;
-  background: transparent;
-  padding: 0 4px;
-}
-
-.input--cell:focus {
-  border-color: var(--colour-info);
-  background: var(--colour-surface);
-  outline: none;
-}
-
-.row--error td {
-  background: #fff6f6;
-}
-
-.row--reversed td {
-  opacity: 0.55;
-  text-decoration: line-through;
-}
-
-.badge {
-  display: inline-block;
-  margin-left: 5px;
-  padding: 0 5px;
-  border-radius: 8px;
-  font-size: var(--font-size-xs);
-  background: var(--colour-disabled-surface);
-  color: var(--colour-disabled-text);
-}
-
-.badge--warn {
-  background: #fdecec;
-  color: #8c1d18;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
 }
 
 /* ── party selector ─────────────────────────────────────────────────────── */
 
 .party {
-  /* Two fields (name + code) inside one row of the five-column field strip.
-     Without the span they share a single column and the name box collapses to
-     a few characters, which is unusable for a type-ahead. */
+  /* Two fields (name + code) inside the field strip. Without the span they
+     share a single column and the name box collapses to a few characters,
+     which is unusable for a type-ahead. */
   grid-column: span 2;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: var(--space-12);
   position: relative;
-  align-items: start;
-}
-
-.field-row {
   align-items: start;
 }
 
@@ -831,26 +1289,27 @@ body {
   position: absolute;
   top: 100%;
   left: 0;
-  right: 78px;
+  right: 0;
   z-index: 20;
-  margin: 2px 0 0;
-  padding: 0;
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4);
   list-style: none;
-  max-height: 210px;
+  max-height: 280px;
   overflow-y: auto;
   background: var(--colour-surface);
   border: 1px solid var(--colour-border-strong);
   border-radius: var(--size-radius);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-lg);
 }
 
 .party__option {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-12);
   width: 100%;
-  padding: 5px 8px;
-  border: 0;
+  padding: var(--space-8) var(--space-12);
+  border: 1px solid transparent;
+  border-radius: var(--size-radius);
   background: transparent;
   font-family: var(--font-ui);
   font-size: var(--font-size-base);
@@ -859,14 +1318,15 @@ body {
 }
 
 .party__option:hover {
-  background: var(--colour-surface-muted);
+  background: var(--colour-gold-wash);
 }
 
 .party__code {
   font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--colour-info);
-  min-width: 44px;
+  color: var(--colour-gold-text);
+  min-width: 56px;
 }
 
 .party__city {
@@ -908,60 +1368,104 @@ body {
   z-index: 60;
   display: grid;
   place-items: center;
-  background: rgba(16, 24, 40, 0.45);
+  padding: var(--space-24);
+  background: rgba(31, 27, 20, 0.5);
+  backdrop-filter: blur(2px);
 }
 
 .modal__card {
   width: 520px;
+  max-height: 100%;
+  overflow: auto;
   background: var(--colour-surface);
   border-radius: var(--size-radius-large);
-  overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-lg);
+}
+
+.modal__card--wide {
+  width: 720px;
+  padding: var(--space-32) var(--space-32) var(--space-24);
+}
+
+.modal__title {
+  font-family: var(--font-brand);
+  font-size: var(--font-size-xl);
+  line-height: var(--line-heading);
+  font-weight: 700;
+  margin: 0;
+}
+
+.modal__subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  margin: var(--space-4) 0 0;
+}
+
+.modal__sections {
+  display: grid;
+  gap: var(--space-24);
+  margin-top: var(--space-24);
+}
+
+.modal__foot {
+  display: flex;
+  gap: var(--space-12);
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: var(--space-24);
+  padding-top: var(--space-16);
+  border-top: 1px solid var(--colour-border);
+}
+
+.modal__foot .login__submit {
+  width: auto;
+  min-width: 160px;
+  height: var(--size-button-height);
+  padding: 0 var(--space-24);
+}
+
+.form-section__title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
+  margin-bottom: var(--space-12);
+  padding-bottom: var(--space-8);
+  border-bottom: 1px solid var(--colour-border);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-16);
 }
 
 /* The over-return confirmation. A question with a Continue button, never a
    dismiss box — the operator has to be able to act on it, not just close it. */
 .confirm {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: 1px solid #e6c200;
-  background: #fff8dc;
+  margin-top: var(--space-16);
+  padding: var(--space-16);
+  border: 1px solid var(--colour-warn-border);
+  background: var(--colour-warn-soft);
   border-radius: var(--size-radius);
 }
 
 .confirm__text {
   font-size: var(--font-size-md);
-  color: #6b5200;
-  line-height: 1.5;
-  margin-bottom: 10px;
+  color: var(--colour-warn-text);
+  line-height: var(--line-body);
+  margin-bottom: var(--space-16);
 }
 
 .confirm__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-12);
   justify-content: flex-end;
 }
 
 .confirm__actions .login__submit {
   width: auto;
-  padding: 0 16px;
-}
-
-/* ── slip ───────────────────────────────────────────────────────────────── */
-
-.slip__head {
-  font-weight: 700;
-  border-bottom: 1px solid var(--colour-border);
-  padding-bottom: 2px;
-}
-
-.slip__item span:first-child {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.slip__row span {
-  min-width: 0;
+  height: var(--size-button-height);
+  padding: 0 var(--space-24);
 }

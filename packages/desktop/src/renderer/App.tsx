@@ -182,7 +182,7 @@ function Sidebar({ active }: { active: ModuleId }) {
         ))}
       </div>
       <div className="sidebar__foot">
-        <Action id="app.exit" variant="sidebar" style={{ background: '#B3261E', color: '#fff' }}>
+        <Action id="app.exit" variant="sidebar" className="sidebar__exit">
           <Icon name="exit" />
           <span>EXIT</span>
         </Action>
@@ -363,13 +363,13 @@ function Clock({ now }: { now: Date }) {
 
 function UserChip({ boot }: { boot: BootstrapDto }) {
   return (
-    <Action id="app.user-menu" variant="plain" style={{ padding: '4px 12px', gap: 8 }}>
-      <Icon name="user" size={18} />
-      <span style={{ textAlign: 'left', lineHeight: 1.25 }}>
-        <strong style={{ display: 'block' }}>{boot.user?.name ?? 'Not signed in'}</strong>
-        <span style={{ color: 'var(--colour-text-muted)' }}>{boot.user?.role ?? '—'}</span>
+    <Action id="app.user-menu" variant="plain" className="user-chip">
+      <Icon name="user" size={20} />
+      <span className="user-chip__text">
+        <strong className="user-chip__name">{boot.user?.name ?? 'Not signed in'}</strong>
+        <span className="user-chip__role">{boot.user?.role ?? '—'}</span>
       </span>
-      <Icon name="chevron" size={12} />
+      <Icon name="chevron" size={14} />
     </Action>
   )
 }
@@ -386,10 +386,7 @@ function StatusBar({ boot }: { boot: BootstrapDto }) {
       <span>
         <strong>Database :</strong> {boot.databaseConnected ? 'Connected' : 'Not connected'}
         <span
-          className="status-bar__dot"
-          style={
-            boot.databaseConnected ? undefined : { background: 'var(--colour-negative)' }
-          }
+          className={`status-bar__dot${boot.databaseConnected ? '' : ' status-bar__dot--off'}`}
         />
       </span>
       <span>
