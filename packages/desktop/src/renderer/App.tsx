@@ -275,9 +275,13 @@ function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void 
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  // A refused rate used to vanish silently: the panel closed and showed the old
+  // figure, so a typo that broke the purity ordering looked like it had saved.
+  const [error, setError] = useState<string | null>(null)
 
   const begin = (purity: string, display: string): void => {
     setEditing(purity)
+    setError(null)
     // Seed with digits only — a user editing "Rs. 358,000" wants to retype the
     // number, not delete the currency and the separators first.
     setDraft(display.replace(/[^\d.]/g, ''))
@@ -295,7 +299,15 @@ function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void 
         effectiveFrom: isoToday(),
         note: 'edited from the rate panel',
       })
-      if (result.ok) onSaved()
+      if (result.ok) {
+        setError(null)
+        onSaved()
+      } else {
+        // Refused — most often a purity-ordering conflict (RateService rejects
+        // a lower purity priced above a higher one). Say so rather than closing
+        // the editor as though it had been accepted.
+        setError(result.message)
+      }
     } finally {
       setSaving(false)
       setEditing(null)
@@ -303,7 +315,7 @@ function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void 
   }
 
   return (
-    <div className="rate-panel">
+    <div className={`rate-panel${error ? ' rate-panel--bad' : ''}`}>
       <div className="rate-panel__title">
         Gold Rate (Per Tola){' '}
         <Action id="rate.refresh" variant="icon" ariaLabel="Refresh gold rate">
@@ -347,6 +359,14 @@ function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void 
           </div>
         ))
       )}
+      {error ? (
+        // The bar has no room for a sentence, so the panel carries the short
+        // form and the full message is one hover away. The Gold Rate screen
+        // shows the same message in full.
+        <div className="rate-panel__error" role="alert" title={error}>
+          Rate refused
+        </div>
+      ) : null}
     </div>
   )
 }

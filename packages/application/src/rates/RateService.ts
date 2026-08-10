@@ -1,7 +1,10 @@
 import {
+  FINENESS,
   Money,
+  PURITIES,
   businessDayOf,
   can,
+  formatPurity,
   type Clock,
   type GoldRate,
   type IsoDate,
@@ -128,6 +131,8 @@ export class RateService {
       )
     }
 
+    this.assertPurityOrdering(input.branchId, input.purity, input.ratePerTola, input.effectiveFrom)
+
     const previous = this.rateOn(input.branchId, input.purity, input.effectiveFrom)
     const recorded = this.deps.goldRates.record({
       branchId: input.branchId,
@@ -153,6 +158,67 @@ export class RateService {
     })
 
     return recorded
+  }
+
+  /**
+   * A lower purity may never be worth more per tola than a higher one.
+   *
+   * This is arithmetic, not preference: 22 karat gold is 916 parts pure of a
+   * thousand and 24 karat is 999, so a tola of 22K contains strictly less gold
+   * than a tola of 24K and cannot fetch more for it. When the two disagree the
+   * shop is not looking at an unusual market, it is looking at a typo — and the
+   * cost of that typo is every slip priced off the wrong figure until somebody
+   * notices, because nothing downstream re-checks it.
+   *
+   * Compared against the rates **in force on the same effective date**, which
+   * is the set that would actually be used together. Rates for other days are
+   * unaffected: a shop correcting last month's 22K does not have to reconcile
+   * it with today's 24K.
+   *
+   * Equal values pass. Two purities quoting the same figure is unusual but it
+   * is not an inversion, and refusing it would block a legitimate flat quote.
+   *
+   * Thrown as ValidationError like the two checks above it. The rate IPC
+   * handler already turns that into `{ ok: false, message }`, so the renderer
+   * sees the same result shape it handles today and never an exception.
+   */
+  private assertPurityOrdering(
+    branchId: string,
+    purity: Purity,
+    ratePerTola: Money,
+    effectiveFrom: IsoDate,
+  ): void {
+    for (const other of PURITIES) {
+      if (other === purity) continue
+      const existing = this.rateOn(branchId, other, effectiveFrom)
+      if (!existing) continue
+
+      const comparison = ratePerTola.compare(existing.ratePerTola)
+      if (comparison === 0) continue
+
+      const thisIsFiner = FINENESS[purity] > FINENESS[other]
+      const thisIsDearer = comparison > 0
+
+      // An inversion is a purity that is finer but cheaper, or coarser but
+      // dearer. Finer-and-dearer and coarser-and-cheaper are both correct.
+      if (thisIsFiner === thisIsDearer) continue
+
+      const [dearer, cheaper] = thisIsDearer
+        ? ([
+            { purity, rate: ratePerTola },
+            { purity: other, rate: existing.ratePerTola },
+          ] as const)
+        : ([
+            { purity: other, rate: existing.ratePerTola },
+            { purity, rate: ratePerTola },
+          ] as const)
+
+      throw new ValidationError(
+        `${formatPurity(dearer.purity)} at Rs ${dearer.rate.formatWhole()} per tola would be ` +
+          `worth more than ${formatPurity(cheaper.purity)} at Rs ${cheaper.rate.formatWhole()}. ` +
+          `A lower purity cannot be worth more than a higher one — check the figure.`,
+      )
+    }
   }
 }
 

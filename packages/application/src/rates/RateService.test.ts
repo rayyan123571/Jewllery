@@ -219,6 +219,93 @@ describe('recording a rate', () => {
   })
 })
 
+describe('a lower purity may never be worth more than a higher one', () => {
+  // 22 karat is 916 parts pure of a thousand and 24 karat is 999, so a tola of
+  // 22K contains strictly less gold and cannot fetch more for it. When the two
+  // disagree the shop has a typo, and nothing downstream re-checks the figure —
+  // every slip is priced off it until somebody notices.
+
+  function set(purity: 'K24' | 'K22' | 'K21' | 'K18', rupees: number, on = '2026-08-02') {
+    return () =>
+      service.setRate(admin, {
+        branchId: BRANCH,
+        purity,
+        ratePerTola: Money.fromRupees(rupees),
+        effectiveFrom: toIsoDate(on),
+        note: null,
+      })
+  }
+
+  it('accepts a rate that keeps the ordering', () => {
+    rates.seed(BRANCH, 'K24', 500_000, '2026-08-01')
+    expect(set('K22', 458_000)).not.toThrow()
+    expect(rates.rows).toHaveLength(2)
+  })
+
+  it('accepts a full monotonic ladder', () => {
+    rates.seed(BRANCH, 'K24', 500_000, '2026-08-01')
+    expect(set('K22', 458_000)).not.toThrow()
+    expect(set('K21', 437_500)).not.toThrow()
+    expect(set('K18', 375_000)).not.toThrow()
+  })
+
+  it('rejects a lower purity priced above a higher one', () => {
+    rates.seed(BRANCH, 'K24', 432_000, '2026-08-01')
+    expect(set('K22', 500_000)).toThrow(ValidationError)
+    expect(set('K22', 500_000)).toThrow(/lower purity cannot be worth more/)
+  })
+
+  it('rejects a higher purity priced below a lower one', () => {
+    // The same inversion approached from the other side: setting 24K too low
+    // against an existing 22K is the identical mistake.
+    rates.seed(BRANCH, 'K22', 458_000, '2026-08-01')
+    expect(set('K24', 400_000)).toThrow(ValidationError)
+  })
+
+  it('names both purities and both figures, so the typo is findable', () => {
+    rates.seed(BRANCH, 'K24', 432_000, '2026-08-01')
+    expect(set('K22', 500_000)).toThrow(/22K at Rs 500,000 per tola/)
+    expect(set('K22', 500_000)).toThrow(/24K at Rs 432,000/)
+  })
+
+  it('accepts two purities quoting the same figure', () => {
+    // Unusual, not an inversion. Refusing it would block a legitimate flat quote.
+    rates.seed(BRANCH, 'K24', 458_000, '2026-08-01')
+    expect(set('K22', 458_000)).not.toThrow()
+  })
+
+  it('writes nothing when it refuses', () => {
+    rates.seed(BRANCH, 'K24', 432_000, '2026-08-01')
+    expect(set('K22', 500_000)).toThrow(ValidationError)
+    expect(rates.rows).toHaveLength(1)
+    expect(audit.entries).toHaveLength(0)
+  })
+
+  it('checks against the rate in force on the effective date, not the newest', () => {
+    rates.seed(BRANCH, 'K24', 600_000, '2026-08-01')
+    rates.seed(BRANCH, 'K24', 300_000, '2026-09-01') // takes over later
+    // Effective 2026-08-15, 24K is still 600,000, so 458,000 for 22K is fine.
+    expect(set('K22', 458_000, '2026-08-15')).not.toThrow()
+  })
+
+  it('leaves a purity with no rate on that date out of the comparison', () => {
+    // Nothing to contradict. A fresh install must be able to record its first
+    // rate whatever purity it happens to be.
+    expect(set('K18', 375_000)).not.toThrow()
+  })
+
+  it('does not compare against a rate that is not yet effective', () => {
+    rates.seed(BRANCH, 'K24', 432_000, '2026-09-01')
+    // On 02-08 the 24K row has not taken effect, so it cannot constrain 22K.
+    expect(set('K22', 500_000)).not.toThrow()
+  })
+
+  it('keeps branches independent', () => {
+    rates.seed('branch-2', 'K24', 432_000, '2026-08-01')
+    expect(set('K22', 500_000)).not.toThrow()
+  })
+})
+
 describe('the rate panel', () => {
   it('reports the current rate for every purity that has one', () => {
     rates.seed(BRANCH, 'K24', 9400, '2026-08-01')

@@ -390,6 +390,22 @@ a {
   color: var(--colour-negative);
 }
 
+.rate-panel--bad {
+  border-color: var(--colour-negative);
+  background: var(--colour-negative-soft);
+}
+
+.rate-panel__error {
+  align-self: center;
+  margin-left: var(--space-12);
+  padding-left: var(--space-12);
+  border-left: 1px solid var(--colour-negative);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--colour-negative);
+  cursor: help;
+}
+
 /* Secondary by design. The clock is orientation, not information — it must
    recede rather than compete with the rate. */
 .clock {
