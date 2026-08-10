@@ -1598,14 +1598,32 @@ a {
 }
 
 .login__brand .sidebar__crest {
-  width: 56px;
-  height: 56px;
-  font-size: var(--font-size-lg);
+  width: 48px;
+  height: 48px;
+  font-size: var(--font-size-md);
 }
 
 .login__brand .sidebar__name {
   font-size: var(--font-size-xl);
   text-align: center;
+}
+
+.login__tagline {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  letter-spacing: 0.04em;
+}
+
+/* Caps Lock is the commonest reason a correct password is refused, and a masked
+   field shows nothing that would explain it. */
+.login__caps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin: var(--space-8) 0 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--colour-warn-text);
 }
 
 .login__title {
@@ -1637,7 +1655,7 @@ a {
 }
 
 .login__field .input {
-  height: var(--size-button-height);
+  height: var(--size-login-input-height);
 }
 
 .login__submit {

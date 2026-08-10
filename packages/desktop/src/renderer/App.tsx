@@ -111,13 +111,17 @@ export function App() {
   // writes anything refuses without a session anyway; this is so the header
   // never shows "Not signed in" over a working screen.
   if (!boot.user) {
+    // Inside the provider: the sign-in buttons are registry controls like every
+    // other control in the application, and <Action> needs the registry.
     return (
-      <LoginScreen
-        onSignedIn={(user: UserDto) => {
-          setBoot((current) => ({ ...current, user }))
-          void reload()
-        }}
-      />
+      <ActionsProvider registry={registry}>
+        <LoginScreen
+          onSignedIn={(user: UserDto) => {
+            setBoot((current) => ({ ...current, user }))
+            void reload()
+          }}
+        />
+      </ActionsProvider>
     )
   }
 

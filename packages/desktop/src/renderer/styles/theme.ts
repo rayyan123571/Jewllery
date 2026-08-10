@@ -110,6 +110,8 @@ export const theme = {
     cellPadding: '10px 12px',
     /** Toolbar and dialog buttons. */
     buttonHeight: '44px',
+    /** Sign-in fields. One step above a form field: there are only two of them. */
+    loginInputHeight: '40px',
     /** The five slip actions and the login submit: the biggest targets. */
     buttonHeightLarge: '48px',
     /** 14 modules must fit 768px of screen without the sidebar scrolling. */
