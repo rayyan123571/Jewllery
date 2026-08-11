@@ -280,7 +280,7 @@ export const theme = {
      * whatever the sale — so this is the tightest number that still seats 14px
      * text comfortably. It is measured against the 830px budget, not chosen.
      */
-    itemCellHeight: '20px',
+    itemCellHeight: '18px',
     /** A slip tab. Two lines of label plus the slip's own total. */
     slipTabHeight: '44px',
     /** The right-hand summary column. Narrower than the old 320px rail. */
@@ -293,8 +293,8 @@ export const theme = {
     actionBarHeight: '52px',
 
     // ── the gold rate card ──────────────────────────────────────────────────
-    /** The ink header strip on the rate card. Matches a panel title's weight. */
-    rateCardHead: '24px',
+    /** The ink header strip on the rate card, and on the item/DETAILS cards. */
+    rateCardHead: '20px',
     /** One purity cell. Four of them, and "237,970" at 15px sets the floor. */
     rateCardCell: '96px',
 

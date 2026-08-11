@@ -99,6 +99,7 @@ function lineOf(item: RetailItemDto, unit: WeightUnit): RetailLineDto {
     stone: weightDto(computed.stoneWeight),
     purityDeduction: weightDto(computed.purityDeduction),
     purityDeductionPercent: '0.00',
+    rateDisplay: RATE.formatWhole(),
     net: weightDto(computed.netWeight),
     wastagePercent: (computed.wastageBp / 100).toFixed(2),
     wastage: weightDto(computed.wastage),

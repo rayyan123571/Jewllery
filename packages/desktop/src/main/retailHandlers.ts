@@ -316,6 +316,11 @@ function lineDto(computed: RetailLineComputed, purity: Purity): RetailLineDto {
     labourMode: computed.labourMode,
     stoneCharges: moneyDto(computed.stoneCharges),
     amount: moneyDto(computed.lineAmount),
+    // Shown as missing, never as a zero: a line priced at nothing is invisible
+    // on the invoice and wrong in the ledger (DECISIONS §7).
+    rateDisplay: computed.ratePerTola.isPositive
+      ? computed.ratePerTola.formatWhole()
+      : null,
     error: null,
   }
 }
@@ -339,6 +344,7 @@ function emptyLineDto(dto: RetailItemDto, error: string | null): RetailLineDto {
     labourMode: dto.labourMode,
     stoneCharges: zeroMoney,
     amount: zeroMoney,
+    rateDisplay: null,
     error,
   }
 }

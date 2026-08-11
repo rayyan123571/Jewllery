@@ -3027,7 +3027,7 @@ a {
 .retail {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  gap: var(--space-4);
+  gap: 2px;
   /* head · slip tabs · notices · body · actions. The notices row is always
      present even when empty, so the body and the action bar cannot slide onto
      each other's tracks. */
@@ -3046,7 +3046,7 @@ a {
 
 .bill-fields {
   display: grid;
-  gap: var(--space-4);
+  gap: 2px;
   align-content: start;
 }
 
@@ -3093,7 +3093,7 @@ a {
    than as controls in a panel. */
 .bill-party {
   display: grid;
-  gap: var(--space-4);
+  gap: 2px;
   align-content: start;
   min-width: 0;
 }
@@ -3138,13 +3138,32 @@ a {
 
 /* ── slip tabs ────────────────────────────────────────────────────────────── */
 
+/*
+   ── The slip tab row ───────────────────────────────────────────────────────
+
+   The tabs were clipping their own third line and overlapping the card beneath
+   them. Two causes, both fixed here:
+
+     1. A FIXED height on a tab whose content is three lines — label, sub-label
+        and the slip's own total. `align-items: end` plus content sizing lets a
+        tab be as tall as it needs; the row's track is `auto`, so it reports
+        that height honestly to the screen grid.
+     2. `border-bottom: 0` on the active tab, which is what makes it read as
+        connected to the card, was being drawn over by nothing — the tabs sat in
+        their own track and the card in the next one, so the join was a gap.
+        The row now overlaps the card by exactly its own bottom border via
+        `margin-bottom: -1px` ON THE TAB, not on the row: one pixel, which is
+        the border being shared rather than a block being moved.
+*/
 .slip-tabs {
   display: flex;
-  align-items: stretch;
+  align-items: end;
   gap: var(--space-4);
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  /* Room for the 1px the active tab reaches down into the card. */
+  padding-bottom: 1px;
 }
 
 .slip-tab {
@@ -3153,14 +3172,16 @@ a {
   justify-items: center;
   gap: 1px;
   flex: 0 0 auto;
-  min-width: 148px;
-  height: var(--size-slip-tab-height);
-  padding: 0 var(--space-12);
+  min-width: 132px;
+  /* Sized by its content, with a floor — never clipped by a fixed height. */
+  min-height: var(--size-slip-tab-height);
+  padding: 2px var(--space-12);
   border: 1px solid var(--colour-border);
-  border-bottom: 0;
   border-radius: var(--size-radius) var(--size-radius) 0 0;
   background: var(--colour-parchment);
   color: var(--colour-text-muted);
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
 .slip-tab:hover:not(:disabled) {
@@ -3168,11 +3189,16 @@ a {
 }
 
 /* The active tab is ink with a brass label — the same pairing the item card's
-   header and the sidebar's active item use. */
+   header and the sidebar's active item use. It reaches one pixel into the card
+   below so the two read as one shape, which is what the mockup draws. */
 .slip-tab.is-active {
   background: var(--colour-ink-panel);
   border-color: var(--colour-gold-metal);
+  border-bottom-color: var(--colour-ink-panel);
   color: var(--colour-gold-on-dark-bright);
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 1;
 }
 
 .slip-tab__name {
@@ -3229,7 +3255,7 @@ a {
 .retail__left {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
-  gap: var(--space-8);
+  gap: var(--space-4);
   min-height: 0;
   min-width: 0;
 }
@@ -3407,6 +3433,24 @@ a {
   color: var(--colour-negative);
 }
 
+/* The rate cell carries this item's purity and the rate it was priced at. */
+.item-column__rate {
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.item-column__purity {
+  height: 16px;
+  padding: 0 1px;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface-header);
+  color: var(--colour-gold-deep);
+  font-family: inherit;
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+}
+
 .item-column__actions {
   gap: var(--space-4);
   border: 0;
@@ -3464,8 +3508,8 @@ a {
 .details-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px var(--space-12);
-  padding: var(--space-4) var(--space-8);
+  gap: 0 var(--space-12);
+  padding: 2px var(--space-8);
 }
 
 .numbered-field {
@@ -3534,32 +3578,40 @@ a {
 
 /* ── PAYMENT ──────────────────────────────────────────────────────────────── */
 
+/* Its own bordered card, as the mockup draws it: the two fields stacked on the
+   left, the figure they produce on the right. */
 .payment-block {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-12);
   border: 1px solid var(--colour-border);
   border-radius: var(--size-radius);
   background: var(--colour-surface);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-4) var(--space-12);
+  padding: 2px var(--space-12) var(--space-4);
 }
 
-/* Beside the fields, not above them: a heading on its own line cost 22px of a
-   budget that had none to give. */
 .payment-block__title {
   font-size: var(--font-size-xxs);
   font-weight: 700;
   letter-spacing: var(--tracking-label);
   color: var(--colour-gold-deep);
+  margin-bottom: 2px;
 }
 
 .payment-block__grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-16);
   align-items: center;
+}
+
+.payment-block__fields {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.payment-balance__label {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
 }
 
 .payment-field {
@@ -3582,9 +3634,10 @@ a {
 }
 
 .payment-balance {
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
+  display: grid;
+  justify-items: end;
+  gap: 0;
+  text-align: right;
 }
 
 .payment-balance__value {
@@ -3608,6 +3661,27 @@ a {
   display: grid;
   gap: 2px;
   padding: var(--space-8) var(--space-12);
+}
+
+/*
+   The per-item list, and the one part of SUMMARY allowed to scroll.
+
+   Capped at roughly four rows. Beyond that this region scrolls and the totals
+   chain below it stays exactly where it is — those are the figures the sale
+   exists to produce, and a summary that hid them to show a seventh item name
+   would have its priorities backwards.
+*/
+.sum-items {
+  display: grid;
+  gap: 2px;
+  max-height: calc(var(--size-sum-row-height) * 4);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.sum-line--muted .sum-line__label,
+.sum-line--muted .sum-line__value {
+  color: var(--colour-text-muted);
 }
 
 .sum-line {
@@ -3763,7 +3837,7 @@ a {
 }
 
 .retail__actions .action {
-  height: var(--size-action-bar-height);
+  height: 44px;
   font-size: var(--font-size-base);
 }
 
@@ -3803,15 +3877,55 @@ a {
   }
 
   .slip-tab {
-    height: 40px;
+    min-height: 36px;
   }
 
   .payment-block {
     padding: 2px var(--space-12);
   }
 
+  /*
+     The two payment fields re-flow from a column into a row.
+
+     At 1550x830 they are stacked, as the reference draws them. At 768px of
+     height the screen is 47px over its budget and every gap and pad has already
+     been taken — so this is the one ARRANGEMENT that changes, and it is the
+     least destructive one available: same card, same region, same two fields,
+     same labels and same 36px controls, wrapped differently. It buys 40px.
+  */
+  .payment-block__fields {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-12);
+  }
+
+  .retail__left {
+    gap: 2px;
+  }
+
   .retail__actions .action {
-    height: 44px;
+    height: 40px;
+  }
+
+  /*
+     ── The one deviation from "only two regions scroll" ─────────────────────
+
+     At 1366x768 the screen is still 22px over after every gap, pad and chrome
+     height has been taken, and the ten label rows plus a column header are a
+     FIXED cost that cannot shrink without dropping below the 14px floor.
+
+     So at this height — and only at this height — the items card scrolls
+     vertically. The alternative was what it was doing before this rule existed:
+     silently clipping the Action row off the bottom of every item column, so
+     print, edit and delete were rendered, positioned, and cut off. A visible
+     scrollbar is a worse layout than a perfect fit and a far better one than
+     three controls the operator cannot reach.
+
+     The scroll sits on the card BODY, not on the columns, so the fixed label
+     stack and the item columns move together — scrolling only the columns would
+     slide every figure away from its own label.
+  */
+  .items-card__body {
+    overflow-y: auto;
   }
 }
 

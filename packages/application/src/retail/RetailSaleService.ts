@@ -205,6 +205,23 @@ export class RetailSaleService {
       this.rateFor(input.branchId, input.ratePurity, input.saleDate) ??
       Money.ZERO
 
+    /*
+     * Each item is priced at ITS OWN purity's rate.
+     *
+     * A bill can hold a 22K chain and an 18K pair of tops, and pricing both off
+     * one purity would overcharge for one and undercharge for the other. The
+     * sale still carries a `ratePurity` — it is the default a new item takes and
+     * the one an override applies to — but a line that says 18K is valued at the
+     * 18K rate.
+     *
+     * An explicit override applies to every line, because that is what an
+     * override IS: the operator saying "price this sale at this figure".
+     */
+    const rateForItem = (item: RetailItemInput): Money =>
+      input.ratePerTolaOverride ??
+      this.rateFor(input.branchId, item.purity, input.saleDate) ??
+      ratePerTola
+
     const lines = input.items.map((item) =>
       computeRetailLine(
         {
@@ -216,7 +233,7 @@ export class RetailSaleService {
           labourCharges: item.labourCharges,
           labourMode: item.labourMode,
           stoneCharges: item.stoneCharges,
-          ratePerTola,
+          ratePerTola: rateForItem(item),
         },
         rule,
       ),

@@ -559,6 +559,8 @@ export interface RetailLineDto {
   readonly labourMode: string
   readonly stoneCharges: MoneyDto
   readonly amount: MoneyDto
+  /** The rate THIS line was priced at — its own purity's. Preformatted. */
+  readonly rateDisplay: string | null
   /** Half-typed input is normal. A row that cannot parse says so and is skipped. */
   readonly error: string | null
 }

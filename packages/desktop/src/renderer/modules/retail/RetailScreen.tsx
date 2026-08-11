@@ -836,9 +836,14 @@ export function RetailScreen({
             onDelete={deleteLine}
             onPrint={() => void printSlip(activeSlipNo)}
             editing={editing}
-            rateDisplay={calc?.rateDisplay ?? null}
-            ratePurity={form.ratePurity}
-            onRatePurity={(purity) => set('ratePurity', purity)}
+            onItemPurity={(index, purity) =>
+              setActiveSlip((slip) => ({
+                ...slip,
+                items: slip.items.map((row, i) =>
+                  i === index ? { ...row, purity } : row,
+                ),
+              }))
+            }
           />
 
           <div className="details-row">
@@ -996,9 +1001,7 @@ function ItemColumns({
   onDelete,
   onPrint,
   editing,
-  rateDisplay,
-  ratePurity,
-  onRatePurity,
+  onItemPurity,
 }: {
   slipNo: number
   slipLabel: string
@@ -1009,9 +1012,7 @@ function ItemColumns({
   onDelete: (index: number) => void
   onPrint: () => void
   editing: boolean
-  rateDisplay: string | null
-  ratePurity: string
-  onRatePurity: (purity: string) => void
+  onItemPurity: (index: number, purity: string) => void
 }) {
   const unitWord = unit === 'tola' ? 'Tola' : 'Gram'
   // Always at least the mockup's four column slots, so an empty slip still reads
@@ -1022,7 +1023,9 @@ function ItemColumns({
     <div className="items-card">
       <div className="items-card__head">
         <span>
-          ITEMS IN SLIP {slipNo} ({slipLabel.toUpperCase()})
+          {/* An unnamed slip gets no empty parentheses after its number. */}
+          ITEMS IN SLIP {slipNo}
+          {slipLabel.trim() ? ` (${slipLabel.toUpperCase()})` : ''}
         </span>
         {/* In the label stack this cost 44px of a region whose ten label rows
             are a fixed cost — and it is not one of the ten. */}
@@ -1037,34 +1040,17 @@ function ItemColumns({
           {/* Aligns the stack with the columns, which begin with a numbered
               header. Without it every label sits against the wrong figure. */}
           <div className="item-labels__spacer" aria-hidden="true" />
-          {ROW_LABELS.map((label) =>
-            label === 'Rate (PKR)' ? (
-              <div className="item-labels__cell" key={label}>
-                <span>Rate (PKR)</span>
-                <select
-                  className="item-labels__purity"
-                  value={ratePurity}
-                  onChange={(e) => onRatePurity(e.target.value)}
-                  aria-label="Gold rate purity"
-                >
-                  {PURITY_OPTIONS.map((purity) => (
-                    <option key={purity} value={purity}>
-                      {purity.slice(1)}K
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className="item-labels__cell" key={label}>
-                {label === 'Weight' ||
-                label === 'Stone' ||
-                label === 'Net Weight' ||
-                label === 'Polish'
-                  ? `${label} (${unitWord})`
-                  : label}
-              </div>
-            ),
-          )}
+          {ROW_LABELS.map((label) => (
+            <div className="item-labels__cell" key={label}>
+              {label === 'Weight' ||
+              label === 'Stone' ||
+              label === 'Purity Deduction' ||
+              label === 'Net Weight' ||
+              label === 'Polish'
+                ? `${label} (${unitWord})`
+                : label}
+            </div>
+          ))}
         </div>
 
         {/* The ONE region on this screen allowed to scroll sideways. */}
@@ -1103,8 +1089,30 @@ function ItemColumns({
                   {line?.wastagePercent ?? '0.00'}
                 </div>
                 <div className="item-column__cell numeric">{show(line?.wastage, unit)}</div>
-                <div className="item-column__cell numeric">
-                  {line ? rateDisplay ?? '—' : '0'}
+                {/* Purity is per-item data, so the select lives HERE rather
+                    than in the label stack — every other cell in that stack is
+                    a static label, and one item may be 22K while the next is
+                    18K. The rate fills in from the chosen purity. */}
+                <div className="item-column__cell item-column__rate">
+                  {line ? (
+                    <>
+                      <select
+                        className="item-column__purity"
+                        value={line.purityCode}
+                        onChange={(e) => onItemPurity(index, e.target.value)}
+                        aria-label={`Item ${index + 1} purity`}
+                      >
+                        {PURITY_OPTIONS.map((purity) => (
+                          <option key={purity} value={purity}>
+                            {purity.slice(1)}K
+                          </option>
+                        ))}
+                      </select>
+                      <span className="numeric">{line.rateDisplay ?? '—'}</span>
+                    </>
+                  ) : (
+                    <span className="numeric">0</span>
+                  )}
                 </div>
                 <div className="item-column__cell numeric is-amount">
                   {line?.amount.rupees ?? '0.00'}
@@ -1400,12 +1408,31 @@ function SummaryCard({
     <div className="panel panel--summary">
       <div className="panel__title">SUMMARY</div>
       <div className="panel__body">
-        {lines.map((line, index) => (
-          <div className="sum-line" key={index}>
-            <span className="sum-line__label">{line.itemName || `Item ${index + 1}`}</span>
-            <span className="sum-line__value">{show(line.gross, unit)}</span>
-          </div>
-        ))}
+        {/*
+          Each item by name and weight, as the mockup lists them.
+
+          This region scrolls on its own once there are more items than fit. The
+          totals chain BELOW it must never be pushed off — those are the figures
+          the sale exists to produce, and a summary that hides them to show a
+          seventh item name has its priorities backwards.
+        */}
+        <div className="sum-items">
+          {lines.length === 0 ? (
+            <div className="sum-line sum-line--muted">
+              <span className="sum-line__label">No items yet</span>
+              <span className="sum-line__value">0.000</span>
+            </div>
+          ) : (
+            lines.map((line, index) => (
+              <div className="sum-line" key={index}>
+                <span className="sum-line__label">
+                  {line.itemName || `Item ${index + 1}`}
+                </span>
+                <span className="sum-line__value">{show(line.gross, unit)}</span>
+              </div>
+            ))
+          )}
+        </div>
 
         <div className="calc-rule" />
 
@@ -1588,34 +1615,38 @@ function PaymentBlock({
     <div className="payment-block">
       <div className="payment-block__title">PAYMENT</div>
       <div className="payment-block__grid">
-        <label className="payment-field">
-          <span className="payment-field__label">Payment Amount (PKR)</span>
-          <input
-            className="input input--numeric"
-            value={slip?.amountPaid ?? ''}
-            onChange={(e) => onChange({ amountPaid: e.target.value })}
-            placeholder="0.00"
-            inputMode="decimal"
-            aria-label="Payment amount"
-          />
-        </label>
-        <label className="payment-field">
-          <span className="payment-field__label">Payment Method</span>
-          <select
-            className="select"
-            value={slip?.paymentMethod ?? 'cash'}
-            onChange={(e) => onChange({ paymentMethod: e.target.value })}
-            aria-label="Payment method"
-          >
-            {PAYMENT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* Stacked on the left, as the mockup draws them… */}
+        <div className="payment-block__fields">
+          <label className="payment-field">
+            <span className="payment-field__label">Payment Amount (PKR)</span>
+            <input
+              className="input input--numeric"
+              value={slip?.amountPaid ?? ''}
+              onChange={(e) => onChange({ amountPaid: e.target.value })}
+              placeholder="0.00"
+              inputMode="decimal"
+              aria-label="Payment amount"
+            />
+          </label>
+          <label className="payment-field">
+            <span className="payment-field__label">Payment Method</span>
+            <select
+              className="select"
+              value={slip?.paymentMethod ?? 'cash'}
+              onChange={(e) => onChange({ paymentMethod: e.target.value })}
+              aria-label="Payment method"
+            >
+              {PAYMENT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {/* …and the figure they produce on the right, at figure size. */}
         <div className="payment-balance">
-          <span className="payment-field__label">Remaining Balance (PKR)</span>
+          <span className="payment-balance__label">Remaining Balance (PKR)</span>
           <span className={`payment-balance__value${outstanding ? ' is-outstanding' : ''}`}>
             {balance}
           </span>
