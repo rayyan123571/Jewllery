@@ -105,6 +105,9 @@ export type ActionId =
   | 'retail.slip.add'
   | 'retail.slip.delete'
   | 'retail.bill.print'
+  // ── the bill in progress ──────────────────────────────────────────────────
+  | 'retail.draft.resume'
+  | 'retail.draft.discard'
   | 'retail.save'
   | 'retail.save-and-print'
   | 'retail.print'
@@ -363,6 +366,8 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'retail.slip.add': screen('Add another slip to this bill', 'retail.slip.add'),
     'retail.slip.delete': screen('Delete this draft slip', 'retail.slip.delete'),
     'retail.bill.print': screen('Print every slip in this bill', 'retail.bill.print'),
+    'retail.draft.resume': screen('Carry on with this bill', 'retail.draft.resume'),
+    'retail.draft.discard': screen('Throw this draft away', 'retail.draft.discard'),
     'retail.save': screen('SAVE', 'retail.save', 'F5'),
     'retail.save-and-print': screen('SAVE & PRINT', 'retail.save-and-print', 'F6'),
     'retail.print': screen('PRINT', 'retail.print', 'F7'),

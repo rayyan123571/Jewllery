@@ -28,6 +28,7 @@ import type {
   CustomerRepository,
   CustomerSearchResult,
   GoldRateRepository,
+  DraftBill,
   NewRetailBill,
   NewRetailSale,
   NewUser,
@@ -35,6 +36,7 @@ import type {
   PartyRepository,
   PartySearchResult,
   RetailBillRepository,
+  RetailDraftRepository,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -678,5 +680,33 @@ export class FakeRetailBillRepository implements RetailBillRepository {
 
   peekNextBillNo(prefix: string): string {
     return `${prefix}${this.next.toString().padStart(5, '0')}`
+  }
+}
+
+/**
+ * The bill in progress, in memory.
+ *
+ * Deep-copied on the way in AND on the way out, which is the whole point: a
+ * fake that handed back the same object it was given would make the
+ * crash-recovery test pass without any persistence at all, because the "reopened"
+ * draft would be the very object the caller still had a reference to.
+ */
+export class FakeRetailDraftRepository implements RetailDraftRepository {
+  private readonly rows = new Map<string, string>()
+  /** Counts writes, so a debounce can be asserted rather than assumed. */
+  saves = 0
+
+  save(draft: DraftBill): void {
+    this.saves += 1
+    this.rows.set(draft.branchId, JSON.stringify(draft))
+  }
+
+  find(branchId: string): DraftBill | null {
+    const stored = this.rows.get(branchId)
+    return stored ? (JSON.parse(stored) as DraftBill) : null
+  }
+
+  clear(branchId: string): void {
+    this.rows.delete(branchId)
   }
 }

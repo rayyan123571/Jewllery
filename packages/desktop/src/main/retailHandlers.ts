@@ -29,6 +29,7 @@ import {
 import {
   HighWastageRequiresConfirmationError,
   RETAIL_ROUNDING_STEPS,
+  type DraftBill,
   type CustomerService,
   type RetailItemInput,
   type RetailDraftInput,
@@ -43,6 +44,9 @@ import type {
   RetailBillCalculationDto,
   RetailBillDraftDto,
   RetailBillPostResult,
+  RetailDraftFoundDto,
+  RetailDraftSaveRequest,
+  RetailDraftStateDto,
   NewCustomerDto,
   RetailCalculateRequest,
   RetailCalculationDto,
@@ -1298,4 +1302,283 @@ export function checkExternalUrl(url: string): { ok: true } | { ok: false; messa
     }
   }
   return { ok: true }
+}
+
+// ── the bill in progress ────────────────────────────────────────────────────
+//
+// The screen writes its state here on a debounce as the operator types, so a
+// crash or a power cut at the counter costs at most the last 400ms of typing
+// rather than the whole visit.
+
+/** The renderer's draft, as the repository wants it. Parsed, never computed. */
+function draftBillOf(
+  deps: RetailHandlerDeps,
+  draft: RetailBillDraftDto,
+  ui: { activeSlipNo: number; editingSlipNo: number | null; editingLineNo: number | null },
+): Omit<DraftBill, 'createdByUserId'> {
+  return {
+    branchId: deps.branchId,
+    billDate: isoDateOf(draft.saleDate),
+    billTime: draft.saleTime,
+    customerId: draft.customerId,
+    customerName: draft.customerName,
+    customerMobile: draft.customerMobile,
+    salesmanId: draft.salesmanId,
+    ratePurity: draft.ratePurity,
+    ratePerTolaOverride: draft.ratePerTolaOverride,
+    weightUnit: draft.weightUnit,
+    activeSlipNo: ui.activeSlipNo,
+    editingSlipNo: ui.editingSlipNo,
+    editingLineNo: ui.editingLineNo,
+    slips: draft.slips.map((slip) => ({
+      slipNo: slip.slipNo,
+      slipLabel: slip.slipLabel,
+      draftKey: slip.draftId,
+      customerGold: { text: slip.customerGold.text, exactMg: slip.customerGold.exactMg },
+      customerGoldPurity: slip.customerGoldPurity,
+      hallmarkCharges: slip.hallmarkCharges,
+      otherCharges: slip.otherCharges,
+      discount: slip.discount,
+      amountPaid: slip.amountPaid,
+      paymentMethod: slip.paymentMethod,
+      remarks: slip.remarks,
+      items: slip.items.map((item, index) => ({
+        lineNo: index + 1,
+        itemName: item.itemName,
+        purity: item.purity,
+        gross: { text: item.grossWeight.text, exactMg: item.grossWeight.exactMg },
+        stone: { text: item.stoneWeight.text, exactMg: item.stoneWeight.exactMg },
+        purityDeduction: {
+          text: item.purityDeduction.text,
+          exactMg: item.purityDeduction.exactMg,
+        },
+        wastagePercent: item.wastagePercent,
+        labourCharges: item.labourCharges,
+        labourMode: item.labourMode,
+        stoneCharges: item.stoneCharges,
+      })),
+    })),
+  }
+}
+
+/** The stored draft, back in the shape the screen holds it. */
+function draftDtoOf(draft: DraftBill): RetailDraftStateDto {
+  return {
+    draft: {
+      saleDate: draft.billDate,
+      saleTime: draft.billTime,
+      customerId: draft.customerId,
+      customerName: draft.customerName,
+      customerMobile: draft.customerMobile,
+      salesmanId: draft.salesmanId,
+      ratePurity: draft.ratePurity,
+      ratePerTolaOverride: draft.ratePerTolaOverride,
+      weightUnit: draft.weightUnit === 'gram' ? 'gram' : 'tola',
+      slips: draft.slips.map((slip) => ({
+        slipNo: slip.slipNo,
+        slipLabel: slip.slipLabel,
+        draftId: slip.draftKey,
+        customerGold: slip.customerGold,
+        customerGoldPurity: slip.customerGoldPurity,
+        hallmarkCharges: slip.hallmarkCharges,
+        otherCharges: slip.otherCharges,
+        discount: slip.discount,
+        amountPaid: slip.amountPaid,
+        paymentMethod: slip.paymentMethod,
+        remarks: slip.remarks,
+        items: slip.items.map((item) => ({
+          itemName: item.itemName,
+          purity: item.purity,
+          grossWeight: item.gross,
+          stoneWeight: item.stone,
+          purityDeduction: item.purityDeduction,
+          wastagePercent: item.wastagePercent,
+          labourCharges: item.labourCharges,
+          labourMode: item.labourMode,
+          stoneCharges: item.stoneCharges,
+        })),
+      })),
+    },
+    activeSlipNo: draft.activeSlipNo,
+    editingSlipNo: draft.editingSlipNo,
+    editingLineNo: draft.editingLineNo,
+  }
+}
+
+/**
+ * Writes the draft. Never validates, and never throws.
+ *
+ * A draft is a half-typed sale by definition; refusing to persist one because
+ * it has no items yet would mean the operator's work is only safe once it is
+ * already good enough to post. The rules that refuse still refuse at save.
+ */
+export function retailDraftSave(
+  deps: RetailHandlerDeps,
+  request: RetailDraftSaveRequest,
+): { ok: true } | { ok: false; message: string } {
+  try {
+    const user = requireUser(deps)
+    deps.retail.saveDraft(
+      user,
+      draftBillOf(deps, request.draft, {
+        activeSlipNo: request.activeSlipNo,
+        editingSlipNo: request.editingSlipNo,
+        editingLineNo: request.editingLineNo,
+      }),
+    )
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
+}
+
+/**
+ * The branch's open draft, with enough of a summary to decide on it.
+ *
+ * The summary is computed HERE, through the same calculate path the screen
+ * uses, so the card the operator is shown names a total the resumed bill will
+ * actually come to.
+ */
+export function retailDraftFind(deps: RetailHandlerDeps): RetailDraftFoundDto | null {
+  try {
+    requireUser(deps)
+    const found = deps.retail.findDraft(deps.branchId)
+    if (!found) return null
+
+    const state = draftDtoOf(found)
+    const computed = retailBillCalculate(deps, {
+      draft: state.draft,
+      activeSlipNo: state.activeSlipNo,
+      entry: null,
+    })
+    return {
+      state,
+      customerName: found.customerName.trim() || 'Walk-in customer',
+      slipCount: found.slips.length,
+      itemCount: found.slips.reduce((sum, slip) => sum + slip.items.length, 0),
+      total: computed.billTotal.rupees,
+      savedAt: `${found.billDate} ${found.billTime}`,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function retailDraftDiscard(
+  deps: RetailHandlerDeps,
+): { ok: true } | { ok: false; message: string } {
+  try {
+    requireUser(deps)
+    deps.retail.discardDraft(deps.branchId)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
+}
+
+/**
+ * Adds a slip to the draft and returns the whole draft back.
+ *
+ * The renderer does not invent the new slip number: two counters, or a stale
+ * screen, could both decide the next slip is 3. Main reads what is stored,
+ * takes the next number after the highest, writes it and hands the draft back —
+ * so the number is allocated in exactly one place.
+ */
+export function retailBillAddSlip(
+  deps: RetailHandlerDeps,
+  request: RetailDraftSaveRequest,
+): RetailDraftFoundDto | { ok: false; message: string } {
+  try {
+    const user = requireUser(deps)
+    const current = draftBillOf(deps, request.draft, {
+      activeSlipNo: request.activeSlipNo,
+      editingSlipNo: request.editingSlipNo,
+      editingLineNo: request.editingLineNo,
+    })
+    const nextNo = current.slips.reduce((max, slip) => Math.max(max, slip.slipNo), 0) + 1
+    deps.retail.saveDraft(user, {
+      ...current,
+      activeSlipNo: nextNo,
+      // A new slip is a fresh sheet: no line on it can be mid-edit.
+      editingSlipNo: null,
+      editingLineNo: null,
+      slips: [
+        ...current.slips,
+        {
+          slipNo: nextNo,
+          slipLabel: '',
+          draftKey: request.newSlipDraftId,
+          customerGold: { text: '', exactMg: null },
+          customerGoldPurity: current.ratePurity,
+          hallmarkCharges: '',
+          otherCharges: '',
+          discount: '',
+          amountPaid: '',
+          paymentMethod: 'cash',
+          remarks: null,
+          items: [],
+        },
+      ],
+    })
+    const found = retailDraftFind(deps)
+    return found ?? { ok: false, message: 'The slip could not be added.' }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
+}
+
+/**
+ * Deletes a DRAFT slip. Refuses the last one, and refuses a posted slip.
+ *
+ * A posted slip is a document the customer is holding, and the only way to undo
+ * one is to void it — which leaves both the slip and the reason on the record.
+ * Nothing reachable from here holds a posted slip, and this refuses by number
+ * rather than trusting that.
+ */
+export function retailBillDeleteSlip(
+  deps: RetailHandlerDeps,
+  request: RetailDraftSaveRequest & { slipNo: number },
+): RetailDraftFoundDto | { ok: false; message: string } {
+  try {
+    const user = requireUser(deps)
+    const current = draftBillOf(deps, request.draft, {
+      activeSlipNo: request.activeSlipNo,
+      editingSlipNo: request.editingSlipNo,
+      editingLineNo: request.editingLineNo,
+    })
+
+    if (!current.slips.some((slip) => slip.slipNo === request.slipNo)) {
+      return {
+        ok: false,
+        message:
+          `Slip ${request.slipNo} is not part of this bill. A slip that has already ` +
+          `been saved cannot be deleted — it is voided, with a reason.`,
+      }
+    }
+    if (current.slips.length <= 1) {
+      return {
+        ok: false,
+        message: 'A bill needs at least one slip. Add another before deleting this one.',
+      }
+    }
+
+    const remaining = current.slips.filter((slip) => slip.slipNo !== request.slipNo)
+    const active =
+      request.activeSlipNo === request.slipNo
+        ? (remaining[0]?.slipNo ?? 1)
+        : request.activeSlipNo
+    const droppedTheEdit = current.editingSlipNo === request.slipNo
+
+    deps.retail.saveDraft(user, {
+      ...current,
+      slips: remaining,
+      activeSlipNo: active,
+      editingSlipNo: droppedTheEdit ? null : current.editingSlipNo,
+      editingLineNo: droppedTheEdit ? null : current.editingLineNo,
+    })
+    const found = retailDraftFind(deps)
+    return found ?? { ok: false, message: 'The slip could not be deleted.' }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
 }

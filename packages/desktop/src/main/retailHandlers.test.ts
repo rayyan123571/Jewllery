@@ -5,6 +5,7 @@ import {
   FakeCustomerRepository,
   FakeGoldRateRepository,
   FakeRetailBillRepository,
+  FakeRetailDraftRepository,
   FakeRetailSaleRepository,
   FakeSalesmanRepository,
   FakeSettingsRepository,
@@ -83,6 +84,7 @@ let rates: FakeGoldRateRepository
 let customers: FakeCustomerRepository
 let salesmen: FakeSalesmanRepository
 let settingsRepo: FakeSettingsRepository
+let drafts: FakeRetailDraftRepository
 
 function build(user: PublicUser | null): RetailHandlerDeps {
   const audit = new FakeAuditRepository(clock)
@@ -93,6 +95,7 @@ function build(user: PublicUser | null): RetailHandlerDeps {
   const settings = new Settings(settingsRepo)
   const rateService = new RateService({ goldRates: rates, audit, clock })
   const retailSales = new FakeRetailSaleRepository()
+  drafts = new FakeRetailDraftRepository()
   rates.seed(BRANCH, 'K22', 237_970, '2026-08-01')
 
   return {
@@ -100,6 +103,7 @@ function build(user: PublicUser | null): RetailHandlerDeps {
     retail: new RetailSaleService({
       retailSales: retailSales,
       retailBills: new FakeRetailBillRepository(retailSales),
+      retailDrafts: drafts,
       customers,
       salesmen,
       audit,

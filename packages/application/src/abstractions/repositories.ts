@@ -151,6 +151,7 @@ export interface Repositories {
   readonly salesmen: SalesmanRepository
   readonly retailSales: RetailSaleRepository
   readonly retailBills: RetailBillRepository
+  readonly retailDrafts: RetailDraftRepository
 }
 
 // ── parties (M1) ────────────────────────────────────────────────────────────
@@ -428,4 +429,87 @@ export interface RetailBillRepository {
 
   /** A PREVIEW of the next bill number. Reserves nothing — see `postBill`. */
   peekNextBillNo(prefix: string): string
+}
+
+// ── the bill in progress ────────────────────────────────────────────────────
+//
+// The editor's own state, kept on disk so a crash or a power cut at the counter
+// does not lose it. Deliberately its OWN shape rather than a half-built
+// RetailBill: a draft has no invoice number, no totals and no amount in words,
+// because none of those exist until it is posted (see migration 011).
+//
+// Typed text travels with the exact milligram, which is WeightFieldDto's own
+// contract: the text is what is in the box, the integer is set only when the
+// unit toggle produced it. Storing one without the other would either eat a
+// half-typed figure or re-round a stored weight.
+
+export interface DraftWeight {
+  readonly text: string
+  readonly exactMg: number | null
+}
+
+export interface DraftItem {
+  readonly lineNo: number
+  readonly itemName: string
+  readonly purity: string
+  readonly gross: DraftWeight
+  readonly stone: DraftWeight
+  readonly purityDeduction: DraftWeight
+  readonly wastagePercent: string
+  readonly labourCharges: string
+  readonly labourMode: string
+  readonly stoneCharges: string
+}
+
+export interface DraftSlip {
+  readonly slipNo: number
+  readonly slipLabel: string
+  /** The idempotency key this slip will post with. Minted once, then kept. */
+  readonly draftKey: string
+  readonly customerGold: DraftWeight
+  readonly customerGoldPurity: string | null
+  readonly hallmarkCharges: string
+  readonly otherCharges: string
+  readonly discount: string
+  readonly amountPaid: string
+  readonly paymentMethod: string
+  readonly remarks: string | null
+  readonly items: readonly DraftItem[]
+}
+
+export interface DraftBill {
+  readonly branchId: string
+  readonly billDate: IsoDate
+  readonly billTime: string
+  readonly customerId: string | null
+  readonly customerName: string
+  readonly customerMobile: string | null
+  readonly salesmanId: string | null
+  readonly ratePurity: string
+  readonly ratePerTolaOverride: string
+  readonly weightUnit: string
+  readonly activeSlipNo: number
+  /** Which line is open in DETAILS, if any. An unresolved edit blocks a save. */
+  readonly editingSlipNo: number | null
+  readonly editingLineNo: number | null
+  readonly createdByUserId: string
+  readonly slips: readonly DraftSlip[]
+}
+
+export interface RetailDraftRepository {
+  /**
+   * Writes the branch's draft, replacing whatever was there.
+   *
+   * One transaction, and REPLACE rather than merge: a counter serves one
+   * customer at a time, so the draft is the current state of the screen and
+   * not an accumulating history of it. Called on a debounce as the operator
+   * types, which is why it must be cheap and must never half-apply.
+   */
+  save(draft: DraftBill): void
+
+  /** The branch's open draft, or null. Read once, on launch. */
+  find(branchId: string): DraftBill | null
+
+  /** Throws the draft away. Only ever on an explicit Discard, or after posting. */
+  clear(branchId: string): void
 }

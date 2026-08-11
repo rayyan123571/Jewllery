@@ -27,10 +27,12 @@ import {
 import type {
   CustomerRepository,
   CustomerSearchResult,
+  DraftBill,
   NewRetailBill,
   NewRetailSale,
   NewRetailSaleItem,
   RetailBillRepository,
+  RetailDraftRepository,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -726,5 +728,233 @@ export class SqliteRetailBillRepository implements RetailBillRepository {
       slipNo: row.slip_no,
       slipLabel: row.slip_label ?? DEFAULT_SLIP_LABEL,
     }))
+  }
+}
+
+interface DraftBillRow {
+  id: string
+  branch_id: string
+  bill_date: string
+  bill_time: string
+  customer_id: string | null
+  customer_name: string
+  customer_mobile: string | null
+  salesman_id: string | null
+  rate_purity: string
+  rate_override_text: string
+  weight_unit: string
+  active_slip_no: number
+  editing_slip_no: number | null
+  editing_line_no: number | null
+  created_by: string
+}
+
+interface DraftSlipRow {
+  id: string
+  slip_no: number
+  slip_label: string
+  draft_key: string
+  customer_gold_text: string
+  customer_gold_mg: number | null
+  customer_gold_purity: string | null
+  hallmark_text: string
+  other_text: string
+  discount_text: string
+  amount_paid_text: string
+  payment_method: string
+  remarks: string | null
+}
+
+interface DraftItemRow {
+  draft_slip_id: string
+  line_no: number
+  item_name: string
+  purity: string
+  gross_text: string
+  gross_mg: number | null
+  stone_text: string
+  stone_mg: number | null
+  purity_deduction_text: string
+  purity_deduction_mg: number | null
+  wastage_percent_text: string
+  labour_text: string
+  labour_mode: string
+  stone_charges_text: string
+}
+
+/**
+ * The bill in progress, on disk.
+ *
+ * Save is DELETE-then-write inside one transaction. A counter serves one
+ * customer at a time, so the branch's draft is the current state of the screen
+ * rather than a history of it — and replacing wholesale means a deleted slip or
+ * a removed item genuinely disappears, which a merge would have to be told
+ * about separately and would eventually get wrong.
+ *
+ * It runs on a 400ms debounce as the operator types, so it does the least work
+ * that is still atomic: one delete and a handful of inserts, no diffing.
+ */
+export class SqliteRetailDraftRepository implements RetailDraftRepository {
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
+
+  save(draft: DraftBill): void {
+    const db = this.conn.get()
+    const now = toIsoTimestamp(this.clock.now())
+
+    const run = db.transaction(() => {
+      // ON DELETE CASCADE takes the slips and their items with it.
+      db.prepare('DELETE FROM retail_draft_bills WHERE branch_id = ?').run(draft.branchId)
+
+      const billId = randomUUID()
+      db.prepare(
+        `INSERT INTO retail_draft_bills
+           (id, branch_id, bill_date, bill_time, customer_id, customer_name,
+            customer_mobile, salesman_id, rate_purity, rate_override_text,
+            weight_unit, active_slip_no, editing_slip_no, editing_line_no,
+            created_by, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ).run(
+        billId,
+        draft.branchId,
+        draft.billDate,
+        draft.billTime,
+        draft.customerId,
+        draft.customerName,
+        draft.customerMobile,
+        draft.salesmanId,
+        draft.ratePurity,
+        draft.ratePerTolaOverride,
+        draft.weightUnit,
+        draft.activeSlipNo,
+        draft.editingSlipNo,
+        draft.editingLineNo,
+        draft.createdByUserId,
+        now,
+        now,
+      )
+
+      const insertSlip = db.prepare(
+        `INSERT INTO retail_draft_slips
+           (id, draft_bill_id, slip_no, slip_label, draft_key, customer_gold_text,
+            customer_gold_mg, customer_gold_purity, hallmark_text, other_text,
+            discount_text, amount_paid_text, payment_method, remarks)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      const insertItem = db.prepare(
+        `INSERT INTO retail_draft_items
+           (id, draft_slip_id, line_no, item_name, purity, gross_text, gross_mg,
+            stone_text, stone_mg, purity_deduction_text, purity_deduction_mg,
+            wastage_percent_text, labour_text, labour_mode, stone_charges_text)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+
+      for (const slip of draft.slips) {
+        const slipId = randomUUID()
+        insertSlip.run(
+          slipId,
+          billId,
+          slip.slipNo,
+          slip.slipLabel,
+          slip.draftKey,
+          slip.customerGold.text,
+          slip.customerGold.exactMg,
+          slip.customerGoldPurity,
+          slip.hallmarkCharges,
+          slip.otherCharges,
+          slip.discount,
+          slip.amountPaid,
+          slip.paymentMethod,
+          slip.remarks,
+        )
+        for (const item of slip.items) {
+          insertItem.run(
+            randomUUID(),
+            slipId,
+            item.lineNo,
+            item.itemName,
+            item.purity,
+            item.gross.text,
+            item.gross.exactMg,
+            item.stone.text,
+            item.stone.exactMg,
+            item.purityDeduction.text,
+            item.purityDeduction.exactMg,
+            item.wastagePercent,
+            item.labourCharges,
+            item.labourMode,
+            item.stoneCharges,
+          )
+        }
+      }
+    })
+
+    run()
+  }
+
+  find(branchId: string): DraftBill | null {
+    const db = this.conn.get()
+    const bill = db
+      .prepare('SELECT * FROM retail_draft_bills WHERE branch_id = ?')
+      .get(branchId) as DraftBillRow | undefined
+    if (!bill) return null
+
+    const slipRows = db
+      .prepare('SELECT * FROM retail_draft_slips WHERE draft_bill_id = ? ORDER BY slip_no ASC')
+      .all(bill.id) as DraftSlipRow[]
+    const itemsOf = db.prepare(
+      'SELECT * FROM retail_draft_items WHERE draft_slip_id = ? ORDER BY line_no ASC',
+    )
+
+    return {
+      branchId: bill.branch_id,
+      billDate: toIsoDate(bill.bill_date),
+      billTime: bill.bill_time,
+      customerId: bill.customer_id,
+      customerName: bill.customer_name,
+      customerMobile: bill.customer_mobile,
+      salesmanId: bill.salesman_id,
+      ratePurity: bill.rate_purity,
+      ratePerTolaOverride: bill.rate_override_text,
+      weightUnit: bill.weight_unit,
+      activeSlipNo: bill.active_slip_no,
+      editingSlipNo: bill.editing_slip_no,
+      editingLineNo: bill.editing_line_no,
+      createdByUserId: bill.created_by,
+      slips: slipRows.map((slip) => ({
+        slipNo: slip.slip_no,
+        slipLabel: slip.slip_label,
+        draftKey: slip.draft_key,
+        customerGold: { text: slip.customer_gold_text, exactMg: slip.customer_gold_mg },
+        customerGoldPurity: slip.customer_gold_purity,
+        hallmarkCharges: slip.hallmark_text,
+        otherCharges: slip.other_text,
+        discount: slip.discount_text,
+        amountPaid: slip.amount_paid_text,
+        paymentMethod: slip.payment_method,
+        remarks: slip.remarks,
+        items: (itemsOf.all(slip.id) as DraftItemRow[]).map((item) => ({
+          lineNo: item.line_no,
+          itemName: item.item_name,
+          purity: item.purity,
+          gross: { text: item.gross_text, exactMg: item.gross_mg },
+          stone: { text: item.stone_text, exactMg: item.stone_mg },
+          purityDeduction: {
+            text: item.purity_deduction_text,
+            exactMg: item.purity_deduction_mg,
+          },
+          wastagePercent: item.wastage_percent_text,
+          labourCharges: item.labour_text,
+          labourMode: item.labour_mode,
+          stoneCharges: item.stone_charges_text,
+        })),
+      })),
+    }
+  }
+
+  clear(branchId: string): void {
+    this.conn.get().prepare('DELETE FROM retail_draft_bills WHERE branch_id = ?').run(branchId)
   }
 }

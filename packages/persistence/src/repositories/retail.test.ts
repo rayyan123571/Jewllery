@@ -11,8 +11,16 @@ import {
   type RetailLineInput,
 } from '@jewellery/domain'
 import type { NewRetailSale, Repositories } from '@jewellery/application'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { openInMemoryDatabase, type SqliteDatabase } from '../Database.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  closeDatabase,
+  openDatabase,
+  openInMemoryDatabase,
+  type SqliteDatabase,
+} from '../Database.js'
 import { createRepositories } from './index.js'
 
 /**
@@ -105,6 +113,59 @@ const NEW_CUSTOMER: NewCustomer = {
   isWalkIn: false,
   openingGold: Weight.ZERO,
   openingCash: Money.ZERO,
+}
+
+/** Branch and user, on whichever repositories are handed in. Returns the user id. */
+function seedBranchAndUser(target: Repositories): string {
+  target.branches.create({
+    id: BRANCH,
+    name: 'Main Branch',
+    address: null,
+    isDefault: true,
+    isActive: true,
+  })
+  return target.users.create({
+    branchId: BRANCH,
+    name: 'Admin',
+    username: 'admin',
+    passwordHash: 'x',
+    role: 'ADMIN',
+    mustChangePassword: false,
+  }).id
+}
+
+/** One item, priced through the real domain, with an ABSOLUTE deduction. */
+function itemOf(name: string, grossTola: string, deductionTola: string, lineNo = 1) {
+  const computed = computeRetailLine(
+    {
+      itemName: name,
+      grossWeight: parseTola(grossTola),
+      stoneWeight: Weight.ZERO,
+      purityDeduction: parseTola(deductionTola),
+      wastageBp: 1400,
+      labourCharges: Money.fromRupees(5_000),
+      labourMode: 'fixed',
+      stoneCharges: Money.ZERO,
+      ratePerTola: RATE,
+    },
+    { direction: 'add', basis: 'net' },
+  )
+  return {
+    lineNo,
+    itemName: computed.itemName,
+    purity: 'K22' as const,
+    grossWeight: computed.grossWeight,
+    stoneWeight: computed.stoneWeight,
+    purityDeduction: computed.purityDeduction,
+    netWeight: computed.netWeight,
+    wastageBp: computed.wastageBp,
+    wastage: computed.wastage,
+    fineWeight: computed.fineWeight,
+    labourCharges: computed.labourCharges,
+    labourMode: computed.labourMode,
+    stoneCharges: computed.stoneCharges,
+    lineAmount: computed.lineAmount,
+  }
 }
 
 beforeEach(() => {
@@ -471,3 +532,388 @@ function count(table: string): number {
   const row = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }
   return row.n
 }
+
+/**
+ * The whole chain, against a real SQLite file.
+ *
+ * Not an in-memory database and not a fake: these open a file on disk, write
+ * through the real service, CLOSE the connection, reopen it, and read back. A
+ * round trip that never leaves the process proves the mapper; this proves the
+ * file.
+ */
+describe('a bill survives the database, field for field', () => {
+  let file: string
+  let directory: string
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'jewellery-roundtrip-'))
+    file = join(directory, 'shop.sqlite')
+  })
+
+  afterEach(() => {
+    // Best-effort: Windows will not unlink a file SQLite still holds open, and
+    // a test that failed mid-way leaves the connection up. Swallowing this
+    // keeps the REAL failure on screen instead of an EPERM on the temp dir.
+    try {
+      rmSync(directory, { recursive: true, force: true })
+    } catch {
+      /* the OS will clear its own temp directory */
+    }
+  })
+
+  /** Opens the file, runs the migrations, and hands back live repositories. */
+  function open() {
+    const db = openDatabase({ file })
+    return { db, repos: createRepositories(db, clock) }
+  }
+
+  it('round-trips two slips and four items through a real file', () => {
+    const first = open()
+    const userId = seedBranchAndUser(first.repos)
+
+    const written = first.repos.retailBills.postBill(
+      {
+        branchId: BRANCH,
+        billDate: toIsoDate('2026-08-30'),
+        billTime: '14:05',
+        customerId: null,
+        customerNameSnapshot: 'IMRAN SAHIB',
+        customerMobileSnapshot: '03001234567',
+        salesmanId: null,
+        salesmanNameSnapshot: null,
+        status: 'posted',
+        createdByUserId: userId,
+        slips: [
+          {
+            slipNo: 1,
+            slipLabel: 'Full Bill',
+            sale: saleOf({
+              createdByUserId: userId,
+              items: [
+                itemOf('Ring', '2.000', '0.090', 1),
+                itemOf('Baliyoon', '2.000', '0.090', 2),
+              ],
+            }),
+          },
+          {
+            slipNo: 2,
+            slipLabel: 'Gold Bangles',
+            sale: saleOf({
+              createdByUserId: userId,
+              items: [
+                itemOf('Gold Chain', '3.500', '0.000', 1),
+                itemOf('Gold Tops', '1.250', '0.050', 2),
+              ],
+            }),
+          },
+        ],
+      },
+      'RB-',
+      'RS-',
+    )
+    const billId = written.bill.id
+    closeDatabase(first.db)
+
+    // A different connection to the same file. Nothing is shared but the bytes.
+    const second = open()
+    const read = second.repos.retailBills.findById(billId)
+    expect(read).toBeTruthy()
+    if (!read) return
+
+    expect(read.bill.billNo).toBe('RB-00001')
+    expect(read.bill.customerNameSnapshot).toBe('IMRAN SAHIB')
+    expect(read.bill.customerMobileSnapshot).toBe('03001234567')
+    expect(read.bill.billDate).toBe('2026-08-30')
+    expect(read.bill.billTime).toBe('14:05')
+    expect(read.slips).toHaveLength(2)
+    expect(read.slips.map((s) => s.slipNo)).toEqual([1, 2])
+    expect(read.slips.map((s) => s.slipLabel)).toEqual(['Full Bill', 'Gold Bangles'])
+    expect(read.slips.map((s) => s.sale.invoiceNo)).toEqual(['RS-00001', 'RS-00002'])
+
+    // Four items, every stored field compared against what was written.
+    const readItems = read.slips.flatMap((slip) => slip.items)
+    const writtenItems = written.slips.flatMap((slip) => slip.items)
+    expect(readItems).toHaveLength(4)
+
+    for (const [index, item] of readItems.entries()) {
+      const source = writtenItems[index]
+      expect(source).toBeTruthy()
+      if (!source) continue
+      expect(item.itemName).toBe(source.itemName)
+      expect(item.purity).toBe(source.purity)
+      // Weights: milligrams, exactly.
+      expect(item.grossWeight.milligrams).toBe(source.grossWeight.milligrams)
+      expect(item.stoneWeight.milligrams).toBe(source.stoneWeight.milligrams)
+      expect(item.purityDeduction.milligrams).toBe(source.purityDeduction.milligrams)
+      expect(item.netWeight.milligrams).toBe(source.netWeight.milligrams)
+      expect(item.wastage.milligrams).toBe(source.wastage.milligrams)
+      expect(item.fineWeight.milligrams).toBe(source.fineWeight.milligrams)
+      // Money: paisa, exactly.
+      expect(item.labourCharges.paisa).toBe(source.labourCharges.paisa)
+      expect(item.stoneCharges.paisa).toBe(source.stoneCharges.paisa)
+      expect(item.lineAmount.paisa).toBe(source.lineAmount.paisa)
+      // Basis points, and the labour mode that gives the figure its meaning.
+      expect(item.wastageBp).toBe(source.wastageBp)
+      expect(item.labourMode).toBe(source.labourMode)
+    }
+
+    // The rule each slip was PRICED with, so a reprint reproduces the paper.
+    for (const slip of read.slips) {
+      expect(slip.sale.wastageDirection).toBe('add')
+      expect(slip.sale.wastageBasis).toBe('net')
+      expect(slip.sale.ratePerTola.paisa).toBe(RATE.paisa)
+      expect(slip.sale.status).toBe('posted')
+    }
+
+    closeDatabase(second.db)
+  })
+
+  it('stores every money and weight column as an INTEGER, never a float', () => {
+    const { db, repos } = open()
+    const userId = seedBranchAndUser(repos)
+    repos.retailBills.postBill(
+      {
+        branchId: BRANCH,
+        billDate: toIsoDate('2026-08-30'),
+        billTime: '14:05',
+        customerId: null,
+        customerNameSnapshot: 'IMRAN SAHIB',
+        customerMobileSnapshot: null,
+        salesmanId: null,
+        salesmanNameSnapshot: null,
+        status: 'posted',
+        createdByUserId: userId,
+        slips: [
+          {
+            slipNo: 1,
+            slipLabel: 'Full Bill',
+            sale: saleOf({ createdByUserId: userId, items: [itemOf('Ring', '2.000', '0.090')] }),
+          },
+        ],
+      },
+      'RB-',
+      'RS-',
+    )
+
+    // Declared types: no REAL, FLOAT or DOUBLE on any retail table.
+    for (const table of ['retail_sales', 'retail_sale_items', 'retail_bills']) {
+      const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+        name: string
+        type: string
+      }>
+      const offenders = columns
+        .filter((column) => /REAL|FLOAT|DOUBLE/i.test(column.type))
+        .map((column) => `${table}.${column.name}`)
+      expect(offenders).toEqual([])
+    }
+
+    // And the STORED values: SQLite is dynamically typed, so a declared INTEGER
+    // column will happily hold 2.5 if something puts it there. typeof() asks
+    // what is actually in the cell.
+    const stored = db
+      .prepare(
+        `SELECT typeof(gross_weight_mg) a, typeof(purity_deduction_mg) b,
+                typeof(fine_weight_mg) c, typeof(line_amount_paisa) d,
+                gross_weight_mg, purity_deduction_mg, line_amount_paisa
+           FROM retail_sale_items`,
+      )
+      .all() as Array<Record<string, string | number>>
+    expect(stored).toHaveLength(1)
+    for (const row of stored) {
+      expect([row['a'], row['b'], row['c'], row['d']]).toEqual([
+        'integer',
+        'integer',
+        'integer',
+        'integer',
+      ])
+      // 2.000 tola is 23,328 mg and 0.090 tola is 1,050 mg — exact integers.
+      expect(row['gross_weight_mg']).toBe(23_328)
+      expect(row['purity_deduction_mg']).toBe(1_050)
+      expect(Number.isInteger(row['line_amount_paisa'])).toBe(true)
+    }
+
+    closeDatabase(db)
+  })
+})
+
+/**
+ * The bill in progress, and the reason it is on disk at all.
+ *
+ * "Discard the in-memory state entirely" is taken literally: the connection is
+ * closed and a NEW one is opened onto the same file, so nothing survives except
+ * what was actually written.
+ */
+describe('a draft survives a crash', () => {
+  let file: string
+  let directory: string
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'jewellery-draft-'))
+    file = join(directory, 'shop.sqlite')
+  })
+
+  afterEach(() => {
+    // Best-effort: Windows will not unlink a file SQLite still holds open, and
+    // a test that failed mid-way leaves the connection up. Swallowing this
+    // keeps the REAL failure on screen instead of an EPERM on the temp dir.
+    try {
+      rmSync(directory, { recursive: true, force: true })
+    } catch {
+      /* the OS will clear its own temp directory */
+    }
+  })
+
+  function open() {
+    const db = openDatabase({ file })
+    return { db, repos: createRepositories(db, clock) }
+  }
+
+  const DRAFT = (userId: string) => ({
+    branchId: BRANCH,
+    billDate: toIsoDate('2026-08-30'),
+    billTime: '14:05',
+    customerId: null,
+    customerName: 'IMRAN SAHIB',
+    customerMobile: '03001234567',
+    salesmanId: null,
+    ratePurity: 'K22',
+    ratePerTolaOverride: '',
+    weightUnit: 'tola',
+    activeSlipNo: 2,
+    // Mid-edit, deliberately: an unresolved edit blocks a save, so resuming
+    // without it would leave a screen that refuses to save and cannot say why.
+    editingSlipNo: 2,
+    editingLineNo: 1,
+    createdByUserId: userId,
+    slips: [
+      {
+        slipNo: 1,
+        slipLabel: 'Full Bill',
+        draftKey: 'draft-slip-1',
+        customerGold: { text: '1.000', exactMg: 11_664 },
+        customerGoldPurity: 'K21',
+        hallmarkCharges: '25000',
+        otherCharges: '',
+        discount: '150000',
+        amountPaid: '400000',
+        paymentMethod: 'cash',
+        remarks: 'gift wrap',
+        items: [
+          {
+            lineNo: 1,
+            itemName: 'Ring',
+            purity: 'K22',
+            gross: { text: '2.000', exactMg: 23_328 },
+            stone: { text: '', exactMg: null },
+            purityDeduction: { text: '0.090', exactMg: 1_050 },
+            wastagePercent: '14.00',
+            labourCharges: '5000',
+            labourMode: 'fixed',
+            stoneCharges: '',
+          },
+          {
+            lineNo: 2,
+            itemName: 'Baliyoon',
+            purity: 'K21',
+            gross: { text: '2.000', exactMg: null },
+            stone: { text: '0.100', exactMg: null },
+            purityDeduction: { text: '0.090', exactMg: null },
+            wastagePercent: '14.00',
+            labourCharges: '',
+            labourMode: 'per_tola',
+            stoneCharges: '2500',
+          },
+        ],
+      },
+      {
+        slipNo: 2,
+        slipLabel: 'Gold Bangles',
+        draftKey: 'draft-slip-2',
+        customerGold: { text: '', exactMg: null },
+        customerGoldPurity: null,
+        hallmarkCharges: '',
+        otherCharges: '',
+        discount: '',
+        amountPaid: '',
+        paymentMethod: 'credit',
+        remarks: null,
+        items: [
+          {
+            lineNo: 1,
+            // Half-typed on purpose: "2." is not a weight, and a draft that
+            // parsed it to 0 would eat the operator's work at exactly the
+            // moment this feature exists to protect it.
+            itemName: 'Gold Chain',
+            purity: 'K18',
+            gross: { text: '2.', exactMg: null },
+            stone: { text: '', exactMg: null },
+            purityDeduction: { text: '', exactMg: null },
+            wastagePercent: '',
+            labourCharges: '',
+            labourMode: 'fixed',
+            stoneCharges: '',
+          },
+        ],
+      },
+    ],
+  })
+
+  it('comes back identical after the connection is thrown away', () => {
+    const first = open()
+    const userId = seedBranchAndUser(first.repos)
+    const original = DRAFT(userId)
+    first.repos.retailDrafts.save(original)
+    closeDatabase(first.db)
+
+    const second = open()
+    const recovered = second.repos.retailDrafts.find(BRANCH)
+    // Identical, not merely similar — including the half-typed "2." and every
+    // exactMg the unit toggle had set.
+    expect(recovered).toEqual(original)
+    closeDatabase(second.db)
+  })
+
+  it('remembers which line was mid-edit', () => {
+    const first = open()
+    const userId = seedBranchAndUser(first.repos)
+    first.repos.retailDrafts.save(DRAFT(userId))
+    closeDatabase(first.db)
+
+    const second = open()
+    const recovered = second.repos.retailDrafts.find(BRANCH)
+    expect(recovered?.editingSlipNo).toBe(2)
+    expect(recovered?.editingLineNo).toBe(1)
+    closeDatabase(second.db)
+  })
+
+  it('keeps one draft per branch — saving replaces, never accumulates', () => {
+    const { db, repos } = open()
+    const userId = seedBranchAndUser(repos)
+    repos.retailDrafts.save(DRAFT(userId))
+    repos.retailDrafts.save({
+      ...DRAFT(userId),
+      customerName: 'SECOND CUSTOMER',
+      slips: [DRAFT(userId).slips[0]!],
+    })
+
+    const rows = db.prepare('SELECT COUNT(*) n FROM retail_draft_bills').get() as { n: number }
+    expect(rows.n).toBe(1)
+    const recovered = repos.retailDrafts.find(BRANCH)
+    expect(recovered?.customerName).toBe('SECOND CUSTOMER')
+    // The removed slip and its items went with it, rather than being orphaned.
+    expect(recovered?.slips).toHaveLength(1)
+    const items = db.prepare('SELECT COUNT(*) n FROM retail_draft_items').get() as { n: number }
+    expect(items.n).toBe(2)
+    closeDatabase(db)
+  })
+
+  it('is thrown away only on an explicit discard', () => {
+    const { db, repos } = open()
+    const userId = seedBranchAndUser(repos)
+    repos.retailDrafts.save(DRAFT(userId))
+    expect(repos.retailDrafts.find(BRANCH)).toBeTruthy()
+    repos.retailDrafts.clear(BRANCH)
+    expect(repos.retailDrafts.find(BRANCH)).toBeNull()
+    closeDatabase(db)
+  })
+})

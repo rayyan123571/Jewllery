@@ -6,6 +6,7 @@ import type {
   RetailBillCalculateRequest,
   RetailBillDraftDto,
   RetailCalculateRequest,
+  RetailDraftSaveRequest,
   RetailListRequest,
   RetailLoadRequest,
   RetailPostRequest,
@@ -18,11 +19,16 @@ import {
   customerCreate,
   customerSearch,
   messageOf,
+  retailBillAddSlip,
   retailBillCalculate,
+  retailBillDeleteSlip,
   retailBillNextNo,
   retailBillReceipt,
   retailBillSave,
   retailCalculate,
+  retailDraftDiscard,
+  retailDraftFind,
+  retailDraftSave,
   retailHold,
   retailList,
   retailLoad,
@@ -119,6 +125,24 @@ export function registerRetailHandlers(container: Container, session: Session): 
 
   ipcMain.handle(IPC_RETAIL.billReceipt, (_event, billId: string) =>
     retailBillReceipt(deps, billId),
+  )
+
+  ipcMain.handle(IPC_RETAIL.draftSave, (_event, request: RetailDraftSaveRequest) =>
+    retailDraftSave(deps, request),
+  )
+
+  ipcMain.handle(IPC_RETAIL.draftFind, () => retailDraftFind(deps))
+
+  ipcMain.handle(IPC_RETAIL.draftDiscard, () => retailDraftDiscard(deps))
+
+  ipcMain.handle(IPC_RETAIL.billAddSlip, (_event, request: RetailDraftSaveRequest) =>
+    retailBillAddSlip(deps, request),
+  )
+
+  ipcMain.handle(
+    IPC_RETAIL.billDeleteSlip,
+    (_event, request: RetailDraftSaveRequest & { slipNo: number }) =>
+      retailBillDeleteSlip(deps, request),
   )
 
   ipcMain.handle(IPC_RETAIL.rounding, () => retailRounding(deps))

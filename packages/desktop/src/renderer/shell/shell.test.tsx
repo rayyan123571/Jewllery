@@ -169,6 +169,11 @@ const noopApi = {
     ],
   })),
   setRetailWastageRule: vi.fn(async () => ({ ok: true as const })),
+  retailDraftSave: vi.fn(async () => ({ ok: true as const })),
+  retailDraftFind: vi.fn(async () => null),
+  retailDraftDiscard: vi.fn(async () => ({ ok: true as const })),
+  retailBillAddSlip: vi.fn(),
+  retailBillDeleteSlip: vi.fn(),
   retailRounding: vi.fn(async () => ({
     savedStep: 1,
     exactDisplay: 'Rs 1,098,608.35',

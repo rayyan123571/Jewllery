@@ -29,6 +29,8 @@ import {
   type RetailBillCalculationDto,
   type RetailBillDraftDto,
   type RetailBillPostResult,
+  type RetailDraftFoundDto,
+  type RetailDraftSaveRequest,
   type RetailRoundingDto,
   type RetailSaleSummaryDto,
   type SalesmanDto,
@@ -133,6 +135,24 @@ const api: RendererApi = {
   retailBillNextNo: () => ipcRenderer.invoke(IPC_RETAIL.billNextNo) as Promise<string>,
   retailBillReceipt: (billId: string) =>
     ipcRenderer.invoke(IPC_RETAIL.billReceipt, billId) as Promise<string | null>,
+  retailDraftSave: (request: RetailDraftSaveRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.draftSave, request) as ReturnType<
+      RendererApi['retailDraftSave']
+    >,
+  retailDraftFind: () =>
+    ipcRenderer.invoke(IPC_RETAIL.draftFind) as Promise<RetailDraftFoundDto | null>,
+  retailDraftDiscard: () =>
+    ipcRenderer.invoke(IPC_RETAIL.draftDiscard) as ReturnType<
+      RendererApi['retailDraftDiscard']
+    >,
+  retailBillAddSlip: (request: RetailDraftSaveRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.billAddSlip, request) as ReturnType<
+      RendererApi['retailBillAddSlip']
+    >,
+  retailBillDeleteSlip: (request: RetailDraftSaveRequest & { slipNo: number }) =>
+    ipcRenderer.invoke(IPC_RETAIL.billDeleteSlip, request) as ReturnType<
+      RendererApi['retailBillDeleteSlip']
+    >,
   retailRounding: () =>
     ipcRenderer.invoke(IPC_RETAIL.rounding) as Promise<RetailRoundingDto>,
   setRetailRounding: (step: number) =>

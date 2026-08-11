@@ -13,6 +13,7 @@ import {
   FakeCustomerRepository,
   FakeGoldRateRepository,
   FakeRetailBillRepository,
+  FakeRetailDraftRepository,
   FakeRetailSaleRepository,
   FakeSalesmanRepository,
   FakeSettingsRepository,
@@ -52,6 +53,7 @@ let customers: FakeCustomerRepository
 let salesmen: FakeSalesmanRepository
 let sales: FakeRetailSaleRepository
 let bills: FakeRetailBillRepository
+let drafts: FakeRetailDraftRepository
 let settingsRepo: FakeSettingsRepository
 let service: RetailSaleService
 
@@ -103,11 +105,13 @@ beforeEach(() => {
   salesmen = new FakeSalesmanRepository()
   sales = new FakeRetailSaleRepository()
   bills = new FakeRetailBillRepository(sales)
+  drafts = new FakeRetailDraftRepository()
   settingsRepo = new FakeSettingsRepository()
   rates.seed(BRANCH, 'K22', 237_970, '2026-08-01')
   service = new RetailSaleService({
     retailSales: sales,
     retailBills: bills,
+    retailDrafts: drafts,
     customers,
     salesmen,
     audit,

@@ -22,7 +22,9 @@ import {
 import type {
   AuditRepository,
   CustomerRepository,
+  DraftBill,
   RetailBillRepository,
+  RetailDraftRepository,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -48,6 +50,7 @@ import { amountInWords } from './amountInWords.js'
 export interface RetailDependencies {
   readonly retailSales: RetailSaleRepository
   readonly retailBills: RetailBillRepository
+  readonly retailDrafts: RetailDraftRepository
   readonly customers: CustomerRepository
   readonly salesmen: SalesmanRepository
   readonly audit: AuditRepository
@@ -622,6 +625,11 @@ export class RetailSaleService {
       this.deps.settings.retailInvoicePrefix(),
     )
 
+    // The draft has become a real document, so it stops being a draft. Only
+    // here — a REFUSED post leaves it exactly where it was, because the
+    // operator still has the work and still needs it on disk.
+    this.deps.retailDrafts.clear(input.branchId)
+
     this.deps.audit.append({
       branchId: input.branchId,
       userId: actor.id,
@@ -730,6 +738,38 @@ export class RetailSaleService {
         lineAmount: line.lineAmount,
       })),
     }
+  }
+
+
+  // ── the bill in progress ──────────────────────────────────────────────────
+
+  /**
+   * Writes the branch's draft.
+   *
+   * Deliberately does NOT validate. A draft is a half-typed sale by definition
+   * — that is what makes it a draft — and refusing to persist one because it
+   * has no items yet, or no rate, would mean the operator's work is only safe
+   * once it is already good enough to post. The rules that refuse still refuse,
+   * at `postBill`, where a document is actually being created.
+   */
+  saveDraft(actor: PublicUser, draft: Omit<DraftBill, 'createdByUserId'>): void {
+    this.deps.retailDrafts.save({ ...draft, createdByUserId: actor.id })
+  }
+
+  /** The branch's open draft, or null. Read once, on launch. */
+  findDraft(branchId: string): DraftBill | null {
+    return this.deps.retailDrafts.find(branchId)
+  }
+
+  /**
+   * Throws the draft away.
+   *
+   * Only ever on an explicit Discard, or immediately after the bill it holds has
+   * posted. Never on a failed post: if `postBill` refuses, the operator still
+   * has the work and still needs it on disk.
+   */
+  discardDraft(branchId: string): void {
+    this.deps.retailDrafts.clear(branchId)
   }
 
   findBillById(id: string): RetailBillWithSlips | null {

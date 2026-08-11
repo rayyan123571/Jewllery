@@ -183,6 +183,19 @@ export interface RendererApi {
   retailBillNextNo(): Promise<string>
   /** Every slip in a posted bill, as one print job. */
   retailBillReceipt(billId: string): Promise<string | null>
+  /** Writes the bill in progress. Debounced by the screen; never validates. */
+  retailDraftSave(
+    request: RetailDraftSaveRequest,
+  ): Promise<{ ok: true } | { ok: false; message: string }>
+  /** The branch's open draft, or null. Read once, on launch. */
+  retailDraftFind(): Promise<RetailDraftFoundDto | null>
+  retailDraftDiscard(): Promise<{ ok: true } | { ok: false; message: string }>
+  retailBillAddSlip(
+    request: RetailDraftSaveRequest,
+  ): Promise<RetailDraftFoundDto | { ok: false; message: string }>
+  retailBillDeleteSlip(
+    request: RetailDraftSaveRequest & { slipNo: number },
+  ): Promise<RetailDraftFoundDto | { ok: false; message: string }>
   searchCustomers(query: string): Promise<readonly CustomerDto[]>
   createCustomer(
     input: NewCustomerDto,
@@ -441,6 +454,12 @@ export const IPC_RETAIL = {
   billNextNo: 'retail:bill:nextNo',
   /** The 80mm document for every slip in a bill, as one print job. */
   billReceipt: 'retail:bill:receipt',
+  // ── the bill in progress ────────────────────────────────────────────────
+  draftSave: 'retail:draft:save',
+  draftFind: 'retail:draft:find',
+  draftDiscard: 'retail:draft:discard',
+  billAddSlip: 'retail:bill:addSlip',
+  billDeleteSlip: 'retail:bill:deleteSlip',
   openExternal: 'app:openExternal',
 } as const
 
@@ -840,4 +859,44 @@ export interface WastageRuleDto {
    * them. Without it, half of this card's purpose does not work.
    */
   readonly examples: readonly WastageRuleExampleDto[]
+}
+
+/**
+ * The bill in progress, across the boundary.
+ *
+ * The screen sends its whole state on a debounce; main writes it. There is no
+ * per-keystroke diffing and no partial update, because a draft that is half
+ * applied is worse than one that is 400ms stale.
+ */
+export interface RetailDraftSaveRequest {
+  readonly draft: RetailBillDraftDto
+  readonly activeSlipNo: number
+  /** Which line is open in DETAILS. An unresolved edit must survive a restart. */
+  readonly editingSlipNo: number | null
+  readonly editingLineNo: number | null
+  /** Minted by the screen, used only by addSlip. Ignored otherwise. */
+  readonly newSlipDraftId: string
+}
+
+/** The screen's state, exactly as it was left. */
+export interface RetailDraftStateDto {
+  readonly draft: RetailBillDraftDto
+  readonly activeSlipNo: number
+  readonly editingSlipNo: number | null
+  readonly editingLineNo: number | null
+}
+
+/**
+ * A recovered draft, plus enough of a summary to decide on it.
+ *
+ * The total is computed by the same calculate path the screen uses, so the card
+ * offering to resume names a figure the resumed bill will actually come to.
+ */
+export interface RetailDraftFoundDto {
+  readonly state: RetailDraftStateDto
+  readonly customerName: string
+  readonly slipCount: number
+  readonly itemCount: number
+  readonly total: string
+  readonly savedAt: string
 }

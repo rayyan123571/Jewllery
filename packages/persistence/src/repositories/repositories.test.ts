@@ -318,6 +318,7 @@ describe('the repository seam', () => {
       'goldRates',
       'parties',
       'retailBills',
+      'retailDrafts',
       'retailSales',
       'salesmen',
       'settings',

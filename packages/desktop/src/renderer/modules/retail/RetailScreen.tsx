@@ -19,6 +19,7 @@ import type {
   RetailBillCalculationDto,
   RetailBillDraftDto,
   RetailCalculationDto,
+  RetailDraftFoundDto,
   RetailItemDto,
   RetailLineDto,
   RetailSlipDto,
@@ -204,6 +205,8 @@ export function RetailScreen({
   const [lastSlipSaleIds, setLastSlipSaleIds] = useState<ReadonlyMap<number, string>>(
     new Map(),
   )
+  /** A bill somebody was part-way through when the app last closed. */
+  const [recovered, setRecovered] = useState<RetailDraftFoundDto | null>(null)
   const { push } = useMessages()
 
   // A ref as well as state: a second click can arrive before React has
@@ -261,6 +264,79 @@ export function RetailScreen({
     }, 120)
     return () => clearTimeout(timer)
   }, [draft, activeSlipNo, entry])
+
+  /**
+   * The bill in progress, written to SQLite.
+   *
+   * 400 ms, longer than the calculate debounce on purpose: a calculation is
+   * free and a disk write is not, and nothing on screen waits for this. What it
+   * buys is that a crash or a power cut at the counter costs at most the last
+   * 400 ms of typing rather than the whole visit.
+   *
+   * It carries the EDIT position as well as the figures. An unresolved edit
+   * blocks a save, so a draft that came back without it would resume into a
+   * screen that refuses to save and cannot say which line is at fault.
+   *
+   * Suppressed while the resume card is up: until the operator has said Resume
+   * or Discard, the screen is showing an empty bill that must not be written
+   * over the draft it is offering to restore.
+   */
+  useEffect(() => {
+    if (recovered) return
+    const timer = setTimeout(() => {
+      void window.api.retailDraftSave({
+        draft,
+        activeSlipNo,
+        editingSlipNo: editingIndex === null ? null : activeSlipNo,
+        editingLineNo: editingIndex === null ? null : editingIndex + 1,
+        newSlipDraftId: '',
+      })
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [draft, activeSlipNo, editingIndex, recovered])
+
+  /**
+   * On launch: is there a bill somebody was part-way through?
+   *
+   * Never reopened silently and never binned silently. The card names the
+   * customer, the slips, the items and the total, and the operator chooses.
+   */
+  useEffect(() => {
+    void window.api.retailDraftFind().then(setRecovered)
+  }, [])
+
+  const resumeDraft = useCallback((found: RetailDraftFoundDto) => {
+    const state = found.state
+    setForm({
+      saleDate: state.draft.saleDate,
+      saleTime: state.draft.saleTime,
+      customerId: state.draft.customerId,
+      customerName: state.draft.customerName,
+      customerMobile: state.draft.customerMobile ?? '',
+      salesmanId: state.draft.salesmanId ?? '',
+      ratePurity: state.draft.ratePurity,
+      ratePerTolaOverride: state.draft.ratePerTolaOverride,
+      weightUnit: state.draft.weightUnit,
+    })
+    setSlips(state.draft.slips)
+    setActiveSlipNo(state.activeSlipNo)
+    // The edit comes back with the rest of it, or the resumed screen would
+    // refuse to save and name a line that no longer looks like it is open.
+    setEditingIndex(state.editingLineNo === null ? null : state.editingLineNo - 1)
+    if (state.editingLineNo !== null) {
+      const slip = state.draft.slips.find((s) => s.slipNo === state.editingSlipNo)
+      const item = slip?.items[state.editingLineNo - 1]
+      if (item) setEntry(item)
+    }
+    setRecovered(null)
+    push('ok', `Resumed the bill for ${found.customerName}. Nothing was lost.`)
+  }, [push])
+
+  const discardDraft = useCallback(async () => {
+    await window.api.retailDraftDiscard()
+    setRecovered(null)
+    push('ok', 'That draft has been discarded. Starting a new bill.')
+  }, [push])
 
   const active: RetailCalculationDto | null = calc?.active ?? null
   const lines = active?.lines ?? []
@@ -793,6 +869,42 @@ export function RetailScreen({
       </div>
 
       <div className="retail__notices">
+        {/*
+          A bill somebody was part-way through.
+
+          Never reopened silently and never binned silently: the operator is
+          told what is there and chooses. Until they do, the debounced save is
+          suppressed, so the empty screen behind this card cannot overwrite the
+          draft it is offering to restore.
+        */}
+        {recovered ? (
+          <div className="confirm">
+            <p className="confirm__text">
+              A bill for <strong>{recovered.customerName}</strong> was still open when
+              the application last closed — {recovered.slipCount} slip
+              {recovered.slipCount === 1 ? '' : 's'}, {recovered.itemCount} item
+              {recovered.itemCount === 1 ? '' : 's'}, Rs {recovered.total}. Nothing has
+              been posted.
+            </p>
+            <div className="confirm__actions">
+              <Action
+                id="retail.draft.discard"
+                variant="ghost"
+                onActivate={() => void discardDraft()}
+              >
+                Discard it
+              </Action>
+              <Action
+                id="retail.draft.resume"
+                className="login__submit"
+                onActivate={() => resumeDraft(recovered)}
+              >
+                Resume this bill
+              </Action>
+            </div>
+          </div>
+        ) : null}
+
         {rateMissing ? (
         <div className="banner">
           No {form.ratePurity.slice(1)}K gold rate is recorded on or before this date. Set
