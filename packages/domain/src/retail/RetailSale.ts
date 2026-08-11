@@ -1,0 +1,155 @@
+import type { Money } from '../common/Money.js'
+import type { Weight } from '../common/Weight.js'
+import type { IsoDate, IsoTimestamp } from '../common/time.js'
+import type { Purity } from '../rates/Purity.js'
+
+/**
+ * A retail sale: one invoice to one customer, over the counter.
+ *
+ * The shape differs from a wholesale slip in three ways that matter, and each
+ * one is why this is a separate entity rather than a flag on the other:
+ *
+ *   1. **A retail sale is priced in money, not settled in gold.** A wholesale
+ *      slip creates a gold debt; a retail sale creates a bill. The gold on it
+ *      is a quantity being sold, not a balance being carried.
+ *   2. **The customer may be a walk-in with no account at all.** So the
+ *      customer's name and mobile are SNAPSHOTTED onto the row. A sale must
+ *      still print correctly in five years if the customer record is later
+ *      renamed, merged or deleted — the invoice is a record of what happened,
+ *      not a view joined onto current data.
+ *   3. **It can be part-paid**, which is the only thing that touches a ledger,
+ *      and only when there is an account to carry the balance.
+ *
+ * Money is integer paisa and weight is integer milligrams throughout, per
+ * DECISIONS §2. There is no float anywhere near a total.
+ */
+
+export const PAYMENT_METHODS = ['cash', 'card', 'bank', 'credit'] as const
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
+
+export function isPaymentMethod(value: string): value is PaymentMethod {
+  return (PAYMENT_METHODS as readonly string[]).includes(value)
+}
+
+/**
+ * Where a sale is in its life.
+ *
+ * `posted` is terminal in the sense that matters: a posted sale is never edited
+ * (DECISIONS §6). It can only be voided, which leaves both the sale and the
+ * reason on the record.
+ */
+export const SALE_STATUSES = ['draft', 'held', 'posted', 'void'] as const
+export type SaleStatus = (typeof SALE_STATUSES)[number]
+
+export function isSaleStatus(value: string): value is SaleStatus {
+  return (SALE_STATUSES as readonly string[]).includes(value)
+}
+
+/** How a line's labour charge is quoted. */
+export const LABOUR_MODES = ['fixed', 'per_tola'] as const
+export type LabourMode = (typeof LABOUR_MODES)[number]
+
+export function isLabourMode(value: string): value is LabourMode {
+  return (LABOUR_MODES as readonly string[]).includes(value)
+}
+
+export interface RetailSaleItem {
+  readonly id: string
+  readonly saleId: string
+  readonly lineNo: number
+  readonly itemName: string
+  readonly purity: Purity
+  readonly grossWeight: Weight
+  readonly stoneWeight: Weight
+  /** Deduction quoted per tola of gross, in milligrams. */
+  readonly cutPerTola: Weight
+  readonly netWeight: Weight
+  /** Basis points: 14.00% is 1400. Never a float — see DECISIONS §2. */
+  readonly wastageBp: number
+  readonly wastage: Weight
+  /** What the customer is actually charged gold for. */
+  readonly fineWeight: Weight
+  readonly labourCharges: Money
+  readonly labourMode: LabourMode
+  readonly stoneCharges: Money
+  readonly lineAmount: Money
+}
+
+export interface RetailSale {
+  readonly id: string
+  readonly invoiceNo: string
+  readonly branchId: string
+  readonly saleDate: IsoDate
+  /** Local wall-clock time, HH:MM. The counter cares what time it was. */
+  readonly saleTime: string
+  readonly customerId: string | null
+  /** Snapshotted, so the invoice survives the customer record changing. */
+  readonly customerNameSnapshot: string
+  readonly customerMobileSnapshot: string | null
+  readonly salesmanId: string | null
+  readonly salesmanNameSnapshot: string | null
+  readonly ratePurity: Purity
+  readonly ratePerTola: Money
+  readonly goldValue: Money
+  /** Old gold the customer traded in against this sale. */
+  readonly customerGold: Weight
+  readonly customerGoldPurity: Purity | null
+  readonly customerGoldValue: Money
+  readonly hallmarkCharges: Money
+  readonly otherCharges: Money
+  readonly discount: Money
+  readonly grandTotal: Money
+  readonly amountPaid: Money
+  readonly paymentMethod: PaymentMethod
+  readonly balance: Money
+  /** Rendered once at post time, so the paper and the screen never disagree. */
+  readonly amountInWords: string
+  readonly remarks: string | null
+  readonly status: SaleStatus
+  readonly voidReason: string | null
+  readonly createdByUserId: string
+  readonly createdAt: IsoTimestamp
+  readonly postedAt: IsoTimestamp | null
+}
+
+export interface RetailSaleWithItems {
+  readonly sale: RetailSale
+  readonly items: readonly RetailSaleItem[]
+}
+
+/** A counter salesman, for attributing a sale. Not a system user. */
+export interface Salesman {
+  readonly id: string
+  readonly name: string
+  readonly isActive: boolean
+}
+
+export interface Customer {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly mobile: string | null
+  readonly address: string | null
+  readonly city: string | null
+  readonly cnic: string | null
+  /**
+   * A walk-in has a row so the sale can point at a name, but no standing
+   * account — which is why a walk-in sale must be paid in full (there is no
+   * ledger to carry a balance on).
+   */
+  readonly isWalkIn: boolean
+  readonly openingGold: Weight
+  readonly openingCash: Money
+}
+
+export interface NewCustomer {
+  readonly code: string
+  readonly name: string
+  readonly mobile: string | null
+  readonly address: string | null
+  readonly city: string | null
+  readonly cnic: string | null
+  readonly isWalkIn: boolean
+  readonly openingGold: Weight
+  readonly openingCash: Money
+}

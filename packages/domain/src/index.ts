@@ -28,6 +28,14 @@ export {
   RATTI_PER_TOLA,
 } from './common/units.js'
 export {
+  TOLA_IN_MG,
+  formatGram,
+  formatTola,
+  parseGram,
+  parseTola,
+  toTolaNumber,
+} from './common/tola.js'
+export {
   businessDayOf,
   fixedClock,
   systemClock,
@@ -92,6 +100,39 @@ export type {
   WholesaleEntryWithLines,
   WholesaleLineItem,
 } from './wholesale/WholesaleEntry.js'
+
+// ── retail ─────────────────────────────────────────────────────────────────
+export {
+  LABOUR_MODES,
+  PAYMENT_METHODS,
+  SALE_STATUSES,
+  isLabourMode,
+  isPaymentMethod,
+  isSaleStatus,
+  type Customer,
+  type LabourMode,
+  type NewCustomer,
+  type PaymentMethod,
+  type RetailSale,
+  type RetailSaleItem,
+  type RetailSaleWithItems,
+  type SaleStatus,
+  type Salesman,
+} from './retail/RetailSale.js'
+export {
+  BASIS_POINTS,
+  computeRetailInvoice,
+  computeRetailLine,
+  totalsOfRetail,
+  type InvoiceChargeInput,
+  type InvoiceComputed,
+  type RetailLineComputed,
+  type RetailLineInput,
+  type RetailTotals,
+  type WastageBasis,
+  type WastageDirection,
+  type WastageRule,
+} from './retail/retailMath.js'
 
 // ── audit ──────────────────────────────────────────────────────────────────
 export type { AuditAction, AuditEntry, NewAuditEntry } from './audit/AuditEntry.js'

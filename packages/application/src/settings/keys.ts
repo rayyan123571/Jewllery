@@ -18,7 +18,38 @@ export const SETTING_KEYS = {
   /** Prefix for wholesale slip numbers, e.g. "WS-". */
   wholesaleInvoicePrefix: 'wholesale.invoicePrefix',
   settlementInvoicePrefix: 'wholesale.settlementPrefix',
+
+  // ── retail ────────────────────────────────────────────────────────────────
+  /** See RETAIL_WASTAGE_* below. Both ship as a decision the shop must make. */
+  retailWastageDirection: 'retail.wastage.direction',
+  retailWastageBasis: 'retail.wastage.basis',
+  retailInvoicePrefix: 'retail.invoicePrefix',
 } as const
+
+/**
+ * How wastage enters a retail sale — and why this is a setting, not a constant.
+ *
+ * A reference mockup implied that wastage is SUBTRACTED from net weight and
+ * taken on GROSS rather than net. Both are unusual for a retail sale, and the
+ * two choices multiply out to four different invoices from the same inputs.
+ *
+ * The difference is not cosmetic. On a 4.050-tola sale at Rs 237,970/tola the
+ * spread between the four combinations is tens of thousands of rupees, so
+ * picking one silently would mean every invoice this shop issues is wrong in a
+ * way nobody notices until a customer disputes one. It is a business decision
+ * the shop owner has to make, and until they do, the software must be explicit
+ * about which rule it is applying rather than quietly assuming.
+ *
+ * The defaults below are the conventional retail reading — wastage is a charge
+ * ADDED to the metal the customer receives, calculated on the NET weight they
+ * are actually paying for. That is the reading most Pakistani retail jewellers
+ * use. It is a default, not a claim about this shop.
+ */
+export type WastageDirection = 'add' | 'subtract'
+export type WastageBasis = 'gross' | 'net'
+
+export const DEFAULT_RETAIL_WASTAGE_DIRECTION: WastageDirection = 'add'
+export const DEFAULT_RETAIL_WASTAGE_BASIS: WastageBasis = 'net'
 
 /**
  * 0.050 g. Below this a negative remaining is allowed with a quiet note rather
@@ -71,6 +102,22 @@ export class Settings {
 
   settlementInvoicePrefix(): string {
     return this.repo.get(SETTING_KEYS.settlementInvoicePrefix)?.trim() || 'RT-'
+  }
+
+  retailInvoicePrefix(): string {
+    return this.repo.get(SETTING_KEYS.retailInvoicePrefix)?.trim() || 'RS-'
+  }
+
+  /** Whether wastage is added to the net weight or taken out of it. */
+  retailWastageDirection(): WastageDirection {
+    const raw = this.repo.get(SETTING_KEYS.retailWastageDirection)?.trim()
+    return raw === 'add' || raw === 'subtract' ? raw : DEFAULT_RETAIL_WASTAGE_DIRECTION
+  }
+
+  /** Whether the wastage percentage is taken on gross weight or on net. */
+  retailWastageBasis(): WastageBasis {
+    const raw = this.repo.get(SETTING_KEYS.retailWastageBasis)?.trim()
+    return raw === 'gross' || raw === 'net' ? raw : DEFAULT_RETAIL_WASTAGE_BASIS
   }
 
   private readInteger(key: string, fallback: number): number {
