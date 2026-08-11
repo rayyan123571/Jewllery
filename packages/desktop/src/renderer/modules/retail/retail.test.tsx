@@ -131,6 +131,7 @@ function calculate(request: RetailCalculateRequest): RetailCalculationDto {
     otherCharges: moneyDto(Money.ZERO),
     discount: moneyDto(Money.ZERO),
     customerGoldValue: moneyDto(Money.ZERO),
+    invoiceTotal: moneyDto(itemsTotal),
     grandTotal: moneyDto(itemsTotal),
     amountPaid: moneyDto(paid),
     balance: moneyDto(itemsTotal.minus(paid)),
@@ -161,11 +162,17 @@ const api = {
     user: { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
     rates: [],
     backup: { lastBackupAt: null, lastBackupDisplay: 'Never', daysSince: null, integrityOk: false },
+    users: [
+      { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
+    ],
     databaseConnected: true,
+    sidebarCollapsed: false,
     appVersion: '1.0.0.0',
   })),
   login: vi.fn(),
   logout: vi.fn(),
+  selectUser: vi.fn(),
+  setSidebarCollapsed: vi.fn(async () => {}),
   currentRates: vi.fn(async () => []),
   runBackup: vi.fn(),
   restoreBackup: vi.fn(),
@@ -209,10 +216,10 @@ const api = {
 
   windowControls: {
     minimize: vi.fn(async () => {}),
-    toggleMaximize: vi.fn(async () => true),
+    toggleFullscreen: vi.fn(async () => true),
     close: vi.fn(async () => {}),
-    isMaximized: vi.fn(async () => true),
-    onMaximizedChange: vi.fn(() => () => {}),
+    isFullscreen: vi.fn(async () => false),
+    onFullscreenChange: vi.fn(() => () => {}),
   },
 }
 
@@ -512,7 +519,9 @@ function stubContext(): ActionContext {
     toggleUserMenu: vi.fn(),
     dispatch: vi.fn(),
     minimizeWindow: vi.fn(),
-    toggleMaximizeWindow: vi.fn(),
+    toggleFullscreenWindow: vi.fn(),
+    toggleSidebar: vi.fn(),
+    switchUser: vi.fn(),
     closeWindow: vi.fn(),
   }
 }

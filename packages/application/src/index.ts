@@ -65,10 +65,16 @@ export {
 export { NoRateError, RateService, type RateDependencies } from './rates/RateService.js'
 export {
   DEFAULT_OVER_RETURN_TOLERANCE_MG,
+  DEFAULT_RETAIL_ROUNDING,
+  RETAIL_ROUNDING_STEPS,
   SETTING_KEYS,
   SUGGESTED_KATT_MAX_MILLI_RATTI,
   SUGGESTED_KATT_MIN_MILLI_RATTI,
   Settings,
+  type RoundingStep,
+  type WindowBounds,
+  type WindowMode,
+  type WindowState,
 } from './settings/keys.js'
 export {
   OverReturnRequiresConfirmationError,

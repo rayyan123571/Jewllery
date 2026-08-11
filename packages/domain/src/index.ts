@@ -16,7 +16,12 @@ export {
   type LedgerKind,
   type LedgerTotals,
 } from './common/balance.js'
-export { assertSafeInteger, roundHalfAwayFromZero, scaleDiv } from './common/rounding.js'
+export {
+  assertSafeInteger,
+  roundHalfAwayFromZero,
+  roundToNearestRupees,
+  scaleDiv,
+} from './common/rounding.js'
 export {
   GRAMS_PER_TOLA,
   MASHA_PER_TOLA,

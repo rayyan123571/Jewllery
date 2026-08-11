@@ -25,6 +25,7 @@ import {
   type RetailPostRequest,
   type RetailPostResult,
   type RetailSaleDto,
+  type RetailRoundingDto,
   type RetailSaleSummaryDto,
   type SalesmanDto,
   type SetRateRequest,
@@ -51,6 +52,10 @@ const api: RendererApi = {
   login: (request: LoginRequest) =>
     ipcRenderer.invoke(IPC.login, request) as Promise<LoginResponse>,
   logout: () => ipcRenderer.invoke(IPC.logout) as Promise<void>,
+  selectUser: (userId: string) =>
+    ipcRenderer.invoke(IPC.userSelect, userId) as Promise<LoginResponse>,
+  setSidebarCollapsed: (collapsed: boolean) =>
+    ipcRenderer.invoke(IPC.setSidebarCollapsed, collapsed) as Promise<void>,
   currentRates: () => ipcRenderer.invoke(IPC.currentRates) as Promise<readonly RateDto[]>,
   runBackup: () => ipcRenderer.invoke(IPC.backupRun) as Promise<BackupStatusDto>,
   restoreBackup: (filePath: string) =>
@@ -117,6 +122,12 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_RETAIL.wastageRuleSet, rule) as ReturnType<
       RendererApi['setRetailWastageRule']
     >,
+  retailRounding: () =>
+    ipcRenderer.invoke(IPC_RETAIL.rounding) as Promise<RetailRoundingDto>,
+  setRetailRounding: (step: number) =>
+    ipcRenderer.invoke(IPC_RETAIL.roundingSet, step) as ReturnType<
+      RendererApi['setRetailRounding']
+    >,
   openExternal: (url: string) =>
     ipcRenderer.invoke(IPC_RETAIL.openExternal, url) as ReturnType<
       RendererApi['openExternal']
@@ -124,17 +135,17 @@ const api: RendererApi = {
 
   windowControls: {
     minimize: () => ipcRenderer.invoke(IPC_M2.windowMinimize) as Promise<void>,
-    toggleMaximize: () =>
-      ipcRenderer.invoke(IPC_M2.windowToggleMaximize) as Promise<boolean>,
+    toggleFullscreen: () =>
+      ipcRenderer.invoke(IPC_M2.windowToggleFullscreen) as Promise<boolean>,
     close: () => ipcRenderer.invoke(IPC_M2.windowClose) as Promise<void>,
-    isMaximized: () => ipcRenderer.invoke(IPC_M2.windowIsMaximized) as Promise<boolean>,
-    onMaximizedChange: (listener: (maximized: boolean) => void) => {
+    isFullscreen: () => ipcRenderer.invoke(IPC_M2.windowIsFullscreen) as Promise<boolean>,
+    onFullscreenChange: (listener: (fullscreen: boolean) => void) => {
       // The listener is wrapped rather than passed through, so the renderer
       // never receives Electron's IpcRendererEvent — that object carries a
       // `sender` which would be a hole straight back out of the sandbox.
-      const handler = (_event: unknown, maximized: boolean): void => listener(maximized)
-      ipcRenderer.on(IPC_M2.windowMaximizedChanged, handler)
-      return () => ipcRenderer.removeListener(IPC_M2.windowMaximizedChanged, handler)
+      const handler = (_event: unknown, fullscreen: boolean): void => listener(fullscreen)
+      ipcRenderer.on(IPC_M2.windowFullscreenChanged, handler)
+      return () => ipcRenderer.removeListener(IPC_M2.windowFullscreenChanged, handler)
     },
   },
 }

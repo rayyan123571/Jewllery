@@ -1,6 +1,6 @@
 import { Money } from '../common/Money.js'
 import { Weight } from '../common/Weight.js'
-import { scaleDiv } from '../common/rounding.js'
+import { roundToNearestRupees, scaleDiv } from '../common/rounding.js'
 import { MG_PER_TOLA } from '../common/units.js'
 import type { LabourMode } from './RetailSale.js'
 
@@ -150,11 +150,42 @@ export interface InvoiceChargeInput {
   readonly otherCharges: Money
   readonly discount: Money
   readonly amountPaid: Money
+  /**
+   * Rounding step for the invoice total, in whole rupees. 1 — the default — is a
+   * no-op and leaves the total exact to the paisa. See `roundToNearestRupees`.
+   */
+  readonly roundingNearestRupees?: number
 }
 
 export interface InvoiceComputed {
   readonly customerGoldValue: Money
+  /**
+   * What the sale is worth: items plus charges, less the discount, and NOTHING
+   * else. This is the figure the slip shows as GRAND TOTAL AMOUNT, and it is the
+   * one place the rounding step is applied.
+   *
+   * It deliberately excludes the customer's old gold, because old gold is not a
+   * discount on the goods — it is a payment made in metal. Netting it into the
+   * headline total is what made the reference mockup's payment block impossible
+   * to reconcile: the total, the two payment fields and the balance could not
+   * all be right at once.
+   */
+  readonly invoiceTotal: Money
+  /**
+   * What is actually payable in cash: the invoice total less the metal the
+   * customer handed over. This is what is stored on the row, what the walk-in
+   * rule tests against, and what the amount in words describes.
+   */
   readonly grandTotal: Money
+  /**
+   * What is still owed:
+   *
+   *   balance = invoiceTotal − amountPaid − customerGoldValue
+   *
+   * which is exactly `grandTotal − amountPaid`. The two forms are the same
+   * arithmetic, and the screen shows the first because that is the chain the
+   * operator can follow down the column with their finger.
+   */
   readonly balance: Money
   /** Fine sold, less what the customer brought in. Can be negative. */
   readonly remainingGold: Weight
@@ -166,6 +197,13 @@ export interface InvoiceComputed {
  * Old gold the customer brings in is valued at the rate for ITS OWN purity, not
  * the sale's — a customer trading 21K against a 22K purchase is not giving 22K
  * metal, and valuing it as though they were would quietly overpay them.
+ *
+ * ── Where the rounding goes, and why only here ─────────────────────────────
+ * Once, on `invoiceTotal`, after every line and charge has been added exactly.
+ * Everything downstream — the payable figure, the balance — is derived from the
+ * ROUNDED total, so the three figures on the slip agree with each other by
+ * construction rather than by luck. Rounding the payable figure instead would
+ * leave the total and the balance disagreeing by the rounding amount.
  */
 export function computeRetailInvoice(input: InvoiceChargeInput): InvoiceComputed {
   const customerGoldValue =
@@ -173,14 +211,20 @@ export function computeRetailInvoice(input: InvoiceChargeInput): InvoiceComputed
       ? Money.ZERO
       : Money.valueOfAtTolaRate(input.customerGold, input.customerGoldRatePerTola)
 
-  const grandTotal = input.totals.itemsTotal
+  const exactTotal = input.totals.itemsTotal
     .plus(input.hallmarkCharges)
     .plus(input.otherCharges)
     .minus(input.discount)
-    .minus(customerGoldValue)
+
+  const invoiceTotal = Money.fromPaisa(
+    roundToNearestRupees(exactTotal.paisa, input.roundingNearestRupees ?? 1),
+  )
+
+  const grandTotal = invoiceTotal.minus(customerGoldValue)
 
   return {
     customerGoldValue,
+    invoiceTotal,
     grandTotal,
     balance: grandTotal.minus(input.amountPaid),
     remainingGold: input.totals.totalFine.minus(input.customerGold),

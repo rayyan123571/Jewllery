@@ -1,6 +1,7 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain } from 'electron'
+import { BrowserWindow, Menu, app, dialog, ipcMain, screen } from 'electron'
 import { join } from 'node:path'
 import { writeFileSync } from 'node:fs'
+import { toPublicUser } from '@jewellery/domain'
 import { createContainer, type Container } from './container.js'
 import { registerIpcHandlers, type Session } from './ipc.js'
 import { registerWholesaleHandlers } from './wholesaleIpc.js'
@@ -20,10 +21,35 @@ import { IPC_M2 } from '../shared/ipc.js'
 let container: Container | null = null
 const session: Session = { user: null }
 
+/**
+ * Where the window should open.
+ *
+ * A saved position is not trusted: a laptop undocked from a second monitor has
+ * bounds pointing at a screen that no longer exists, and a window opening at
+ * x = 2400 on a single 1920 display is a window the shop cannot find and cannot
+ * drag back. `getDisplayMatching` picks the nearest display to those bounds and
+ * the size is clamped into its work area — never the full screen area, or the
+ * title bar ends up under the taskbar.
+ */
+function openingBounds(): { x?: number; y?: number; width: number; height: number } {
+  const fallback = { width: 1280, height: 853 }
+  const saved = container?.settings.windowState().bounds
+  if (!saved) return fallback
+
+  const work = screen.getDisplayMatching(saved).workArea
+  const width = Math.min(Math.max(saved.width, 1100), work.width)
+  const height = Math.min(Math.max(saved.height, 700), work.height)
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(saved.x, work.x), work.x + work.width - width),
+    y: Math.min(Math.max(saved.y, work.y), work.y + work.height - height),
+  }
+}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1280,
-    height: 853,
+    ...openingBounds(),
     minWidth: 1100,
     minHeight: 700,
     show: false,
@@ -43,17 +69,46 @@ function createWindow(): BrowserWindow {
     },
   })
 
-  // Both directions are reported so the maximise button can show the right
-  // icon — a restore glyph on a maximised window and a maximise glyph
-  // otherwise. Without this the button looks wrong after the user
-  // double-clicks the drag region, which does not go through our handler.
-  const reportMaximised = (): void => {
+  /**
+   * The glyph is driven by the WINDOW, not by our button.
+   *
+   * F11 and Esc change the same state, and so does anything the OS does on its
+   * own. A button that only updated its own icon would be showing the wrong
+   * glyph the moment the keyboard was used — which is exactly the state a user
+   * then presses it in.
+   */
+  const reportFullscreen = (): void => {
     if (!window.isDestroyed()) {
-      window.webContents.send(IPC_M2.windowMaximizedChanged, window.isMaximized())
+      window.webContents.send(IPC_M2.windowFullscreenChanged, window.isFullScreen())
     }
   }
-  window.on('maximize', reportMaximised)
-  window.on('unmaximize', reportMaximised)
+  window.on('enter-full-screen', reportFullscreen)
+  window.on('leave-full-screen', reportFullscreen)
+
+  // Remembered across restarts. Debounced, because a drag fires `resize` on
+  // every frame and a settings write per frame is a write per frame.
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  const rememberWindowState = (): void => {
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      if (window.isDestroyed() || !container) return
+      const fullscreen = window.isFullScreen()
+      const maximized = window.isMaximized()
+      container.settings.setWindowState({
+        mode: fullscreen ? 'fullscreen' : maximized ? 'maximized' : 'normal',
+        // Only a genuinely restored window has bounds worth keeping: the bounds
+        // of a maximised or fullscreen window are the screen, and restoring
+        // those as a "normal" size would give a window with no edges to grab.
+        bounds: fullscreen || maximized ? null : window.getBounds(),
+      })
+    }, 400)
+  }
+  window.on('resize', rememberWindowState)
+  window.on('move', rememberWindowState)
+  window.on('maximize', rememberWindowState)
+  window.on('unmaximize', rememberWindowState)
+  window.on('enter-full-screen', rememberWindowState)
+  window.on('leave-full-screen', rememberWindowState)
 
   window.once('ready-to-show', () => {
     // A capture asks for an exact CONTENT size in CSS pixels, and it has to be
@@ -65,9 +120,14 @@ function createWindow(): BrowserWindow {
     if (captureSize) {
       window.setContentSize(captureSize.width, captureSize.height)
     } else {
-      // Opens filling the screen, like the system it replaces. A shop counter
-      // never wants a window it has to resize before it can read the grid.
-      window.maximize()
+      // Whatever it was last left as. The default is MAXIMISED — filling the
+      // work area with the taskbar still visible — because that is the state a
+      // till should be in when nobody has asked for anything: a counter never
+      // wants a window it has to resize before it can read the grid, and it
+      // does not want the clock and the taskbar gone either unless it said so.
+      const mode = container?.settings.windowState().mode ?? 'maximized'
+      if (mode === 'fullscreen') window.setFullScreen(true)
+      else if (mode === 'maximized') window.maximize()
     }
     window.show()
     void runCaptureScenario(window)
@@ -93,32 +153,36 @@ app.whenReady().then(
     container = createContainer({ dataDirectory: app.getPath('userData') })
 
     /**
-     * The counter opens straight into the shell — there is no sign-in screen.
+     * There is still no sign-in screen, and there is still a session.
      *
-     * The shop asked for the login page to go, and on a single-PC shop counter
-     * that is a reasonable call: the machine is behind the counter, the person
-     * using it is the person who unlocked the building, and a password typed
-     * forty times a day becomes a sticky note on the monitor.
+     * The shop asked for the login page to go, and on a single-PC counter that
+     * is a reasonable call: the machine is behind the counter, the person using
+     * it unlocked the building, and a password typed forty times a day becomes
+     * a sticky note on the monitor.
      *
-     * What is deliberately NOT removed is the session itself. Every write in
-     * this application records who made it — `created_by` is NOT NULL and a
-     * foreign key to `users` on both wholesale entries and retail sales, and
-     * the audit log keys on the same id. Tearing the session out would mean
-     * either dropping that attribution or inventing a fake user to satisfy it,
-     * and an audit trail that names nobody is not an audit trail.
+     * What could not go with it is the attribution. Every write records who
+     * made it — `created_by` is NOT NULL and a foreign key to `users` on both
+     * wholesale entries and retail sales, and the audit log keys on the same
+     * id. So the session is IDENTIFIED rather than authenticated:
      *
-     * So the session is established here instead of being typed: the shop's
-     * administrator is signed in automatically at startup. The permission model
-     * still runs, the audit still names a real row, and every IPC handler keeps
-     * its `requireUser()` guard — which now also means the app fails loudly if
-     * this ever silently stops working, rather than writing rows with no owner.
+     *   one active user   → it is chosen here, silently, and nothing is put in
+     *                       front of a one-person shop
+     *   several           → left null, and the shell asks "Who is working?"
+     *                       once, as tappable cards with no password field
+     *   none usable       → defaultUser() throws, loudly, at startup
      *
-     * The trade is real and worth stating plainly: with no sign-in there is no
-     * per-user attribution between staff, and role permissions no longer
-     * separate a salesman from an administrator. Everyone at the counter is the
-     * administrator. See the note in the final report.
+     * The permission model runs against whoever is chosen, so a salesman is a
+     * salesman and cannot void a sale. That is the whole reason the card exists:
+     * without it, every entry in a shop with staff is attributed to the same
+     * account and the audit trail names nobody in particular.
      */
-    session.user = container.defaultUser()
+    const active = container.activeUsers()
+    const only = active.length === 1 ? active[0] : undefined
+    session.user = only
+      ? toPublicUser(only)
+      : active.length > 1
+        ? null
+        : container.defaultUser()
 
     registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
     registerWholesaleHandlers(container, session)
@@ -138,31 +202,40 @@ app.whenReady().then(
 )
 
 /**
- * The frameless window's own minimise / maximise / close.
+ * The frameless window's own minimise / fullscreen / close.
  *
  * They act on the window the request came FROM rather than a captured
  * reference: with a captured one, a second window (or a window reopened on
  * macOS `activate`) would have its buttons quietly driving the first one.
+ *
+ * The middle button is TRUE FULLSCREEN, not maximise. That is a deliberate
+ * departure from the Windows convention — maximise there respects the taskbar,
+ * and the shop wants the whole display at the counter. Because it departs from
+ * what people expect, the renderer also binds F11 and Esc to the same state, so
+ * there are two ways out that need no aiming.
+ *
+ * Minimise is left completely standard: the window goes to the taskbar and
+ * comes back as whatever it was, fullscreen included, because Windows restores
+ * the state it minimised rather than a state we invented.
  */
 function registerWindowControls(): void {
   ipcMain.handle(IPC_M2.windowMinimize, (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize()
   })
 
-  ipcMain.handle(IPC_M2.windowToggleMaximize, (event): boolean => {
+  ipcMain.handle(IPC_M2.windowToggleFullscreen, (event): boolean => {
     const target = BrowserWindow.fromWebContents(event.sender)
     if (!target) return false
-    if (target.isMaximized()) target.unmaximize()
-    else target.maximize()
-    return target.isMaximized()
+    target.setFullScreen(!target.isFullScreen())
+    return target.isFullScreen()
   })
 
   ipcMain.handle(IPC_M2.windowClose, (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close()
   })
 
-  ipcMain.handle(IPC_M2.windowIsMaximized, (event): boolean =>
-    BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false,
+  ipcMain.handle(IPC_M2.windowIsFullscreen, (event): boolean =>
+    BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
   )
 }
 

@@ -22,6 +22,8 @@ import {
   retailLoad,
   retailNextInvoiceNo,
   retailReceipt,
+  retailRounding,
+  retailRoundingSet,
   retailSave,
   retailVoid,
   retailWastageRule,
@@ -97,6 +99,12 @@ export function registerRetailHandlers(container: Container, session: Session): 
 
   ipcMain.handle(IPC_RETAIL.wastageRuleSet, (_event, rule: WastageRuleChoice) =>
     retailWastageRuleSet(deps, rule),
+  )
+
+  ipcMain.handle(IPC_RETAIL.rounding, () => retailRounding(deps))
+
+  ipcMain.handle(IPC_RETAIL.roundingSet, (_event, step: number) =>
+    retailRoundingSet(deps, step),
   )
 
   /**

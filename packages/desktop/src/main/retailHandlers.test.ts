@@ -23,6 +23,8 @@ import {
   retailLoad,
   retailNextInvoiceNo,
   retailReceipt,
+  retailRounding,
+  retailRoundingSet,
   retailSave,
   retailVoid,
   retailWastageRule,
@@ -499,6 +501,72 @@ describe('the wastage rule card', () => {
     expect(preview.examples[0]?.options.find((option) => option.isSaved)?.direction).toBe('add')
     // Nothing was written by a preview.
     expect(settingsRepo.get(SETTING_KEYS.retailWastageDirection)).toBeNull()
+  })
+})
+
+describe('the rounding card', () => {
+  it('offers exactly the three steps, with the exact one saved by default', () => {
+    const rounding = retailRounding(deps)
+    expect(rounding.savedStep).toBe(1)
+    expect(rounding.options.map((option) => option.step)).toEqual([1, 100, 1000])
+    expect(rounding.options.find((option) => option.isSaved)?.step).toBe(1)
+  })
+
+  it('shows the exact total unchanged under the default step', () => {
+    const rounding = retailRounding(deps)
+    expect(rounding.options[0]?.totalDisplay).toBe(rounding.exactDisplay)
+  })
+
+  it('shows each step landing where it says it does', () => {
+    const rounding = retailRounding(deps)
+    // "Rs 1,234,500.00" → the rupee part must end in the right run of zeroes.
+    const rupeesOf = (display: string): number =>
+      Number(display.replace(/[^\d.]/g, '').split('.')[0])
+    expect(rupeesOf(rounding.options[1]?.totalDisplay ?? '') % 100).toBe(0)
+    expect(rupeesOf(rounding.options[2]?.totalDisplay ?? '') % 1000).toBe(0)
+  })
+
+  it('refuses a rounding change by a salesman, and writes nothing', () => {
+    const asSalesman: RetailHandlerDeps = { ...deps, session: { user: salesman } }
+    const result = retailRoundingSet(asSalesman, 100)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('not allowed')
+    expect(settingsRepo.get(SETTING_KEYS.retailRoundingNearest)).toBeNull()
+  })
+
+  it('allows an administrator to set a step, and refuses one that is not offered', () => {
+    expect(retailRoundingSet(deps, 100).ok).toBe(true)
+    expect(settingsRepo.get(SETTING_KEYS.retailRoundingNearest)).toBe('100')
+    expect(retailRounding(deps).savedStep).toBe(100)
+
+    const bad = retailRoundingSet(deps, 250)
+    expect(bad.ok).toBe(false)
+    // The refused write left the shop's real choice alone.
+    expect(settingsRepo.get(SETTING_KEYS.retailRoundingNearest)).toBe('100')
+  })
+
+  it('carries the saved step into a live calculation, on the total only', () => {
+    const exact = retailCalculate(deps, { draft: draft(), entry: null })
+    expect(retailRoundingSet(deps, 100).ok).toBe(true)
+    const rounded = retailCalculate(deps, { draft: draft(), entry: null })
+
+    expect(rounded.invoiceTotal.paisa % 10_000).toBe(0)
+    expect(rounded.invoiceTotal.paisa).not.toBe(exact.invoiceTotal.paisa)
+    // The LINE is untouched. Rounding is a property of the total, and a line
+    // that moved with it would stop summing to the figure printed beneath it.
+    expect(rounded.lines[0]?.amount.paisa).toBe(exact.lines[0]?.amount.paisa)
+    expect(rounded.itemsTotal.paisa).toBe(exact.itemsTotal.paisa)
+  })
+
+  it('keeps the balance derived from the rounded total, never the exact one', () => {
+    expect(retailRoundingSet(deps, 1000).ok).toBe(true)
+    const calc = retailCalculate(deps, {
+      draft: draft({ amountPaid: '100000.00' }),
+      entry: null,
+    })
+    expect(calc.balance.paisa).toBe(
+      calc.invoiceTotal.paisa - calc.amountPaid.paisa - calc.customerGoldValue.paisa,
+    )
   })
 })
 

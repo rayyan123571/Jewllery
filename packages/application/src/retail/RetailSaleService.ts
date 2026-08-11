@@ -104,7 +104,11 @@ export interface RetailCalculation {
   readonly itemsTotal: Money
   readonly customerGoldValue: Money
   readonly remainingGold: Weight
+  /** Items and charges less discount, rounded. The slip's GRAND TOTAL AMOUNT. */
+  readonly invoiceTotal: Money
+  /** The invoice total less the customer's old gold. What is payable in cash. */
   readonly grandTotal: Money
+  /** `invoiceTotal − amountPaid − customerGoldValue`. What is still owed. */
   readonly balance: Money
   readonly amountInWords: string
   readonly ratePerTola: Money
@@ -191,6 +195,10 @@ export class RetailSaleService {
       otherCharges: input.otherCharges,
       discount: input.discount,
       amountPaid: input.amountPaid,
+      // Read here, once, like the wastage rule — and for the same reason: which
+      // rounding applies is the shop's decision, and the domain's job is only to
+      // apply whichever one it is handed.
+      roundingNearestRupees: this.deps.settings.retailRoundingNearest(),
     })
 
     const warnings: string[] = []
@@ -218,6 +226,7 @@ export class RetailSaleService {
       itemsTotal: totals.itemsTotal,
       customerGoldValue: invoice.customerGoldValue,
       remainingGold: invoice.remainingGold,
+      invoiceTotal: invoice.invoiceTotal,
       grandTotal: invoice.grandTotal,
       balance: invoice.balance,
       amountInWords: amountInWords(invoice.grandTotal),

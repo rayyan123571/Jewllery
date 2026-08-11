@@ -21,7 +21,9 @@ function context(): ActionContext {
     toggleUserMenu: vi.fn(),
     dispatch: vi.fn(),
     minimizeWindow: vi.fn(),
-    toggleMaximizeWindow: vi.fn(),
+    toggleFullscreenWindow: vi.fn(),
+    toggleSidebar: vi.fn(),
+    switchUser: vi.fn(),
     closeWindow: vi.fn(),
   }
 }

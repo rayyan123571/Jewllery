@@ -16,10 +16,14 @@ export const IPC = {
   bootstrap: 'app:bootstrap',
   login: 'auth:login',
   logout: 'auth:logout',
+  /** Picks who is working, by id. No password — see selectUser below. */
+  userSelect: 'auth:selectUser',
   currentRates: 'rates:current',
   backupRun: 'backup:run',
   backupRestore: 'backup:restore',
   backupHistory: 'backup:history',
+  /** The shell's own state, kept in the settings store so it survives a restart. */
+  setSidebarCollapsed: 'ui:setSidebarCollapsed',
   quit: 'app:quit',
 } as const
 
@@ -81,10 +85,20 @@ export interface BootstrapDto {
   readonly shop: ShopDto | null
   readonly branchId: string
   readonly branchName: string
+  /**
+   * Who is working. Null when the shop has more than one active user and
+   * nobody has said which one yet — the shell then shows the "Who is working?"
+   * card. With a single active user the main process picks it silently and this
+   * is never null, so nothing is put in front of a one-person counter.
+   */
   readonly user: UserDto | null
+  /** Active users, for that card. Never carries credential material. */
+  readonly users: readonly UserDto[]
   readonly rates: readonly RateDto[]
   readonly backup: BackupStatusDto
   readonly databaseConnected: boolean
+  /** The stored manual choice, or null for "follow the window width". */
+  readonly sidebarCollapsed: boolean | null
   readonly appVersion: string
 }
 
@@ -102,6 +116,17 @@ export interface RendererApi {
   bootstrap(): Promise<BootstrapDto>
   login(request: LoginRequest): Promise<LoginResponse>
   logout(): Promise<void>
+  /**
+   * Says who is working. Deliberately takes no password.
+   *
+   * This is identification, not authentication. The PC is behind the counter
+   * and the person using it unlocked the building; what the shop needs is for
+   * `created_by` to name the right person, not for the right person to prove
+   * they are themselves forty times a day. The role permissions still apply to
+   * whoever is chosen.
+   */
+  selectUser(userId: string): Promise<LoginResponse>
+  setSidebarCollapsed(collapsed: boolean): Promise<void>
   currentRates(): Promise<readonly RateDto[]>
   runBackup(): Promise<BackupStatusDto>
   restoreBackup(filePath: string): Promise<BackupStatusDto>
@@ -150,6 +175,9 @@ export interface RendererApi {
   setRetailWastageRule(
     rule: WastageRuleChoice,
   ): Promise<{ ok: true } | { ok: false; message: string }>
+  /** The saved rounding step, plus what each step does to one worked total. */
+  retailRounding(): Promise<RetailRoundingDto>
+  setRetailRounding(step: number): Promise<{ ok: true } | { ok: false; message: string }>
   /**
    * Hands a URL to the operating system's browser.
    *
@@ -165,14 +193,20 @@ export interface RendererApi {
    * The renderer is sandboxed and cannot touch the BrowserWindow, so these
    * forward to main like every other capability — the same narrow bridge, not a
    * special case.
+   *
+   * The middle button is FULLSCREEN, not maximise, and these names say so. It
+   * is a deliberate departure from the Windows convention: the shop wants the
+   * whole display at the counter, taskbar included. The window still OPENS
+   * maximised — filling the work area with the taskbar visible — because that
+   * is the state a till should be in when nobody has asked for anything.
    */
   readonly windowControls: {
     minimize(): Promise<void>
-    toggleMaximize(): Promise<boolean>
+    toggleFullscreen(): Promise<boolean>
     close(): Promise<void>
-    isMaximized(): Promise<boolean>
+    isFullscreen(): Promise<boolean>
     /** Returns an unsubscribe function. */
-    onMaximizedChange(listener: (maximized: boolean) => void): () => void
+    onFullscreenChange(listener: (fullscreen: boolean) => void): () => void
   }
 }
 
@@ -208,11 +242,16 @@ export const IPC_M2 = {
   rateHistory: 'rates:history',
   changePassword: 'auth:changePassword',
   windowMinimize: 'window:minimize',
-  windowToggleMaximize: 'window:toggleMaximize',
+  windowToggleFullscreen: 'window:toggleFullscreen',
   windowClose: 'window:close',
-  windowIsMaximized: 'window:isMaximized',
-  /** Main -> renderer, so the maximise button can show the right icon. */
-  windowMaximizedChanged: 'window:maximizedChanged',
+  windowIsFullscreen: 'window:isFullscreen',
+  /**
+   * Main -> renderer, driven by the WINDOW's own enter/leave-full-screen
+   * events rather than by our button. F11 and Esc change the same state, and a
+   * glyph that only updates when its own button was pressed is a glyph that
+   * lies as soon as the keyboard is used.
+   */
+  windowFullscreenChanged: 'window:fullscreenChanged',
 } as const
 
 export interface PartyDto {
@@ -369,6 +408,9 @@ export const IPC_RETAIL = {
   salesmenList: 'salesmen:list',
   wastageRule: 'settings:retailWastageRule',
   wastageRuleSet: 'settings:retailWastageRule:set',
+  /** The rounding step applied to the invoice total. See RetailRoundingDto. */
+  rounding: 'settings:retailRounding',
+  roundingSet: 'settings:retailRounding:set',
   openExternal: 'app:openExternal',
 } as const
 
@@ -498,8 +540,22 @@ export interface RetailCalculationDto {
   readonly otherCharges: MoneyDto
   readonly discount: MoneyDto
   readonly customerGoldValue: MoneyDto
+  /**
+   * Items and charges less the discount, rounded by the shop's rounding step.
+   * This is the slip's GRAND TOTAL AMOUNT, and it deliberately does NOT have the
+   * customer's old gold taken off it — see `balance`.
+   */
+  readonly invoiceTotal: MoneyDto
+  /** The invoice total less the old gold. What is payable in cash, and stored. */
   readonly grandTotal: MoneyDto
   readonly amountPaid: MoneyDto
+  /**
+   * `invoiceTotal − amountPaid − customerGoldValue`, computed on the main side.
+   *
+   * The renderer shows this figure and never derives it. That is the whole of
+   * the rule the reference mockup broke: it printed a balance 400,000 away from
+   * its own total with both payment fields at zero.
+   */
   readonly balance: MoneyDto
   readonly amountInWords: string
   readonly ratePerTola: MoneyDto
@@ -625,6 +681,26 @@ export interface WastageRuleExampleDto {
     readonly rateDisplay: string
   }
   readonly options: readonly WastageRuleOptionDto[]
+}
+
+/**
+ * One rounding step, worked through the SAME invoice arithmetic a real sale
+ * uses — so the card cannot show one answer while the till charges another.
+ */
+export interface RoundingStepOptionDto {
+  readonly step: number
+  readonly label: string
+  readonly note: string
+  /** The sample invoice total under this step. */
+  readonly totalDisplay: string
+  readonly isSaved: boolean
+}
+
+export interface RetailRoundingDto {
+  readonly savedStep: number
+  /** The exact, unrounded total of the sample, for comparison. */
+  readonly exactDisplay: string
+  readonly options: readonly RoundingStepOptionDto[]
 }
 
 export interface WastageRuleDto {

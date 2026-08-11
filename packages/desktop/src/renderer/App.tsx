@@ -26,11 +26,22 @@ const EMPTY_BOOTSTRAP: BootstrapDto = {
   branchId: '',
   branchName: 'Main Branch',
   user: null,
+  users: [],
   rates: [],
   backup: { lastBackupAt: null, lastBackupDisplay: 'Never', daysSince: null, integrityOk: false },
   databaseConnected: false,
+  sidebarCollapsed: null,
   appVersion: '0.0.0',
 }
+
+/**
+ * Below this the sidebar collapses itself.
+ *
+ * Matches theme.size.sidebarAutoCollapseBelow. It is duplicated here as a
+ * number because a media query cannot set React state and this rule has to be
+ * one the toggle can overrule — see `collapsed` below.
+ */
+const SIDEBAR_AUTO_COLLAPSE_BELOW = 1280
 
 /**
  * The provider seam. Kept as a thin wrapper so the shell below it can call
@@ -50,19 +61,45 @@ function AppShell() {
   const [boot, setBoot] = useState<BootstrapDto>(EMPTY_BOOTSTRAP)
   const [now, setNow] = useState(() => new Date())
   const [busy, setBusy] = useState<string | null>(null)
-  const [maximized, setMaximized] = useState(true)
+  const [fullscreen, setFullscreen] = useState(false)
+  /**
+   * The manual choice about the sidebar, or null for "follow the window width".
+   *
+   * Three states, because two cannot express it: the width rule has to be able
+   * to act when nobody has expressed a preference, and stop acting the moment
+   * somebody has. `?? narrow` below is the whole rule.
+   */
+  const [sidebarChoice, setSidebarChoice] = useState<boolean | null>(null)
+  const [narrow, setNarrow] = useState(
+    () => window.innerWidth < SIDEBAR_AUTO_COLLAPSE_BELOW,
+  )
+  /** Set when the operator asks to change who is working. */
+  const [switching, setSwitching] = useState(false)
 
   useEffect(() => {
-    void window.api?.bootstrap().then(setBoot).catch(() => setBoot(EMPTY_BOOTSTRAP))
+    void window.api
+      ?.bootstrap()
+      .then((next) => {
+        setBoot(next)
+        setSidebarChoice(next.sidebarCollapsed ?? null)
+      })
+      .catch(() => setBoot(EMPTY_BOOTSTRAP))
   }, [])
 
-  // Keeps the maximise glyph honest. Double-clicking the drag region maximises
+  // Keeps the fullscreen glyph honest. F11 and Esc change the same state
   // without going through our button, so the state has to come from the window.
   useEffect(() => {
     const controls = window.api?.windowControls
     if (!controls) return
-    void controls.isMaximized().then(setMaximized)
-    return controls.onMaximizedChange(setMaximized)
+    void controls.isFullscreen().then(setFullscreen)
+    return controls.onFullscreenChange(setFullscreen)
+  }, [])
+
+  useEffect(() => {
+    const onResize = (): void =>
+      setNarrow(window.innerWidth < SIDEBAR_AUTO_COLLAPSE_BELOW)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
   }, [])
 
   // The mockup shows a live clock in the top bar.
@@ -91,6 +128,54 @@ function AppShell() {
     }
   }, [])
 
+  const collapsed = sidebarChoice ?? narrow
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarChoice((current) => {
+      const next = !(current ?? window.innerWidth < SIDEBAR_AUTO_COLLAPSE_BELOW)
+      // Written through, so the answer survives a restart. Nothing waits on it.
+      void window.api?.setSidebarCollapsed(next)
+      return next
+    })
+  }, [])
+
+  const toggleFullscreen = useCallback(() => {
+    void window.api?.windowControls.toggleFullscreen()
+  }, [])
+
+  /**
+   * The keyboard shortcuts the chrome owns.
+   *
+   * Escape is the careful one. A dialog handles it first, in the capture phase,
+   * and calls preventDefault — so `defaultPrevented` is exactly "a dialog has
+   * already used this". The four things that legitimately own Escape are named
+   * explicitly rather than guessed at, because leaving fullscreen while a
+   * calendar is open would close the wrong thing and look like a bug.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'F11') {
+        event.preventDefault()
+        toggleFullscreen()
+        return
+      }
+      if (event.ctrlKey && (event.key === 'b' || event.key === 'B')) {
+        event.preventDefault()
+        toggleSidebar()
+        return
+      }
+      if (event.key !== 'Escape' || event.defaultPrevented || !fullscreen) return
+      const ownsEscape = document.querySelector(
+        '.modal, .calendar, .party__list, .customer__list',
+      )
+      if (ownsEscape) return
+      event.preventDefault()
+      toggleFullscreen()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen, toggleFullscreen, toggleSidebar])
+
   const registry = useMemo(
     () =>
       createActionRegistry({
@@ -109,8 +194,10 @@ function AppShell() {
         // Handed to whichever screen is mounted. The screen owns the state, so
         // the registry never has to know what any of these actually do.
         minimizeWindow: () => void window.api?.windowControls.minimize(),
-        toggleMaximizeWindow: () => void window.api?.windowControls.toggleMaximize(),
+        toggleFullscreenWindow: toggleFullscreen,
         closeWindow: () => void window.api?.windowControls.close(),
+        toggleSidebar,
+        switchUser: () => setSwitching(true),
         // Two controls open a dialog owned by a selector rather than by the
         // screen, so they raise their own event; everything else is handed to
         // whichever screen is mounted.
@@ -123,22 +210,36 @@ function AppShell() {
                 : new CustomEvent('jewellery:action', { detail: id }),
           ),
       }),
-    [refreshRates, runBackup],
+    [refreshRates, runBackup, toggleFullscreen, toggleSidebar],
   )
 
-  // There is no sign-in screen: the main process establishes the session at
-  // startup and the counter opens straight into the shell. The shell still
-  // waits for bootstrap to answer, because drawing a header that says
-  // "Not signed in" over a working screen is worse than drawing nothing.
-  //
-  // The empty state below is not a login prompt — it is what shows if the main
-  // process could not name a user at all, which means it could not attribute an
-  // entry either. That is a fault, and it says so.
-  if (!boot.user) {
+  const chooseUser = async (userId: string): Promise<void> => {
+    const result = await window.api.selectUser(userId)
+    if (!result.ok) return
+    setSwitching(false)
+    await reload()
+  }
+
+  /**
+   * There is still no sign-in screen. This is identification, not a password
+   * wall: one click, no field to type into.
+   *
+   * It appears in exactly two situations, and never otherwise — a one-person
+   * shop sees nothing at all, because the main process picks the only active
+   * user silently:
+   *
+   *   - more than one active user and nobody chosen yet (`boot.user` is null)
+   *   - the operator asked to switch
+   *
+   * The cost is one click a shift. What it buys is `created_by` naming the
+   * person who actually made the entry, and the role permissions applying to
+   * them rather than to whichever account the app happened to start as.
+   */
+  if (!boot.user || switching) {
     return (
       <ActionsProvider registry={registry}>
         <div className="login">
-          <div className="login__card">
+          <div className="login__card login__card--users">
             <div className="login__brand">
               <span className="sidebar__crest">AH</span>
               <span className="sidebar__name">
@@ -148,7 +249,40 @@ function AppShell() {
               </span>
               <span className="login__tagline">Trust in Purity</span>
             </div>
-            <p className="login__note">Starting up…</p>
+            {boot.users.length > 0 ? (
+              <>
+                <h1 className="login__title">Who is working?</h1>
+                <p className="login__note">
+                  Every sale records who entered it. Pick your name to carry on — there
+                  is no password.
+                </p>
+                <div className="user-picker">
+                  {boot.users.map((user) => (
+                    <Action
+                      key={user.id}
+                      id="user.pick"
+                      variant="plain"
+                      className="user-picker__card"
+                      ariaLabel={`Continue as ${user.name}`}
+                      onActivate={() => void chooseUser(user.id)}
+                    >
+                      <span className="user-chip__avatar" aria-hidden="true">
+                        {initialsOf(user.name)}
+                      </span>
+                      <span className="user-picker__text">
+                        <strong className="user-picker__name">{user.name}</strong>
+                        <span className="user-picker__role">{user.role}</span>
+                      </span>
+                    </Action>
+                  ))}
+                </div>
+              </>
+            ) : (
+              // Not a login prompt — this is what shows if the main process
+              // could not name a user at all, which means it could not
+              // attribute an entry either. That is a fault, and it says so.
+              <p className="login__note">Starting up…</p>
+            )}
           </div>
         </div>
       </ActionsProvider>
@@ -164,11 +298,16 @@ function AppShell() {
 
   return (
     <ActionsProvider registry={registry}>
-      <div className="app">
+      <div className={`app${collapsed ? ' is-collapsed' : ''}`}>
         <div className="app__body">
-          <Sidebar active={active} />
+          <Sidebar active={active} collapsed={collapsed} />
           <div className="workspace">
-            <TopBar boot={boot} now={now} maximized={maximized} onRateSaved={() => void reload()} />
+            <TopBar
+              boot={boot}
+              now={now}
+              fullscreen={fullscreen}
+              onRateSaved={() => void reload()}
+            />
             {/* One region for what just happened, so a confirmation appears in
                 the same place whichever screen raised it. */}
             <MessageRegion />
@@ -198,12 +337,15 @@ function AppShell() {
   )
 }
 
-function Sidebar({ active }: { active: ModuleId }) {
+function Sidebar({ active, collapsed }: { active: ModuleId; collapsed: boolean }) {
   return (
     <nav className="sidebar" aria-label="Main menu">
       <div className="sidebar__brand">
         <span className="sidebar__crest">AH</span>
-        <span>
+        {/* The wordmark and the tagline are hidden by CSS at 64px, not removed
+            from the DOM: the crest stays, and so does everything a test or a
+            screen reader can reach. */}
+        <span className="sidebar__lockup">
           <span className="sidebar__name">
             AL-HARAM
             <br />
@@ -211,6 +353,14 @@ function Sidebar({ active }: { active: ModuleId }) {
           </span>
           <span className="sidebar__tagline">Trust in Purity</span>
         </span>
+        <Action
+          id="app.sidebar-toggle"
+          variant="icon"
+          className="sidebar__toggle"
+          ariaLabel={collapsed ? 'Expand menu' : 'Collapse menu'}
+        >
+          <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
+        </Action>
       </div>
       <div className="sidebar__items">
         {/* MODULES is walked in its own order and a heading is emitted where
@@ -248,12 +398,12 @@ function Sidebar({ active }: { active: ModuleId }) {
 function TopBar({
   boot,
   now,
-  maximized,
+  fullscreen,
   onRateSaved,
 }: {
   boot: BootstrapDto
   now: Date
-  maximized: boolean
+  fullscreen: boolean
   onRateSaved: () => void
 }) {
   return (
@@ -273,21 +423,27 @@ function TopBar({
       <div className="top-bar__aside">
         <Clock now={now} />
         <UserChip boot={boot} />
-        <WindowControls maximized={maximized} />
+        <WindowControls fullscreen={fullscreen} />
       </div>
     </header>
   )
 }
 
 /**
- * Minimise / maximise / close for the frameless window.
+ * Minimise / fullscreen / close for the frameless window.
  *
  * They live at the right of the module bar rather than in a strip of their own,
  * so the application has ONE bar across the top instead of the OS chrome plus
  * ours plus the modules. The bar itself is the drag region; these buttons opt
  * out of it, or they would move the window instead of being clickable.
+ *
+ * The middle button is FULLSCREEN, which is not what a Windows user expects
+ * from that position — so it does not wear the maximise glyph. Four corners
+ * pointing out means "take the whole display"; four pointing in means "give it
+ * back". Both are what the OS itself uses, and the aria-label and the hover
+ * text say the word as well.
  */
-function WindowControls({ maximized }: { maximized: boolean }) {
+function WindowControls({ fullscreen }: { fullscreen: boolean }) {
   return (
     <div className="window-controls">
       <Action id="window.minimize" variant="window" ariaLabel="Minimise">
@@ -295,15 +451,34 @@ function WindowControls({ maximized }: { maximized: boolean }) {
           <rect x="1" y="5" width="9" height="1.3" fill="currentColor" />
         </svg>
       </Action>
-      <Action id="window.maximize" variant="window" ariaLabel={maximized ? 'Restore' : 'Maximise'}>
-        {maximized ? (
-          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
-            <rect x="1" y="3" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1.2" />
-            <path d="M3.4 3V1.4h6.2v6.2H8" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <Action
+        id="window.maximize"
+        variant="window"
+        ariaLabel={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+      >
+        {fullscreen ? (
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 11 11"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            aria-hidden="true"
+          >
+            <path d="M4.4 1.2v3.2H1.2M6.6 1.2v3.2h3.2M4.4 9.8V6.6H1.2M6.6 9.8V6.6h3.2" />
           </svg>
         ) : (
-          <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
-            <rect x="1.2" y="1.2" width="8.6" height="8.6" fill="none" stroke="currentColor" strokeWidth="1.2" />
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 11 11"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            aria-hidden="true"
+          >
+            <path d="M1.2 4.2V1.2h3M9.8 4.2V1.2h-3M1.2 6.8v3h3M9.8 6.8v3h-3" />
           </svg>
         )}
       </Action>

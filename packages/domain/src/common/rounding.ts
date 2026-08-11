@@ -65,6 +65,29 @@ export function scaleDiv(value: number, numerator: number, denominator: number):
 }
 
 /**
+ * Rounds an amount in paisa to the nearest whole `stepRupees` rupees.
+ *
+ * The one place a total is allowed to leave the paisa. Every other figure in the
+ * system — every line, every subtotal, every weight — stays exact, and this is
+ * applied ONCE, to the invoice total, at the last step before anything is shown
+ * or stored. Rounding earlier and summing afterwards would put the printed
+ * column and the printed total a few rupees apart, which is the one arithmetic
+ * error a customer checking a slip will always find.
+ *
+ * **A step of 1 is a no-op, not "round to the nearest rupee".** That is
+ * deliberate and it is what the default means: the shop has not chosen a
+ * rounding rule, so the total stands exactly as computed, to the paisa. A shop
+ * that wants its slips to land on round hundreds sets 100; one that wants round
+ * thousands sets 1000. Nothing is invented on their behalf.
+ */
+export function roundToNearestRupees(paisa: number, stepRupees: number): number {
+  assertSafeInteger(paisa, 'roundToNearestRupees paisa')
+  if (!Number.isSafeInteger(stepRupees) || stepRupees <= 1) return paisa
+  const step = stepRupees * 100
+  return roundHalfAwayFromZero(paisa / step) * step
+}
+
+/**
  * Guards the assumption the whole integer-storage decision rests on. Called on
  * every construction and every arithmetic result in Weight and Money, so a
  * violation throws at the point it happens rather than surfacing months later

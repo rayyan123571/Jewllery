@@ -188,6 +188,168 @@ describe('an invoice total is the sum of its printed lines', () => {
   })
 })
 
+/**
+ * The payment chain, which a reference mockup could not make reconcile.
+ *
+ * It printed Grand Total 1,028,600 with both customer amount and advance gold at
+ * zero, and a Remaining Balance of 628,600 — 400,000 short. The fix is not a
+ * better subtraction, it is being clear about what the headline total MEANS:
+ * old gold is a payment made in metal, not a discount on the goods, so it comes
+ * off the balance rather than off the total.
+ */
+describe('the payment chain reconciles on the slip', () => {
+  const rule = RULES['add on net'] as WastageRule
+
+  const invoiceWith = (
+    customerGold: Weight,
+    amountPaid: Money,
+    roundingNearestRupees = 1,
+  ) => {
+    const totals = totalsOfRetail([computeRetailLine(EXAMPLE, rule)])
+    return {
+      totals,
+      invoice: computeRetailInvoice({
+        totals,
+        customerGold,
+        customerGoldRatePerTola: RATE,
+        hallmarkCharges: Money.fromRupees(25_000),
+        otherCharges: Money.ZERO,
+        discount: Money.fromRupees(150_000),
+        amountPaid,
+        roundingNearestRupees,
+      }),
+    }
+  }
+
+  it('keeps the invoice total free of the customer’s old gold', () => {
+    const { totals, invoice } = invoiceWith(parseTola('1.000'), Money.ZERO)
+    expect(invoice.invoiceTotal.paisa).toBe(
+      totals.itemsTotal.paisa + Money.fromRupees(25_000).paisa - Money.fromRupees(150_000).paisa,
+    )
+    // …and the gold is genuinely worth something, so this is not a vacuous pass.
+    expect(invoice.customerGoldValue.isPositive).toBe(true)
+  })
+
+  it('subtracts BOTH the cash paid and the gold given, exactly once each', () => {
+    const paid = Money.fromRupees(400_000)
+    const { invoice } = invoiceWith(parseTola('1.000'), paid)
+    expect(invoice.balance.paisa).toBe(
+      invoice.invoiceTotal.paisa - paid.paisa - invoice.customerGoldValue.paisa,
+    )
+  })
+
+  it('agrees with the payable form of the same arithmetic', () => {
+    const paid = Money.fromRupees(400_000)
+    const { invoice } = invoiceWith(parseTola('1.000'), paid)
+    expect(invoice.grandTotal.paisa).toBe(
+      invoice.invoiceTotal.paisa - invoice.customerGoldValue.paisa,
+    )
+    expect(invoice.balance.paisa).toBe(invoice.grandTotal.paisa - paid.paisa)
+  })
+
+  it('leaves nothing outstanding once both are paid in full', () => {
+    const { invoice: probe } = invoiceWith(parseTola('1.000'), Money.ZERO)
+    const { invoice } = invoiceWith(parseTola('1.000'), probe.grandTotal)
+    expect(invoice.balance.paisa).toBe(0)
+  })
+})
+
+describe('the invoice rounding step', () => {
+  const rule = RULES['add on net'] as WastageRule
+
+  const totalAt = (roundingNearestRupees: number) => {
+    const totals = totalsOfRetail([computeRetailLine(EXAMPLE, rule)])
+    return computeRetailInvoice({
+      totals,
+      customerGold: Weight.ZERO,
+      customerGoldRatePerTola: null,
+      hallmarkCharges: Money.ZERO,
+      otherCharges: Money.ZERO,
+      discount: Money.ZERO,
+      amountPaid: Money.ZERO,
+      roundingNearestRupees,
+    })
+  }
+
+  it('leaves the total exact to the paisa at the default step of 1', () => {
+    const totals = totalsOfRetail([computeRetailLine(EXAMPLE, rule)])
+    expect(totalAt(1).invoiceTotal.paisa).toBe(totals.itemsTotal.paisa)
+    // The example genuinely carries paisa, so "exact" is being tested.
+    expect(totals.itemsTotal.paisa % 100).not.toBe(0)
+  })
+
+  it('omitting the step behaves exactly as a step of 1', () => {
+    const totals = totalsOfRetail([computeRetailLine(EXAMPLE, rule)])
+    const without = computeRetailInvoice({
+      totals,
+      customerGold: Weight.ZERO,
+      customerGoldRatePerTola: null,
+      hallmarkCharges: Money.ZERO,
+      otherCharges: Money.ZERO,
+      discount: Money.ZERO,
+      amountPaid: Money.ZERO,
+    })
+    expect(without.invoiceTotal.paisa).toBe(totalAt(1).invoiceTotal.paisa)
+  })
+
+  it('lands on a round hundred rupees at 100', () => {
+    const rounded = totalAt(100).invoiceTotal
+    expect(rounded.paisa % 10_000).toBe(0)
+    // Within half a step of the exact figure — rounded, not truncated.
+    expect(Math.abs(rounded.paisa - totalAt(1).invoiceTotal.paisa)).toBeLessThanOrEqual(5_000)
+  })
+
+  it('lands on a round thousand rupees at 1000', () => {
+    const rounded = totalAt(1000).invoiceTotal
+    expect(rounded.paisa % 100_000).toBe(0)
+    expect(Math.abs(rounded.paisa - totalAt(1).invoiceTotal.paisa)).toBeLessThanOrEqual(50_000)
+  })
+
+  it('carries the rounding into the balance, so the two never disagree', () => {
+    const totals = totalsOfRetail([computeRetailLine(EXAMPLE, rule)])
+    const paid = Money.fromRupees(100_000)
+    const invoice = computeRetailInvoice({
+      totals,
+      customerGold: Weight.ZERO,
+      customerGoldRatePerTola: null,
+      hallmarkCharges: Money.ZERO,
+      otherCharges: Money.ZERO,
+      discount: Money.ZERO,
+      amountPaid: paid,
+      roundingNearestRupees: 100,
+    })
+    // The balance is derived from the ROUNDED total. If it were derived from the
+    // exact one, the slip's own subtraction would be out by the rounding.
+    expect(invoice.balance.paisa).toBe(invoice.invoiceTotal.paisa - paid.paisa)
+    expect(invoice.invoiceTotal.paisa % 10_000).toBe(0)
+  })
+
+  it('rounds a line-priced total only once, at the end', () => {
+    // Two lines whose exact sum rounds differently from the sum of their
+    // individually-rounded selves. Rounding per line would show a total that
+    // disagrees with the column above it.
+    const lines = [
+      computeRetailLine({ ...EXAMPLE, labourCharges: Money.parse('40.00') }, rule),
+      computeRetailLine({ ...EXAMPLE, labourCharges: Money.parse('40.00') }, rule),
+    ]
+    const totals = totalsOfRetail(lines)
+    const invoice = computeRetailInvoice({
+      totals,
+      customerGold: Weight.ZERO,
+      customerGoldRatePerTola: null,
+      hallmarkCharges: Money.ZERO,
+      otherCharges: Money.ZERO,
+      discount: Money.ZERO,
+      amountPaid: Money.ZERO,
+      roundingNearestRupees: 100,
+    })
+    expect(totals.itemsTotal.paisa).toBe(
+      lines[0]!.lineAmount.paisa + lines[1]!.lineAmount.paisa,
+    )
+    expect(invoice.invoiceTotal.paisa % 10_000).toBe(0)
+  })
+})
+
 describe('old gold traded in', () => {
   const rule = RULES['add on net'] as WastageRule
 

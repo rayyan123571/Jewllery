@@ -1,6 +1,20 @@
 import { ipcMain } from 'electron'
-import { PURITIES, formatPurity, toPublicUser } from '@jewellery/domain'
-import { IPC, type BackupStatusDto, type BootstrapDto, type LoginRequest, type LoginResponse, type RateDto } from '../shared/ipc.js'
+import {
+  PURITIES,
+  formatPurity,
+  toPublicUser,
+  type PublicUser,
+  type User,
+} from '@jewellery/domain'
+import {
+  IPC,
+  type BackupStatusDto,
+  type BootstrapDto,
+  type LoginRequest,
+  type LoginResponse,
+  type RateDto,
+  type UserDto,
+} from '../shared/ipc.js'
 import type { Container } from './container.js'
 import type { Session } from './session.js'
 
@@ -51,6 +65,14 @@ export function registerIpcHandlers(
     }
   }
 
+  const userDto = (user: PublicUser | User): UserDto => ({
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    role: user.role,
+    mustChangePassword: user.mustChangePassword,
+  })
+
   ipcMain.handle(IPC.bootstrap, (): BootstrapDto => {
     const shop = container.repositories.shop.get()
     const branch = container.repositories.branches.findById(container.branchId)
@@ -60,20 +82,35 @@ export function registerIpcHandlers(
         : null,
       branchId: container.branchId,
       branchName: branch?.name ?? 'Main Branch',
-      user: session.user
-        ? {
-            id: session.user.id,
-            name: session.user.name,
-            username: session.user.username,
-            role: session.user.role,
-            mustChangePassword: session.user.mustChangePassword,
-          }
-        : null,
+      user: session.user ? userDto(session.user) : null,
+      users: container.activeUsers().map(userDto),
       rates: ratesDto(),
       backup: backupDto(),
       databaseConnected: true,
+      sidebarCollapsed: container.settings.sidebarCollapsed(),
       appVersion,
     }
+  })
+
+  /**
+   * Says who is working.
+   *
+   * No password, by design (see RendererApi.selectUser). It refuses an id that
+   * is not an ACTIVE user rather than trusting the renderer's list, because the
+   * list it was drawn from could be a minute old — a user disabled in between
+   * must not be selectable.
+   */
+  ipcMain.handle(IPC.userSelect, (_event, userId: string): LoginResponse => {
+    const chosen = container.activeUsers().find((user) => user.id === userId)
+    if (!chosen) {
+      return { ok: false, message: 'That user no longer exists, or has been disabled.' }
+    }
+    session.user = toPublicUser(chosen)
+    return { ok: true, user: userDto(chosen) }
+  })
+
+  ipcMain.handle(IPC.setSidebarCollapsed, (_event, collapsed: boolean): void => {
+    container.settings.setSidebarCollapsed(collapsed === true)
   })
 
   ipcMain.handle(IPC.login, (_event, request: LoginRequest): LoginResponse => {
@@ -123,9 +160,6 @@ export function registerIpcHandlers(
   )
 
   ipcMain.handle(IPC.quit, (): void => onQuit())
-
-  // Referenced so the unused-import rule stays meaningful if handlers change.
-  void toPublicUser
 }
 
 /*

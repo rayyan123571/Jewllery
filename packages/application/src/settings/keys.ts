@@ -24,7 +24,38 @@ export const SETTING_KEYS = {
   retailWastageDirection: 'retail.wastage.direction',
   retailWastageBasis: 'retail.wastage.basis',
   retailInvoicePrefix: 'retail.invoicePrefix',
+  /** 1 | 100 | 1000 whole rupees. See RETAIL_ROUNDING_STEPS below. */
+  retailRoundingNearest: 'retail.rounding.nearest',
+
+  // ── the shell's own state ─────────────────────────────────────────────────
+  //
+  // Not business rules, and kept here anyway rather than in a second store: a
+  // shop's PC already has exactly one place that survives a restart, and adding
+  // a preferences file beside it would mean two things to back up and one of
+  // them not covered by the backup we already take.
+  /** Absent means "follow the window width". See App.tsx. */
+  uiSidebarCollapsed: 'ui.sidebar.collapsed',
+  /** 'maximized' | 'fullscreen' | 'normal'. */
+  uiWindowMode: 'ui.window.mode',
+  /** JSON {x,y,width,height} for the restored size. */
+  uiWindowBounds: 'ui.window.bounds',
 } as const
+
+/** How the window was last left. Restored on the next launch. */
+export type WindowMode = 'maximized' | 'fullscreen' | 'normal'
+
+export interface WindowBounds {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+export interface WindowState {
+  readonly mode: WindowMode
+  /** Null when the window has never been restored down. */
+  readonly bounds: WindowBounds | null
+}
 
 /**
  * How wastage enters a retail sale — and why this is a setting, not a constant.
@@ -50,6 +81,29 @@ export type WastageBasis = 'gross' | 'net'
 
 export const DEFAULT_RETAIL_WASTAGE_DIRECTION: WastageDirection = 'add'
 export const DEFAULT_RETAIL_WASTAGE_BASIS: WastageBasis = 'net'
+
+/**
+ * How the invoice total is rounded, in whole rupees — and why 1 is the default.
+ *
+ * A reference mockup priced every amount on a round hundred (454,300 / 908,600).
+ * Round hundreds do not fall out of any arithmetic; they are a shop's rounding
+ * habit, and inferring one from two figures on a picture would mean every
+ * invoice quietly disagreeing with the sum of its own lines.
+ *
+ * So the habit is a setting the shop states, and **1 means no rounding at all**:
+ * the total stands exactly as computed, to the paisa. That is not the same as
+ * "round to the nearest rupee" — the point of the default is that nothing is
+ * invented until somebody chooses. 100 gives the mockup's round hundreds; 1000
+ * gives round thousands.
+ *
+ * It applies to ONE figure, the invoice total, at the LAST step. See
+ * `computeRetailInvoice`.
+ */
+export type RoundingStep = 1 | 100 | 1000
+
+export const RETAIL_ROUNDING_STEPS: readonly RoundingStep[] = [1, 100, 1000]
+
+export const DEFAULT_RETAIL_ROUNDING: RoundingStep = 1
 
 /**
  * 0.050 g. Below this a negative remaining is allowed with a quiet note rather
@@ -121,6 +175,37 @@ export class Settings {
   }
 
   /**
+   * The rounding step for the invoice total, in whole rupees.
+   *
+   * Anything that is not one of the three offered values falls back to 1 — no
+   * rounding — rather than to the nearest plausible step. A corrupt row must
+   * never invent a rounding habit the shop did not choose.
+   */
+  retailRoundingNearest(): RoundingStep {
+    const raw = Number(this.repo.get(SETTING_KEYS.retailRoundingNearest)?.trim())
+    return RETAIL_ROUNDING_STEPS.includes(raw as RoundingStep)
+      ? (raw as RoundingStep)
+      : DEFAULT_RETAIL_ROUNDING
+  }
+
+  /**
+   * Records the shop's rounding habit.
+   *
+   * Refuses anything outside the offered set for the same reason
+   * `setRetailWastageRule` does: a value that silently falls back on every read
+   * means the shop made a decision and the software ignored it.
+   */
+  setRetailRoundingNearest(step: number): void {
+    if (!RETAIL_ROUNDING_STEPS.includes(step as RoundingStep)) {
+      throw new TypeError(
+        `"${step}" is not a rounding step. Expected one of ` +
+          `${RETAIL_ROUNDING_STEPS.join(', ')} whole rupees.`,
+      )
+    }
+    this.repo.set(SETTING_KEYS.retailRoundingNearest, String(step))
+  }
+
+  /**
    * Records the shop's choice of wastage rule.
    *
    * Validated here rather than at the caller, because a settings row holding
@@ -144,6 +229,63 @@ export class Settings {
     }
     this.repo.set(SETTING_KEYS.retailWastageDirection, direction)
     this.repo.set(SETTING_KEYS.retailWastageBasis, basis)
+  }
+
+  /**
+   * Whether the operator has made a choice about the sidebar.
+   *
+   * Three states, not two, and the third is the point: `null` means "no manual
+   * choice", which is what lets the width rule apply. Once somebody has pressed
+   * the toggle their answer is stored and the width rule stops overriding it.
+   */
+  sidebarCollapsed(): boolean | null {
+    const raw = this.repo.get(SETTING_KEYS.uiSidebarCollapsed)?.trim()
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+    return null
+  }
+
+  setSidebarCollapsed(collapsed: boolean): void {
+    this.repo.set(SETTING_KEYS.uiSidebarCollapsed, collapsed ? 'true' : 'false')
+  }
+
+  /** How the window was last left, for the next launch. */
+  windowState(): WindowState {
+    const mode = this.repo.get(SETTING_KEYS.uiWindowMode)?.trim()
+    return {
+      mode: mode === 'fullscreen' || mode === 'normal' ? mode : 'maximized',
+      bounds: this.readBounds(),
+    }
+  }
+
+  setWindowState(state: WindowState): void {
+    this.repo.set(SETTING_KEYS.uiWindowMode, state.mode)
+    if (state.bounds) {
+      this.repo.set(SETTING_KEYS.uiWindowBounds, JSON.stringify(state.bounds))
+    }
+  }
+
+  /**
+   * A corrupt or half-written bounds row falls back to null rather than
+   * throwing. A shop must be able to start its till with a bad preference; it
+   * must not start it off the edge of a screen.
+   */
+  private readBounds(): WindowBounds | null {
+    const raw = this.repo.get(SETTING_KEYS.uiWindowBounds)
+    if (!raw) return null
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      if (typeof parsed !== 'object' || parsed === null) return null
+      const candidate = parsed as Record<string, unknown>
+      const numbers = ['x', 'y', 'width', 'height'].map((key) => candidate[key])
+      if (!numbers.every((value) => typeof value === 'number' && Number.isFinite(value))) {
+        return null
+      }
+      const [x, y, width, height] = numbers as [number, number, number, number]
+      return width > 0 && height > 0 ? { x, y, width, height } : null
+    } catch {
+      return null
+    }
   }
 
   private readInteger(key: string, fallback: number): number {

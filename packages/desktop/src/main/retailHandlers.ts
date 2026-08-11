@@ -2,6 +2,7 @@ import {
   Money,
   Weight,
   can,
+  computeRetailInvoice,
   computeRetailLine,
   formatGram,
   formatPurity,
@@ -13,6 +14,7 @@ import {
   parsePurity,
   parseTola,
   toIsoDate,
+  totalsOfRetail,
   type IsoDate,
   type Permissions,
   type PublicUser,
@@ -25,6 +27,7 @@ import {
 } from '@jewellery/domain'
 import {
   HighWastageRequiresConfirmationError,
+  RETAIL_ROUNDING_STEPS,
   type CustomerService,
   type RetailItemInput,
   type RetailDraftInput,
@@ -45,6 +48,7 @@ import type {
   RetailLoadRequest,
   RetailPostRequest,
   RetailPostResult,
+  RetailRoundingDto,
   RetailSaleDto,
   RetailSaleSummaryDto,
   SalesmanDto,
@@ -386,6 +390,7 @@ export function retailCalculate(
     otherCharges: moneyDto(moneyOrZero(draft.otherCharges)),
     discount: moneyDto(moneyOrZero(draft.discount)),
     customerGoldValue: moneyDto(calculation.customerGoldValue),
+    invoiceTotal: moneyDto(calculation.invoiceTotal),
     grandTotal: moneyDto(calculation.grandTotal),
     amountPaid: moneyDto(moneyOrZero(draft.amountPaid)),
     balance: moneyDto(calculation.balance),
@@ -890,6 +895,91 @@ export function retailWastageRuleSet(
   try {
     requirePermission(deps, 'canSetGoldRate')
     deps.settings.setRetailWastageRule(rule.direction, rule.basis)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
+}
+
+// ── the rounding step ───────────────────────────────────────────────────────
+
+/**
+ * What each rounding step does to one worked invoice.
+ *
+ * The same shape as the wastage card and for the same reason: the figures come
+ * from `computeRetailInvoice`, the function that totals a real sale, so the card
+ * cannot demonstrate one rule while the till applies another.
+ *
+ * The sample is the first wastage sample priced under the SAVED wastage rule —
+ * not a fixed number — because a rounding card showing a total the shop's own
+ * rule would never produce is a card nobody can check against a real slip.
+ */
+const ROUNDING_NOTES: Readonly<Record<number, string>> = {
+  1: 'No rounding. The total stands exactly as computed, to the paisa.',
+  100: 'The total lands on a round hundred rupees.',
+  1000: 'The total lands on a round thousand rupees.',
+}
+
+function roundingSampleTotal(deps: RetailHandlerDeps, step: number): Money {
+  const sample = SAMPLES[0] as Sample
+  const line = computeRetailLine(
+    {
+      itemName: 'Sample',
+      grossWeight: parseTola(sample.grossTola),
+      stoneWeight: parseTola(sample.stoneTola),
+      cutPerTola: parseTola(sample.cutTola),
+      wastageBp: basisPointsOf(sample.wastagePercent),
+      labourCharges: Money.ZERO,
+      labourMode: 'fixed',
+      stoneCharges: Money.ZERO,
+      ratePerTola: Money.parse(RATE_RUPEES_PER_TOLA),
+    },
+    {
+      direction: deps.settings.retailWastageDirection(),
+      basis: deps.settings.retailWastageBasis(),
+    },
+  )
+  return computeRetailInvoice({
+    totals: totalsOfRetail([line]),
+    customerGold: Weight.ZERO,
+    customerGoldRatePerTola: null,
+    hallmarkCharges: Money.ZERO,
+    otherCharges: Money.ZERO,
+    discount: Money.ZERO,
+    amountPaid: Money.ZERO,
+    roundingNearestRupees: step,
+  }).invoiceTotal
+}
+
+export function retailRounding(deps: RetailHandlerDeps): RetailRoundingDto {
+  const savedStep = deps.settings.retailRoundingNearest()
+  return {
+    savedStep,
+    exactDisplay: `Rs ${roundingSampleTotal(deps, 1).format()}`,
+    options: RETAIL_ROUNDING_STEPS.map((step) => ({
+      step,
+      label: step === 1 ? 'Exact — no rounding' : `Nearest Rs ${step}`,
+      note: ROUNDING_NOTES[step] ?? '',
+      totalDisplay: `Rs ${roundingSampleTotal(deps, step).format()}`,
+      isSaved: step === savedStep,
+    })),
+  }
+}
+
+/**
+ * Records the shop's rounding habit.
+ *
+ * Permission-checked against `canSetGoldRate`, exactly as the wastage rule is:
+ * both change what every future invoice comes to. And like it, this re-prices
+ * nothing already sold — a posted sale carries its own total on its own row.
+ */
+export function retailRoundingSet(
+  deps: RetailHandlerDeps,
+  step: number,
+): { ok: true } | { ok: false; message: string } {
+  try {
+    requirePermission(deps, 'canSetGoldRate')
+    deps.settings.setRetailRoundingNearest(step)
     return { ok: true }
   } catch (error) {
     return { ok: false, message: messageOf(error) }

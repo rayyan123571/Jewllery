@@ -213,6 +213,17 @@ export const theme = {
   size: {
     // ── chrome ──────────────────────────────────────────────────────────────
     sidebarWidth: '248px',
+    /**
+     * The icon-only rail.
+     *
+     * 64px is a 40px item plus 12px either side: the icon stays on the same
+     * optical centre it has when expanded, so collapsing moves the glyphs
+     * sideways and nothing else. Narrower and the 20px icon starts touching
+     * the brass indicator bar.
+     */
+    sidebarWidthCollapsed: '64px',
+    /** Below this the sidebar collapses itself. See App.tsx. */
+    sidebarAutoCollapseBelow: '1280px',
     titleBarHeight: '32px',
     topBarHeight: '76px',
     statusBarHeight: '32px',
@@ -301,7 +312,14 @@ export const theme = {
     colCharge: '84px',
     /** An amount. "1,102,596.13" is the widest content in the table. */
     colRetailAmount: '116px',
-    colRetailNameMin: '148px',
+    /**
+     * 136, not 148. Measured with the sidebar EXPANDED, which is the tighter of
+     * the two: the left column is 919px there, and the entry column's own
+     * scrollbar takes 15 of them. At 148 the items table grew its own
+     * horizontal scrollbar, which cost 8px of the table's height and dropped it
+     * from six visible rows to five.
+     */
+    colRetailNameMin: '136px',
 
     /**
      * A row in the CALCULATIONS rail.

@@ -178,9 +178,12 @@ a {
   color: var(--colour-text-inverse);
 }
 
+/* `auto`, not a fixed track: the sidebar owns its own width so the transition
+   runs on an ordinary `width` rather than on a grid template, which is both
+   better supported and cheaper to animate. */
 .app__body {
   display: grid;
-  grid-template-columns: var(--size-sidebar-width) 1fr;
+  grid-template-columns: auto 1fr;
   min-height: 0;
 }
 
@@ -189,12 +192,104 @@ a {
 .sidebar {
   display: flex;
   flex-direction: column;
+  width: var(--size-sidebar-width);
   background: var(--colour-chrome-ink);
   color: var(--colour-chrome-text);
   /* A brass hairline, not a grey border. The two surfaces no longer need a line
      to tell them apart — this one is there because the frame wants an edge. */
   border-right: 1px solid var(--colour-gold-metal);
   min-height: 0;
+  /* The one thing on this screen that animates. 160ms is long enough to read as
+     a movement and short enough that the working area is usable before it
+     finishes; anything else moving while you work is a tool you fight. */
+  transition: width 160ms ease;
+}
+
+/* ── the collapsed rail ─────────────────────────────────────────────────────
+   Icon-only at 64px. Navigation is NOT removed — losing it would cost a click
+   on every module change, which is more than the width is worth. Everything
+   below hides text with CSS rather than dropping it from the DOM, so the
+   markup a screen reader (and a test) sees is the same either way. */
+.app.is-collapsed .sidebar {
+  width: var(--size-sidebar-width-collapsed);
+}
+
+.app.is-collapsed .sidebar__lockup,
+.app.is-collapsed .sidebar__section {
+  display: none;
+}
+
+/* The crest stays. It is the one thing that says which application this is. */
+.app.is-collapsed .sidebar__brand {
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-4);
+}
+
+.app.is-collapsed .sidebar__crest {
+  width: 36px;
+  height: 36px;
+  font-size: var(--font-size-md);
+}
+
+.app.is-collapsed .action--sidebar,
+.app.is-collapsed .sidebar__exit {
+  justify-content: center;
+  padding: 0;
+  gap: 0;
+}
+
+/* A tooltip, not the OS one: it appears instantly, sits where the label used to
+   be, and is made of the same ink and brass as everything else. It is the SAME
+   span that carries the label when expanded — moved, not duplicated. */
+.app.is-collapsed .action--sidebar > span:not(.action__lock),
+.app.is-collapsed .sidebar__exit > span:not(.action__lock) {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: var(--space-8);
+  padding: var(--space-4) var(--space-12);
+  background: var(--colour-chrome-ink-raised);
+  color: var(--colour-chrome-text);
+  border: 1px solid var(--colour-gold-metal);
+  border-radius: var(--size-radius);
+  box-shadow: var(--shadow-md);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 60;
+}
+
+.app.is-collapsed .action--sidebar:hover > span:not(.action__lock),
+.app.is-collapsed .action--sidebar:focus-visible > span:not(.action__lock),
+.app.is-collapsed .sidebar__exit:hover > span:not(.action__lock),
+.app.is-collapsed .sidebar__exit:focus-visible > span:not(.action__lock) {
+  opacity: 1;
+}
+
+/* The tooltip has to leave the rail, and `overflow-y: auto` on the item list
+   would clip it. Safe here and only here: with the headings hidden, fourteen
+   40px items plus the brand and the foot come to 684px, which fits every window
+   this application will open in (the minimum is 700 tall). Measured. */
+.app.is-collapsed .sidebar__items {
+  overflow: visible;
+}
+
+.sidebar__toggle {
+  margin-left: auto;
+  color: var(--colour-chrome-text-muted);
+  flex: none;
+}
+
+.app.is-collapsed .sidebar__toggle {
+  margin-left: 0;
+}
+
+.sidebar__toggle:hover:not(:disabled) {
+  background: var(--colour-chrome-hover);
+  color: var(--colour-gold-on-dark);
 }
 
 /* The brand lockup. The same three parts — crest, two-line wordmark, tagline —
@@ -602,10 +697,18 @@ a {
 
 /* ── content ────────────────────────────────────────────────────────────── */
 
+/* `hidden`, not `auto`.
+ *
+ * This is the guarantee, not a preference: with nothing scrollable between the
+ * viewport and a screen, a page scrollbar is unrepresentable rather than
+ * unlikely. A screen that wants more height than the window has must say so by
+ * scrolling ONE region of its own — which is a decision that screen makes,
+ * visibly, rather than the whole composition sliding under the operator while
+ * they type the figures the totals are made of. */
 .content {
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
   padding: var(--space-24);
   min-height: 0;
 }
@@ -1972,6 +2075,23 @@ a {
   margin-left: auto;
 }
 
+/* The connected/not-connected pip, wherever it is shown. It travelled with the
+   two facts that survived the status bar — into the Settings card and the
+   account popover — so it is no longer named after the strip it came from. */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--colour-positive);
+  margin-left: var(--space-8);
+  vertical-align: baseline;
+}
+
+.status-dot--off {
+  background: var(--colour-negative);
+}
+
 /* ── not-built module placeholder ───────────────────────────────────────── */
 
 .placeholder {
@@ -2203,6 +2323,63 @@ a {
   border-color: var(--colour-border);
   color: var(--colour-disabled-text);
   cursor: not-allowed;
+}
+
+/* ── who is working ─────────────────────────────────────────────────────────
+   Identification, not a password wall. Tappable cards, one click, no field. It
+   is shown only when the shop has more than one active user — a one-person
+   counter never sees it, because the main process picks the only one silently. */
+.login__card--users {
+  width: 520px;
+}
+
+.user-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-12);
+  margin-top: var(--space-24);
+}
+
+.user-picker__card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  width: 100%;
+  padding: var(--space-16);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius-large);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+.user-picker__card:hover:not(:disabled) {
+  border-color: var(--colour-gold-metal);
+  background: var(--colour-parchment);
+}
+
+.user-picker__card .user-chip__avatar {
+  color: var(--colour-gold-deep);
+  background: var(--colour-gold-tint);
+}
+
+.user-picker__text {
+  line-height: var(--line-heading);
+  min-width: 0;
+}
+
+.user-picker__name {
+  display: block;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--colour-text);
+}
+
+.user-picker__role {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
 }
 
 /* Never red on red: a tinted ground, a solid left bar, and readable text. */
@@ -2797,4 +2974,91 @@ a {
 
 .rule-table tr.is-current td.numeric {
   color: var(--colour-gold-deep);
+}
+
+/* ── the retail screen's density ────────────────────────────────────────────
+   The retail screen carries about twice the fields Whole Sale does, so it pays
+   for them out of padding and gaps and out of nothing else. Every rule below
+   moves a padding or a gap; the 14px body size and the 40px table row are
+   untouched, because those are what make the screen readable across an
+   eight-hour shift and they are not the budget's to spend.
+
+   Measured saving at 1550x830: 108 CSS pixels off the left column and 96 off
+   the rail. */
+.screen--dense .panel__title {
+  min-height: 26px;
+  padding: var(--space-8) var(--space-16) var(--space-4);
+}
+
+.screen--dense .field-row {
+  padding: var(--space-8) var(--space-16) var(--space-12);
+  gap: var(--space-12);
+}
+
+.screen--dense .field__label {
+  margin-bottom: 2px;
+}
+
+.screen--dense .entry-grid {
+  padding: var(--space-8) var(--space-16) 0;
+  gap: var(--space-8) var(--space-12);
+}
+
+.screen--dense .entry-grid--charges {
+  padding-bottom: 0;
+}
+
+.screen--dense .panel > .action-bar {
+  padding: var(--space-8) var(--space-16) var(--space-12);
+}
+
+.screen--dense,
+.screen--dense .entry-column,
+.screen--dense .rail,
+.screen--dense .workspace__split {
+  gap: var(--space-12);
+}
+
+/* The rail carries twelve label/figure pairs before it reaches the payment
+   fields. Four pixels a row is forty-eight pixels of the rail. */
+.screen--dense .calc-line {
+  min-height: 28px;
+}
+
+.screen--dense .calc-line .input,
+.screen--dense .calc-line .select {
+  height: 28px;
+}
+
+.screen--dense .rail .panel__body {
+  padding: var(--space-8) var(--space-12) var(--space-12);
+}
+
+.screen--dense .panel__body {
+  padding: var(--space-8) var(--space-16) var(--space-16);
+}
+
+.screen--dense .calc-line + .calc-line {
+  margin-top: 2px;
+}
+
+.screen--dense .calc-rule {
+  margin: var(--space-8) 0;
+}
+
+.screen--dense .calc-total {
+  margin-top: var(--space-8);
+  padding-top: var(--space-8);
+}
+
+.screen--dense .panel__body.slip {
+  margin: 0 var(--space-12) var(--space-12);
+  padding: var(--space-8) var(--space-12);
+}
+
+/* The one region on this screen that is allowed to scroll, and the floor under
+   it: six rows of items, whatever else is competing for the height. */
+.screen--dense .table-scroll--retail {
+  min-height: calc(var(--size-row-height) * 6);
+  max-height: calc(var(--size-row-height) * 13);
 }

@@ -76,11 +76,17 @@ const noopApi = {
       daysSince: 1,
       integrityOk: true,
     },
+    users: [
+      { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
+    ],
     databaseConnected: true,
+    sidebarCollapsed: false,
     appVersion: '1.0.0.0',
   })),
   login: vi.fn(),
   logout: vi.fn(),
+  selectUser: vi.fn(),
+  setSidebarCollapsed: vi.fn(async () => {}),
   currentRates: vi.fn(async () => []),
   runBackup: vi.fn(),
   restoreBackup: vi.fn(),
@@ -159,14 +165,42 @@ const noopApi = {
     ],
   })),
   setRetailWastageRule: vi.fn(async () => ({ ok: true as const })),
+  retailRounding: vi.fn(async () => ({
+    savedStep: 1,
+    exactDisplay: 'Rs 1,098,608.35',
+    options: [
+      {
+        step: 1,
+        label: 'Exact — no rounding',
+        note: 'No rounding. The total stands exactly as computed, to the paisa.',
+        totalDisplay: 'Rs 1,098,608.35',
+        isSaved: true,
+      },
+      {
+        step: 100,
+        label: 'Nearest Rs 100',
+        note: 'The total lands on a round hundred rupees.',
+        totalDisplay: 'Rs 1,098,600.00',
+        isSaved: false,
+      },
+      {
+        step: 1000,
+        label: 'Nearest Rs 1000',
+        note: 'The total lands on a round thousand rupees.',
+        totalDisplay: 'Rs 1,099,000.00',
+        isSaved: false,
+      },
+    ],
+  })),
+  setRetailRounding: vi.fn(async () => ({ ok: true as const })),
   openExternal: vi.fn(async () => ({ ok: true as const })),
 
   windowControls: {
     minimize: vi.fn(async () => {}),
-    toggleMaximize: vi.fn(async () => true),
+    toggleFullscreen: vi.fn(async () => true),
     close: vi.fn(async () => {}),
-    isMaximized: vi.fn(async () => true),
-    onMaximizedChange: vi.fn(() => () => {}),
+    isFullscreen: vi.fn(async () => false),
+    onFullscreenChange: vi.fn(() => () => {}),
   },
 }
 
@@ -189,7 +223,9 @@ function stubContext(): ActionContext {
     toggleUserMenu: vi.fn(),
     dispatch: vi.fn(),
     minimizeWindow: vi.fn(),
-    toggleMaximizeWindow: vi.fn(),
+    toggleFullscreenWindow: vi.fn(),
+    toggleSidebar: vi.fn(),
+    switchUser: vi.fn(),
     closeWindow: vi.fn(),
   }
 }

@@ -1,5 +1,11 @@
 import { join } from 'node:path'
-import { systemClock, toPublicUser, type Clock, type PublicUser } from '@jewellery/domain'
+import {
+  systemClock,
+  toPublicUser,
+  type Clock,
+  type PublicUser,
+  type User,
+} from '@jewellery/domain'
 import {
   AuthService,
   BackupService,
@@ -51,22 +57,30 @@ export interface Container {
    */
   readonly retailCustomers: CustomerService
   readonly hasher: PasswordHasher
+  readonly settings: Settings
   readonly clock: Clock
   /** Resolved once at startup; the app ships with a single branch. */
   readonly branchId: string
   /** True while the seeded admin password has not been changed. */
   readonly usingDefaultPassword: boolean
   /**
-   * The user the counter runs as.
+   * The fallback owner for an entry.
    *
-   * There is no sign-in screen, but every write still records an owner —
-   * `created_by` is NOT NULL and a foreign key to `users` on both wholesale
-   * entries and retail sales. This resolves the shop's administrator so the
-   * session can be established at startup rather than typed. It throws rather
-   * than returning null: an application that cannot name the person making an
-   * entry must not make entries.
+   * No longer the source of the session — the person chosen on the "Who is
+   * working?" card is (see `activeUsers`). It survives as the last resort for a
+   * database with no usable active user, and it still throws rather than
+   * returning null: an application that cannot name the person making an entry
+   * must not make entries.
    */
   defaultUser(): PublicUser
+  /**
+   * Everyone who could be at the counter.
+   *
+   * One of them means the shell picks silently and shows nothing. More than one
+   * means the shell asks, once, with no password — which is what puts a real
+   * name on `created_by` in a shop with staff.
+   */
+  activeUsers(): User[]
   dispose(): void
 }
 
@@ -156,6 +170,7 @@ export function createContainer(options: ContainerOptions): Container {
     retail,
     retailCustomers,
     hasher,
+    settings,
     clock,
     branchId: seed.branchId,
     usingDefaultPassword: seed.usingDefaultPassword,
@@ -169,6 +184,7 @@ export function createContainer(options: ContainerOptions): Container {
       }
       return toPublicUser(admin)
     },
+    activeUsers: () => repositories.users.list().filter((user) => user.isActive),
     dispose: () => handle.close(),
   }
 }

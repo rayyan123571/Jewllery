@@ -545,7 +545,7 @@ export function RetailScreen({ today, onPosted }: { today: string; onPosted: () 
   const editing = editingIndex !== null
 
   return (
-    <div className="screen">
+    <div className="screen screen--dense">
       <div className="screen__head">
         <h1 className="module-title">SALE (RETAIL)</h1>
 
@@ -970,13 +970,13 @@ export function RetailScreen({ today, onPosted }: { today: string; onPosted: () 
             </div>
           </div>
 
-          <InvoicePreview
-            invoiceNo={invoiceNo}
-            form={form}
-            calc={calc}
-            customerName={form.customerName}
-          />
-
+          {/* Quick Actions BEFORE the preview.
+           *
+           * The rail wants more height than an 830px window has, so something
+           * in it is below the fold — and it must not be a control. The
+           * invoice preview is a facsimile of paper: losing its last few lines
+           * costs nothing, while a button nobody can reach is a button that
+           * does not exist. Order is by what has to be operable. */}
           <div className="panel">
             <div className="panel__title">QUICK ACTIONS</div>
             <div className="panel__body">
@@ -994,6 +994,13 @@ export function RetailScreen({ today, onPosted }: { today: string; onPosted: () 
               </div>
             </div>
           </div>
+
+          <InvoicePreview
+            invoiceNo={invoiceNo}
+            form={form}
+            calc={calc}
+            customerName={form.customerName}
+          />
         </aside>
       </div>
 

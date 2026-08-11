@@ -41,7 +41,10 @@ export type ActionId =
   | 'nav.tools'
   | 'app.exit'
   | 'app.user-menu'
+  | 'app.sidebar-toggle'
   | 'message.dismiss'
+  // ── who is working ────────────────────────────────────────────────────────
+  | 'user.pick'
   // ── frameless window chrome ───────────────────────────────────────────────
   | 'window.minimize'
   | 'window.maximize'
@@ -149,8 +152,11 @@ export interface ActionContext {
   readonly restoreBackup: () => Promise<void>
   readonly toggleUserMenu: () => void
   readonly minimizeWindow: () => void
-  readonly toggleMaximizeWindow: () => void
+  readonly toggleFullscreenWindow: () => void
   readonly closeWindow: () => void
+  readonly toggleSidebar: () => void
+  /** Puts the "Who is working?" card back up. */
+  readonly switchUser: () => void
   /**
    * Hands an action to whichever screen is mounted.
    *
@@ -229,10 +235,15 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
       label: 'Minimise',
       run: () => context.minimizeWindow(),
     },
+    // The id stays `window.maximize` on purpose. It is the middle window
+    // button, it is asserted by id in the rendered-DOM test, and renaming it
+    // would change a test-asserted id to record that its BEHAVIOUR changed —
+    // which is what the label and the aria-label are for.
     'window.maximize': {
       kind: 'ready',
-      label: 'Maximise / Restore',
-      run: () => context.toggleMaximizeWindow(),
+      label: 'Fullscreen',
+      run: () => context.toggleFullscreenWindow(),
+      shortcut: 'F11',
     },
     'window.close': { kind: 'ready', label: 'Close', run: () => context.closeWindow() },
     'app.user-menu': {
@@ -240,6 +251,15 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
       label: 'Account menu',
       run: () => context.toggleUserMenu(),
     },
+    'app.sidebar-toggle': {
+      kind: 'ready',
+      label: 'Collapse or expand the menu',
+      run: () => context.toggleSidebar(),
+      shortcut: 'Ctrl+B',
+    },
+    // One entry for the whole "Who is working?" card; each user's tile supplies
+    // its own onActivate, the same way a rate row or a party match does.
+    'user.pick': screen('Continue as this user', 'user.pick'),
     // Rendered once per message, each supplying its own onActivate.
     'message.dismiss': screen('Dismiss', 'message.dismiss'),
 
@@ -273,10 +293,10 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     // Still-undrawn M0 screens. The feature works; the form does not exist yet.
     'settings.shop-profile.save': notBuilt('Save Shop Profile', 'settings'),
     'users.add': notBuilt('Add User', 'users'),
-    // The account popover. Both belong to Users & Permissions, whose screen is
-    // not drawn — so they are visibly off and say which module owns them,
-    // rather than being omitted and leaving the chip a menu with nothing in it.
-    'users.switch': notBuilt('Switch user', 'users'),
+    // Switching who is working does NOT need the Users & Permissions screen —
+    // it needs the "Who is working?" card, which exists. Sign out still belongs
+    // to that module, so it stays visibly off and says so.
+    'users.switch': { kind: 'ready', label: 'Switch user', run: () => context.switchUser() },
     'users.sign-out': notBuilt('Sign out', 'users'),
 
     // M2 — Whole Sale. Built, so these are live. Each hands off to the screen
