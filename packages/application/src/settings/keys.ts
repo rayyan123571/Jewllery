@@ -120,6 +120,32 @@ export class Settings {
     return raw === 'gross' || raw === 'net' ? raw : DEFAULT_RETAIL_WASTAGE_BASIS
   }
 
+  /**
+   * Records the shop's choice of wastage rule.
+   *
+   * Validated here rather than at the caller, because a settings row holding
+   * something that is neither 'add' nor 'subtract' would fall back to the
+   * default on every read — the shop would have made a decision and the
+   * software would quietly ignore it. Refusing the write is the only way that
+   * failure is visible.
+   *
+   * Changing this affects FUTURE sales only. Every posted sale carries the rule
+   * it was priced with on its own row (migration 006), so nothing already
+   * printed can be re-priced by this call.
+   */
+  setRetailWastageRule(direction: string, basis: string): void {
+    if (direction !== 'add' && direction !== 'subtract') {
+      throw new TypeError(
+        `"${direction}" is not a wastage direction. Expected "add" or "subtract".`,
+      )
+    }
+    if (basis !== 'gross' && basis !== 'net') {
+      throw new TypeError(`"${basis}" is not a wastage basis. Expected "gross" or "net".`)
+    }
+    this.repo.set(SETTING_KEYS.retailWastageDirection, direction)
+    this.repo.set(SETTING_KEYS.retailWastageBasis, basis)
+  }
+
   private readInteger(key: string, fallback: number): number {
     const raw = this.repo.get(key)
     if (raw === null) return fallback

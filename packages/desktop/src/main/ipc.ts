@@ -1,7 +1,8 @@
 import { ipcMain } from 'electron'
-import { PURITIES, formatPurity, toPublicUser, type PublicUser } from '@jewellery/domain'
+import { PURITIES, formatPurity, toPublicUser } from '@jewellery/domain'
 import { IPC, type BackupStatusDto, type BootstrapDto, type LoginRequest, type LoginResponse, type RateDto } from '../shared/ipc.js'
 import type { Container } from './container.js'
+import type { Session } from './session.js'
 
 /**
  * One handler per channel: validate, delegate, return plain data.
@@ -14,9 +15,7 @@ import type { Container } from './container.js'
  * the renderer cannot import.
  */
 
-export interface Session {
-  user: PublicUser | null
-}
+export type { Session } from './session.js'
 
 export function registerIpcHandlers(
   container: Container,
@@ -73,7 +72,6 @@ export function registerIpcHandlers(
       rates: ratesDto(),
       backup: backupDto(),
       databaseConnected: true,
-      financialYear: financialYearOf(container.clock.now()),
       appVersion,
     }
   })
@@ -130,18 +128,17 @@ export function registerIpcHandlers(
   void toPublicUser
 }
 
-/**
- * The financial year shown in the status bar.
+/*
+ * The financial year is gone from the status bar, and from here.
  *
- * Runs 1 July to 30 June, matching the mockup's "01-07-2026 To 30-06-2027".
- * This is a display convention for now; when reporting arrives in M8 it will
- * need to be a configurable setting rather than a constant, because not every
- * shop uses the same year end.
+ * It was a hard-coded 1 July to 30 June convention that nothing read and no
+ * shop had confirmed, sitting in the one strip of the window the operator
+ * checks for whether the database is connected and when the last backup ran.
+ * The invoice sequence stopped being per financial year in migration 007, so
+ * the last thing that actually depended on the idea went with it. When
+ * reporting arrives in M8 and a year end genuinely matters, it will be a
+ * setting the shop states — not a constant compiled into the shell.
  */
-export function financialYearOf(now: Date): string {
-  const year = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1
-  return `01-07-${year} To 30-06-${year + 1}`
-}
 
 function formatStamp(iso: string): string {
   const date = new Date(iso)

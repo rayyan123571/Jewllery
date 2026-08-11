@@ -13,6 +13,7 @@
   "references": [
     { "path": "../domain" },
     { "path": "../application" },
-    { "path": "../persistence" }
+    { "path": "../persistence" },
+    { "path": "../printing" }
   ]
 }

@@ -26,6 +26,15 @@ export type AuditAction =
   | 'BACKUP_CREATED'
   | 'BACKUP_RESTORED'
   | 'TRANSACTION_POSTED'
+  /**
+   * A sale parked before it was posted.
+   *
+   * Distinct from POSTED because it is a different event with different
+   * consequences: a held sale has taken an invoice number but has not sold
+   * anything, and "who held this and when" is the question asked when one is
+   * still sitting there a week later.
+   */
+  | 'TRANSACTION_HELD'
   | 'TRANSACTION_REVERSED'
   | 'OVER_RETURN_CONFIRMED'
   | 'PARTY_CREATED'

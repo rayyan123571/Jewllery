@@ -2,11 +2,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
   IPC_M2,
+  IPC_RETAIL,
   type BackupStatusDto,
   type BootstrapDto,
+  type CustomerDto,
   type LedgerRowDto,
   type LoginRequest,
   type LoginResponse,
+  type NewCustomerDto,
   type NewPartyDto,
   type PartyBalanceDto,
   type PartyDto,
@@ -15,8 +18,19 @@ import {
   type PreviewDto,
   type RateDto,
   type RendererApi,
+  type RetailCalculateRequest,
+  type RetailCalculationDto,
+  type RetailListRequest,
+  type RetailLoadRequest,
+  type RetailPostRequest,
+  type RetailPostResult,
+  type RetailSaleDto,
+  type RetailSaleSummaryDto,
+  type SalesmanDto,
   type SetRateRequest,
   type SettleRequest,
+  type WastageRuleChoice,
+  type WastageRuleDto,
 } from '../shared/ipc.js'
 
 /**
@@ -67,6 +81,45 @@ const api: RendererApi = {
   changePassword: (current: string, next: string) =>
     ipcRenderer.invoke(IPC_M2.changePassword, current, next) as ReturnType<
       RendererApi['changePassword']
+    >,
+
+  // M5 — Sale (Retail). Every one of these forwards and nothing else: the
+  // arithmetic, the validation and the formatting all happen on the far side.
+  retailCalculate: (request: RetailCalculateRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.calculate, request) as Promise<RetailCalculationDto>,
+  retailSave: (request: RetailPostRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.save, request) as Promise<RetailPostResult>,
+  retailHold: (request: RetailPostRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.hold, request) as Promise<RetailPostResult>,
+  retailLoad: (reference: RetailLoadRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.load, reference) as Promise<RetailSaleDto | null>,
+  retailList: (filter: RetailListRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.list, filter) as Promise<readonly RetailSaleSummaryDto[]>,
+  retailVoid: (saleId: string, reason: string) =>
+    ipcRenderer.invoke(IPC_RETAIL.void, saleId, reason) as ReturnType<
+      RendererApi['retailVoid']
+    >,
+  retailNextInvoiceNo: () =>
+    ipcRenderer.invoke(IPC_RETAIL.nextInvoiceNo) as Promise<string>,
+  retailReceipt: (saleId: string) =>
+    ipcRenderer.invoke(IPC_RETAIL.receipt, saleId) as Promise<string | null>,
+  searchCustomers: (query: string) =>
+    ipcRenderer.invoke(IPC_RETAIL.customerSearch, query) as Promise<readonly CustomerDto[]>,
+  createCustomer: (input: NewCustomerDto) =>
+    ipcRenderer.invoke(IPC_RETAIL.customerCreate, input) as ReturnType<
+      RendererApi['createCustomer']
+    >,
+  listSalesmen: () =>
+    ipcRenderer.invoke(IPC_RETAIL.salesmenList) as Promise<readonly SalesmanDto[]>,
+  retailWastageRule: (selection: WastageRuleChoice | null) =>
+    ipcRenderer.invoke(IPC_RETAIL.wastageRule, selection) as Promise<WastageRuleDto>,
+  setRetailWastageRule: (rule: WastageRuleChoice) =>
+    ipcRenderer.invoke(IPC_RETAIL.wastageRuleSet, rule) as ReturnType<
+      RendererApi['setRetailWastageRule']
+    >,
+  openExternal: (url: string) =>
+    ipcRenderer.invoke(IPC_RETAIL.openExternal, url) as ReturnType<
+      RendererApi['openExternal']
     >,
 
   windowControls: {

@@ -3,8 +3,10 @@ import { systemClock, toPublicUser, type Clock, type PublicUser } from '@jewelle
 import {
   AuthService,
   BackupService,
+  CustomerService,
   PartyService,
   RateService,
+  RetailSaleService,
   Settings,
   WholesaleService,
   createPasswordHasher,
@@ -38,6 +40,16 @@ export interface Container {
   readonly backups: BackupService
   readonly parties: PartyService
   readonly wholesale: WholesaleService
+  readonly retail: RetailSaleService
+  /**
+   * Retail customers, deliberately NOT `parties`.
+   *
+   * A wholesale party has a standing gold and cash ledger because a wholesale
+   * relationship IS a running balance. A retail customer usually walks in, pays
+   * and leaves. Folding them together would fill the wholesale ledger with rows
+   * that are not wholesale — see migration 005.
+   */
+  readonly retailCustomers: CustomerService
   readonly hasher: PasswordHasher
   readonly clock: Clock
   /** Resolved once at startup; the app ships with a single branch. */
@@ -101,13 +113,30 @@ export function createContainer(options: ContainerOptions): Container {
     clock,
   })
 
+  const settings = new Settings(repositories.settings)
+
   const wholesale = new WholesaleService({
     wholesale: repositories.wholesale,
     parties: repositories.parties,
     audit: repositories.audit,
     rates,
-    settings: new Settings(repositories.settings),
+    settings,
     clock,
+  })
+
+  const retail = new RetailSaleService({
+    retailSales: repositories.retailSales,
+    customers: repositories.customers,
+    salesmen: repositories.salesmen,
+    audit: repositories.audit,
+    rates,
+    settings,
+    clock,
+  })
+
+  const retailCustomers = new CustomerService({
+    customers: repositories.customers,
+    audit: repositories.audit,
   })
 
   // Runs on every startup, including after a restore. Idempotent — it does
@@ -124,6 +153,8 @@ export function createContainer(options: ContainerOptions): Container {
     backups,
     parties,
     wholesale,
+    retail,
+    retailCustomers,
     hasher,
     clock,
     branchId: seed.branchId,

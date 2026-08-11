@@ -85,7 +85,6 @@ export interface BootstrapDto {
   readonly rates: readonly RateDto[]
   readonly backup: BackupStatusDto
   readonly databaseConnected: boolean
-  readonly financialYear: string
   readonly appVersion: string
 }
 
@@ -124,6 +123,41 @@ export interface RendererApi {
     current: string,
     next: string,
   ): Promise<{ ok: true } | { ok: false; message: string }>
+
+  // M5 — Sale (Retail). See the block at the foot of this file.
+  retailCalculate(request: RetailCalculateRequest): Promise<RetailCalculationDto>
+  retailSave(request: RetailPostRequest): Promise<RetailPostResult>
+  retailHold(request: RetailPostRequest): Promise<RetailPostResult>
+  retailLoad(reference: RetailLoadRequest): Promise<RetailSaleDto | null>
+  retailList(filter: RetailListRequest): Promise<readonly RetailSaleSummaryDto[]>
+  retailVoid(
+    saleId: string,
+    reason: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }>
+  retailNextInvoiceNo(): Promise<string>
+  /** The 80mm thermal document for a posted sale, as HTML. */
+  retailReceipt(saleId: string): Promise<string | null>
+  searchCustomers(query: string): Promise<readonly CustomerDto[]>
+  createCustomer(
+    input: NewCustomerDto,
+  ): Promise<{ ok: true; customer: CustomerDto } | { ok: false; message: string }>
+  listSalesmen(): Promise<readonly SalesmanDto[]>
+  /**
+   * The saved rule plus the worked example for all four combinations.
+   * `selection` previews a rule without saving it.
+   */
+  retailWastageRule(selection: WastageRuleChoice | null): Promise<WastageRuleDto>
+  setRetailWastageRule(
+    rule: WastageRuleChoice,
+  ): Promise<{ ok: true } | { ok: false; message: string }>
+  /**
+   * Hands a URL to the operating system's browser.
+   *
+   * The one place this application deliberately leaves itself. It is not a
+   * network call — nothing is fetched here — and main refuses anything that is
+   * not an https link to a host on its own allowlist.
+   */
+  openExternal(url: string): Promise<{ ok: true } | { ok: false; message: string }>
 
   /**
    * The window buttons for the frameless title bar.
@@ -307,4 +341,304 @@ export interface SetRateRequest {
   readonly ratePerTolaRupees: string
   readonly effectiveFrom: string
   readonly note: string | null
+}
+
+// ── retail (M5) ─────────────────────────────────────────────────────────────
+//
+// The retail screen is the strictest application of the rule this whole file
+// exists for: **the renderer computes nothing at all.** Every figure it shows —
+// net weight, wastage, fine weight, a line amount, the grand total, the amount
+// in words — is produced by RetailSaleService in the main process and arrives
+// preformatted. `retail:calculate` is called on every keystroke for exactly
+// that reason: it is cheaper to ask than to duplicate the arithmetic, and a
+// duplicate is a second implementation that will eventually disagree.
+
+export const IPC_RETAIL = {
+  /** Draft in, fully computed DTO out. Pure: no writes, no side effects. */
+  calculate: 'retail:calculate',
+  save: 'retail:save',
+  hold: 'retail:hold',
+  load: 'retail:load',
+  list: 'retail:list',
+  void: 'retail:void',
+  /** A PREVIEW of the next number. Reserves nothing. */
+  nextInvoiceNo: 'retail:nextInvoiceNo',
+  receipt: 'retail:receipt',
+  customerSearch: 'customers:search',
+  customerCreate: 'customers:create',
+  salesmenList: 'salesmen:list',
+  wastageRule: 'settings:retailWastageRule',
+  wastageRuleSet: 'settings:retailWastageRule:set',
+  openExternal: 'app:openExternal',
+} as const
+
+/** Which unit the operator is currently reading and typing weights in. */
+export type WeightUnit = 'gram' | 'tola'
+
+/**
+ * A weight as the operator is currently holding it.
+ *
+ * `text` is what is in the box. `exactMg` is set ONLY when that text was
+ * produced by flipping the Gram ⇄ Tola toggle rather than typed — and when it
+ * is set, it wins.
+ *
+ * That second field is not belt-and-braces, it is the whole reason the toggle
+ * is safe. Three decimals of a tola cannot represent a milligram: 0.001 tola is
+ * 11.664 mg, so 47.240 g displays as 4.050 tola and 4.050 tola parses back to
+ * 47.239 g. Re-parsing the displayed text on every flip would walk a stored
+ * weight by up to 6 mg per toggle, silently, on a screen whose whole job is to
+ * price metal by weight. Carrying the exact milligram means a toggle is a
+ * change of units and nothing else.
+ */
+export interface WeightFieldDto {
+  readonly text: string
+  readonly exactMg: number | null
+}
+
+/** A computed weight, ready to render in either unit. Never recomputed here. */
+export interface WeightDto {
+  /** The stored integer. The renderer displays it; it never does arithmetic. */
+  readonly mg: number
+  readonly gram: string
+  readonly tola: string
+}
+
+/** A computed amount. `rupees` carries paisa, `whole` is the slip's form. */
+export interface MoneyDto {
+  readonly paisa: number
+  readonly rupees: string
+  readonly whole: string
+}
+
+/** One item as typed, in whichever unit the toggle is currently showing. */
+export interface RetailItemDto {
+  readonly itemName: string
+  readonly purity: string
+  readonly grossWeight: WeightFieldDto
+  readonly stoneWeight: WeightFieldDto
+  readonly cutPerTola: WeightFieldDto
+  /** Per cent to two places, e.g. "14.00". Converted to basis points on main. */
+  readonly wastagePercent: string
+  readonly labourCharges: string
+  readonly labourMode: string
+  readonly stoneCharges: string
+}
+
+export interface RetailDraftDto {
+  /** Minted by the screen when the sale is started. Carries the idempotency. */
+  readonly draftId: string
+  readonly saleDate: string
+  readonly saleTime: string
+  readonly customerId: string | null
+  readonly customerName: string
+  readonly customerMobile: string | null
+  readonly salesmanId: string | null
+  readonly ratePurity: string
+  /** Empty means "use the rate recorded for this purity and date". */
+  readonly ratePerTolaOverride: string
+  readonly weightUnit: WeightUnit
+  readonly items: readonly RetailItemDto[]
+  readonly customerGold: WeightFieldDto
+  readonly customerGoldPurity: string | null
+  readonly hallmarkCharges: string
+  readonly otherCharges: string
+  readonly discount: string
+  readonly amountPaid: string
+  readonly paymentMethod: string
+  readonly remarks: string | null
+  readonly confirmedHighWastage?: boolean
+}
+
+export interface RetailCalculateRequest {
+  readonly draft: RetailDraftDto
+  /**
+   * The row being typed in the ITEM ENTRY card and not yet added.
+   *
+   * It is computed and returned but contributes NOTHING to the totals — it has
+   * not been added to the sale. This is what lets Net Weight, Wastage and Fine
+   * Weight fill themselves in as the operator types without the renderer doing
+   * a single multiplication.
+   */
+  readonly entry: RetailItemDto | null
+}
+
+export interface RetailLineDto {
+  readonly itemName: string
+  /** Display form, e.g. "22K". */
+  readonly purity: string
+  readonly purityCode: string
+  readonly gross: WeightDto
+  readonly stone: WeightDto
+  readonly cutPerTola: WeightDto
+  readonly net: WeightDto
+  readonly wastagePercent: string
+  readonly wastage: WeightDto
+  readonly fine: WeightDto
+  /** What is actually charged, after the fixed / per-tola mode is resolved. */
+  readonly labour: MoneyDto
+  readonly labourMode: string
+  readonly stoneCharges: MoneyDto
+  readonly amount: MoneyDto
+  /** Half-typed input is normal. A row that cannot parse says so and is skipped. */
+  readonly error: string | null
+}
+
+export interface RetailCalculationDto {
+  readonly lines: readonly RetailLineDto[]
+  readonly entry: RetailLineDto | null
+  readonly totalFine: WeightDto
+  readonly customerGold: WeightDto
+  readonly remainingGold: WeightDto
+  readonly goldValue: MoneyDto
+  readonly totalLabour: MoneyDto
+  readonly totalStone: MoneyDto
+  /** The sum of the ROUNDED line amounts, before charges and discount. */
+  readonly itemsTotal: MoneyDto
+  readonly hallmarkCharges: MoneyDto
+  readonly otherCharges: MoneyDto
+  readonly discount: MoneyDto
+  readonly customerGoldValue: MoneyDto
+  readonly grandTotal: MoneyDto
+  readonly amountPaid: MoneyDto
+  readonly balance: MoneyDto
+  readonly amountInWords: string
+  readonly ratePerTola: MoneyDto
+  readonly rateDisplay: string | null
+  /** True when no rate exists for that purity on that date. Never a zero. */
+  readonly rateMissing: boolean
+  readonly wastageRuleLabel: string
+  readonly warnings: readonly string[]
+}
+
+export interface RetailPostRequest {
+  readonly draft: RetailDraftDto
+}
+
+export type RetailPostResult =
+  | {
+      readonly ok: true
+      readonly saleId: string
+      readonly invoiceNo: string
+      readonly status: string
+      readonly grandTotal: string
+      readonly balance: string
+      readonly amountInWords: string
+    }
+  | { readonly ok: false; readonly message: string }
+  /** High wastage. A question with a Continue button, not an error to dismiss. */
+  | { readonly ok: false; readonly needsConfirmation: true; readonly message: string }
+
+export interface RetailLoadRequest {
+  readonly saleId?: string
+  readonly invoiceNo?: string
+}
+
+export interface RetailListRequest {
+  readonly fromDate?: string
+  readonly toDate?: string
+  readonly customerId?: string
+  readonly status?: string
+  readonly limit?: number
+}
+
+export interface RetailSaleSummaryDto {
+  readonly saleId: string
+  readonly invoiceNo: string
+  readonly date: string
+  readonly time: string
+  readonly customerName: string
+  readonly salesmanName: string | null
+  readonly grandTotal: string
+  readonly balance: string
+  readonly status: string
+}
+
+/** A posted or held sale, read back. */
+export interface RetailSaleDto {
+  readonly summary: RetailSaleSummaryDto
+  readonly lines: readonly RetailLineDto[]
+  readonly totalFine: WeightDto
+  readonly amountInWords: string
+  readonly ratePurity: string
+  readonly ratePerTola: MoneyDto
+  readonly customerMobile: string | null
+  readonly paymentMethod: string
+  readonly amountPaid: MoneyDto
+  readonly remarks: string | null
+  readonly wastageRuleLabel: string
+}
+
+export interface CustomerDto {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly mobile: string | null
+  readonly city: string | null
+  readonly isWalkIn: boolean
+}
+
+export interface NewCustomerDto {
+  readonly name: string
+  readonly mobile: string
+  readonly address: string
+  readonly city: string
+  readonly cnic: string
+  readonly isWalkIn: boolean
+  /** Typed decimal strings, parsed exactly on the main side. */
+  readonly openingGoldGrams: string
+  readonly openingCashRupees: string
+}
+
+export interface SalesmanDto {
+  readonly id: string
+  readonly name: string
+}
+
+export interface WastageRuleChoice {
+  readonly direction: string
+  readonly basis: string
+}
+
+/**
+ * One of the four rules, worked through the SAME calculation core a real sale
+ * uses. There is no second copy of the arithmetic anywhere for this card.
+ */
+export interface WastageRuleOptionDto {
+  readonly direction: string
+  readonly basis: string
+  readonly label: string
+  readonly wastageDisplay: string
+  readonly fineDisplay: string
+  readonly amountDisplay: string
+  readonly isSaved: boolean
+  readonly isSelected: boolean
+}
+
+export interface WastageRuleExampleDto {
+  readonly title: string
+  readonly note: string | null
+  readonly sample: {
+    readonly grossTola: string
+    readonly stoneTola: string
+    readonly cutTola: string
+    readonly wastagePercent: string
+    readonly rateDisplay: string
+  }
+  readonly options: readonly WastageRuleOptionDto[]
+}
+
+export interface WastageRuleDto {
+  /** What is stored, and therefore what the next sale will be priced with. */
+  readonly savedDirection: string
+  readonly savedBasis: string
+  /**
+   * TWO worked examples, and the second one is not decoration.
+   *
+   * On a piece with no stone and no cut, gross weight and net weight are the
+   * same number — so "calculated on gross" and "calculated on net" give
+   * identical answers and the card cannot help anybody tell them apart. The
+   * second example puts a stone on the same piece, which is what separates
+   * them. Without it, half of this card's purpose does not work.
+   */
+  readonly examples: readonly WastageRuleExampleDto[]
 }

@@ -12,12 +12,15 @@ import {
   type PublicUser,
   type Purity,
   type RetailLineComputed,
+  type RetailSale,
   type RetailSaleWithItems,
+  type Salesman,
   type WastageRule,
 } from '@jewellery/domain'
 import type {
   AuditRepository,
   CustomerRepository,
+  RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
 } from '../abstractions/repositories.js'
@@ -232,12 +235,39 @@ export class RetailSaleService {
    * transaction means the gold left the shop once and the books say twice.
    */
   post(actor: PublicUser, input: RetailDraftInput): RetailSaleWithItems {
+    return this.write(actor, input, 'posted')
+  }
+
+  /**
+   * Parks a sale without selling anything.
+   *
+   * Validated with the GOODS rules only — the payment rules are deliberately
+   * skipped, and that is the whole point of the method. A hold is what happens
+   * when the customer goes to fetch the rest of the money, so refusing to park
+   * it *because* it is not paid in full would make the button useless exactly
+   * when it is needed.
+   *
+   * It still takes an invoice number, because the row it writes carries the
+   * UNIQUE NOT NULL `invoice_no` every sale carries. That number is spent: this
+   * is a real document in the sequence, and a held sale that is abandoned leaves
+   * an auditable gap rather than a number a later sale silently reuses.
+   */
+  hold(actor: PublicUser, input: RetailDraftInput): RetailSaleWithItems {
+    return this.write(actor, input, 'held')
+  }
+
+  private write(
+    actor: PublicUser,
+    input: RetailDraftInput,
+    status: 'posted' | 'held',
+  ): RetailSaleWithItems {
     if (input.draftId) {
       const already = this.deps.retailSales.findByDraftId(input.draftId)
       if (already) return already
     }
 
-    const calculation = this.validate(input)
+    const calculation =
+      status === 'posted' ? this.validate(input) : this.validateGoods(input)
 
     const posted = this.deps.retailSales.post(
       {
@@ -266,7 +296,7 @@ export class RetailSaleService {
         balance: calculation.balance,
         amountInWords: calculation.amountInWords,
         remarks: input.remarks,
-        status: 'posted',
+        status,
         // Written onto the row so this invoice always reproduces exactly,
         // whatever the setting says later.
         wastageDirection: calculation.rule.direction,
@@ -296,7 +326,7 @@ export class RetailSaleService {
     this.deps.audit.append({
       branchId: input.branchId,
       userId: actor.id,
-      action: 'TRANSACTION_POSTED',
+      action: status === 'posted' ? 'TRANSACTION_POSTED' : 'TRANSACTION_HELD',
       entity: 'retail_sales',
       entityId: posted.sale.id,
       detail: JSON.stringify({
@@ -318,6 +348,19 @@ export class RetailSaleService {
    * front of them.
    */
   validate(input: RetailDraftInput): RetailCalculation {
+    const calculation = this.validateGoods(input)
+    this.validatePayment(input, calculation)
+    return calculation
+  }
+
+  /**
+   * The rules about what is being sold, and what it comes to.
+   *
+   * Split out from the payment rules because a HELD sale must pass these and
+   * must not be asked the payment questions — nothing has been paid yet, and
+   * that is not an error, it is the reason it is on hold.
+   */
+  private validateGoods(input: RetailDraftInput): RetailCalculation {
     // 1. Something to sell.
     if (input.items.length === 0) {
       throw new ValidationError('Add at least one item before saving this sale.')
@@ -420,6 +463,11 @@ export class RetailSaleService {
       throw new ValidationError('The amount paid cannot be negative.')
     }
 
+    return calculation
+  }
+
+  /** The rules about who is paying, and whether there is anywhere to owe from. */
+  private validatePayment(input: RetailDraftInput, calculation: RetailCalculation): void {
     // 8. Credit needs somebody to owe it.
     const customer = input.customerId
       ? this.deps.customers.findById(input.customerId)
@@ -443,8 +491,6 @@ export class RetailSaleService {
           `Add the customer as an account to sell on credit.`,
       )
     }
-
-    return calculation
   }
 
   findById(id: string): RetailSaleWithItems | null {
@@ -453,6 +499,16 @@ export class RetailSaleService {
 
   findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null {
     return this.deps.retailSales.findByInvoiceNo(invoiceNo)
+  }
+
+  /** Sales matching a date range, a customer and a status. Read-only. */
+  list(filter: RetailSaleFilter): readonly RetailSale[] {
+    return this.deps.retailSales.list(filter)
+  }
+
+  /** The salesmen a sale may be attributed to. Active only. */
+  salesmen(): readonly Salesman[] {
+    return this.deps.salesmen.list(true)
   }
 
   peekNextInvoiceNo(): string {

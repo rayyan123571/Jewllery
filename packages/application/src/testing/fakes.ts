@@ -31,6 +31,7 @@ import type {
   NewWholesaleEntry,
   PartyRepository,
   PartySearchResult,
+  RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
   SettingsRepository,
@@ -525,8 +526,16 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
     return this.rows.find((row) => row.sale.draftId === draftId) ?? null
   }
 
-  list(): RetailSale[] {
-    return this.rows.map((row) => row.sale)
+  /** Honours the filter, because the handler that calls it is tested on it. */
+  list(filter: RetailSaleFilter): RetailSale[] {
+    return this.rows
+      .map((row) => row.sale)
+      .filter((sale) => sale.branchId === filter.branchId)
+      .filter((sale) => !filter.fromDate || sale.saleDate >= filter.fromDate)
+      .filter((sale) => !filter.toDate || sale.saleDate <= filter.toDate)
+      .filter((sale) => !filter.customerId || sale.customerId === filter.customerId)
+      .filter((sale) => !filter.status || sale.status === filter.status)
+      .slice(0, filter.limit)
   }
 
   peekNextInvoiceNo(prefix: string): string {

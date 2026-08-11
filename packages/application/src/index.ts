@@ -88,3 +88,28 @@ export {
   type BackupDependencies,
   type RetentionPolicy,
 } from './backup/BackupService.js'
+
+/**
+ * In-memory repositories, for tests in other packages.
+ *
+ * Exported deliberately rather than reached for across package boundaries with
+ * a relative path. The main process's IPC handlers have their own tests, and
+ * the whole point of those tests is that they run with no database — which
+ * means they need these fakes, and a `../../../application/src/...` import
+ * would be a second, unsupported way into this package.
+ *
+ * They are test doubles, not behaviour: nothing in `desktop/main`,
+ * `persistence` or `printing` may construct one outside a test.
+ */
+export {
+  FakeAuditRepository,
+  FakeCustomerRepository,
+  FakeGoldRateRepository,
+  FakePartyRepository,
+  FakeRetailSaleRepository,
+  FakeSalesmanRepository,
+  FakeSettingsRepository,
+  FakeUserRepository,
+  FakeWholesaleRepository,
+  counterIds,
+} from './testing/fakes.js'

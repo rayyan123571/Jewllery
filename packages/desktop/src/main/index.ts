@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs'
 import { createContainer, type Container } from './container.js'
 import { registerIpcHandlers, type Session } from './ipc.js'
 import { registerWholesaleHandlers } from './wholesaleIpc.js'
+import { registerRetailHandlers } from './retailIpc.js'
 import { IPC_M2 } from '../shared/ipc.js'
 
 /**
@@ -55,9 +56,19 @@ function createWindow(): BrowserWindow {
   window.on('unmaximize', reportMaximised)
 
   window.once('ready-to-show', () => {
-    // Opens filling the screen, like the system it replaces. A shop counter
-    // never wants a window it has to resize before it can read the grid.
-    window.maximize()
+    // A capture asks for an exact CONTENT size in CSS pixels, and it has to be
+    // applied INSTEAD of maximising rather than after it: on Windows
+    // `unmaximize()` is asynchronous, so the window manager restores the
+    // pre-maximise bounds after any setContentSize and the figure asked for is
+    // silently ignored. Found by capturing at 1550×830 and getting 1600×1020.
+    const captureSize = captureContentSize()
+    if (captureSize) {
+      window.setContentSize(captureSize.width, captureSize.height)
+    } else {
+      // Opens filling the screen, like the system it replaces. A shop counter
+      // never wants a window it has to resize before it can read the grid.
+      window.maximize()
+    }
     window.show()
     void runCaptureScenario(window)
   })
@@ -111,6 +122,7 @@ app.whenReady().then(
 
     registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
     registerWholesaleHandlers(container, session)
+    registerRetailHandlers(container, session)
     registerWindowControls()
 
     createWindow()
@@ -197,11 +209,24 @@ function reportFatal(error: unknown): void {
  *
  *   JEWELLERY_CAPTURE       directory to write PNGs into
  *   JEWELLERY_CAPTURE_STEPS JSON: [{ name, js?, waitMs? }, ...]
+ *   JEWELLERY_CAPTURE_SIZE  "1550x830" — CONTENT size in CSS pixels
  *
  * Each step optionally runs a snippet in the renderer, waits, then writes
  * <name>.png. With no steps it takes a single shot, as before. Inert unless the
  * environment variables are set, so it costs a shipped build nothing.
+ *
+ * The size is content size, not window size, and that distinction is the whole
+ * reason it exists: a no-page-scroll claim is a claim about a number of CSS
+ * pixels, and "maximised on whichever monitor happened to be attached" is not
+ * a number. setContentSize takes device-independent pixels, which are CSS
+ * pixels, so the figure asked for is the figure the layout gets.
  */
+function captureContentSize(): { width: number; height: number } | null {
+  if (!process.env.JEWELLERY_CAPTURE) return null
+  const size = /^(\d+)x(\d+)$/.exec(process.env.JEWELLERY_CAPTURE_SIZE ?? '')
+  return size ? { width: Number(size[1]), height: Number(size[2]) } : null
+}
+
 async function runCaptureScenario(window: BrowserWindow): Promise<void> {
   const dir = process.env.JEWELLERY_CAPTURE
   if (!dir) return
@@ -220,11 +245,20 @@ async function runCaptureScenario(window: BrowserWindow): Promise<void> {
 
   for (const step of steps) {
     try {
-      if (step.js) await window.webContents.executeJavaScript(step.js, true)
+      // Whatever the snippet returns is logged. A capture that only produces a
+      // PNG cannot answer "does this fit?" — a scrollHeight can, and it is a
+      // number rather than an impression of one.
+      const reported: unknown = step.js
+        ? await window.webContents.executeJavaScript(step.js, true)
+        : undefined
       await pause(step.waitMs ?? 900)
       const image = await window.webContents.capturePage()
       writeFileSync(join(dir, `${step.name}.png`), image.toPNG())
-      console.log(`[capture] ${step.name}`)
+      const [width, height] = window.getContentSize()
+      console.log(
+        `[capture] ${step.name} at ${width}x${height} CSS` +
+          (reported === undefined ? '' : ` ${JSON.stringify(reported)}`),
+      )
     } catch (error) {
       console.error(`[capture] ${step.name} failed:`, error)
     }
