@@ -19,11 +19,16 @@ import {
   checkExternalUrl,
   customerCreate,
   customerSearch,
+  retailBillAddSlip,
   retailBillCalculate,
+  retailBillDeleteSlip,
   retailBillNextNo,
   retailBillReceipt,
   retailBillSave,
   retailCalculate,
+  retailDraftDiscard,
+  retailDraftFind,
+  retailDraftSave,
   retailHold,
   retailList,
   retailLoad,
@@ -840,5 +845,187 @@ describe('a sale keeps the rate and the rule it was priced with', () => {
     expect(next.wastageRuleLabel).toBe(
       'Wastage taken out of net weight, calculated on gross weight',
     )
+  })
+})
+
+describe('the bill in progress, across the boundary', () => {
+  function slipOf(slipNo: number, label: string, items: RetailItemDto[] = [item()]) {
+    return {
+      slipNo,
+      slipLabel: label,
+      draftId: `draft-slip-${slipNo}`,
+      items,
+      customerGold: weightField(''),
+      customerGoldPurity: 'K22',
+      hallmarkCharges: '',
+      otherCharges: '',
+      discount: '',
+      amountPaid: '',
+      paymentMethod: 'cash',
+      remarks: null,
+    }
+  }
+
+  function saveRequest(
+    slips: ReturnType<typeof slipOf>[],
+    overrides: Partial<{
+      activeSlipNo: number
+      editingSlipNo: number | null
+      editingLineNo: number | null
+      customerName: string
+      customerMobile: string
+    }> = {},
+  ) {
+    return {
+      draft: {
+        saleDate: '2026-08-30',
+        saleTime: '12:48',
+        customerId: null,
+        customerName: overrides.customerName ?? 'IMRAN SAHIB',
+        customerMobile: overrides.customerMobile ?? '03001234567',
+        salesmanId: null,
+        ratePurity: 'K22',
+        ratePerTolaOverride: '',
+        weightUnit: 'gram' as const,
+        slips,
+      },
+      activeSlipNo: overrides.activeSlipNo ?? 1,
+      editingSlipNo: overrides.editingSlipNo ?? null,
+      editingLineNo: overrides.editingLineNo ?? null,
+      newSlipDraftId: 'draft-slip-new',
+    }
+  }
+
+  it('writes the draft and reads it back with a summary to decide on', () => {
+    expect(retailDraftSave(deps, saveRequest([slipOf(1, 'Full Bill')])).ok).toBe(true)
+    const found = retailDraftFind(deps)
+    expect(found?.customerName).toBe('IMRAN SAHIB')
+    expect(found?.slipCount).toBe(1)
+    expect(found?.itemCount).toBe(1)
+    // The total is computed by the same path the screen uses, so the card
+    // offering to resume names a figure the resumed bill will come to.
+    expect(found?.total).not.toBe('0.00')
+  })
+
+  it('refuses to write a draft without a session', () => {
+    const anonymous: RetailHandlerDeps = { ...deps, session: { user: null } }
+    const result = retailDraftSave(anonymous, saveRequest([slipOf(1, 'Full Bill')]))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('attributed')
+    expect(retailDraftFind(anonymous)).toBeNull()
+  })
+
+  it('does NOT store an empty bill — a resume card for nothing is noise', () => {
+    // Nothing typed at all: no name, no number, no items.
+    const empty = saveRequest([slipOf(1, 'Full Bill', [])], {
+      customerName: '  ',
+      customerMobile: '',
+    })
+    expect(retailDraftSave(deps, empty).ok).toBe(true)
+    expect(retailDraftFind(deps)).toBeNull()
+  })
+
+  it('clears a stored draft once the bill is emptied back down to nothing', () => {
+    expect(retailDraftSave(deps, saveRequest([slipOf(1, 'Full Bill')])).ok).toBe(true)
+    expect(retailDraftFind(deps)).toBeTruthy()
+    // Emptying a bill is a decision too; yesterday's draft must not survive it.
+    const empty = saveRequest([slipOf(1, 'Full Bill', [])], {
+      customerName: '',
+      customerMobile: '',
+    })
+    expect(retailDraftSave(deps, empty).ok).toBe(true)
+    expect(retailDraftFind(deps)).toBeNull()
+  })
+
+  it('remembers which line was open for editing', () => {
+    expect(
+      retailDraftSave(
+        deps,
+        saveRequest([slipOf(1, 'Full Bill')], { editingSlipNo: 1, editingLineNo: 1 }),
+      ).ok,
+    ).toBe(true)
+    const found = retailDraftFind(deps)
+    expect(found?.state.editingSlipNo).toBe(1)
+    expect(found?.state.editingLineNo).toBe(1)
+  })
+
+  it('discards on request, and only on request', () => {
+    expect(retailDraftSave(deps, saveRequest([slipOf(1, 'Full Bill')])).ok).toBe(true)
+    expect(retailDraftFind(deps)).toBeTruthy()
+    expect(retailDraftDiscard(deps).ok).toBe(true)
+    expect(retailDraftFind(deps)).toBeNull()
+  })
+
+  it('clears the draft when the bill posts, but not when the post is refused', () => {
+    // Refused: a walk-in that has not paid in full. The work must survive it.
+    const unpaid = saveRequest([slipOf(1, 'Full Bill')])
+    expect(retailDraftSave(deps, unpaid).ok).toBe(true)
+    const refused = retailBillSave(deps, { draft: unpaid.draft })
+    expect(refused.ok).toBe(false)
+    expect(retailDraftFind(deps)).toBeTruthy()
+
+    // Accepted: the draft has become a real document and stops being a draft.
+    const computed = retailBillCalculate(deps, {
+      draft: unpaid.draft,
+      activeSlipNo: 1,
+      entry: null,
+    })
+    const paid = {
+      ...unpaid.draft,
+      slips: [{ ...unpaid.draft.slips[0]!, amountPaid: computed.active.grandTotal.rupees }],
+    }
+    expect(retailBillSave(deps, { draft: paid }).ok).toBe(true)
+    expect(retailDraftFind(deps)).toBeNull()
+  })
+
+  it('allocates the new slip number on this side, not in the renderer', () => {
+    const added = retailBillAddSlip(deps, saveRequest([slipOf(1, 'Full Bill')]))
+    expect('ok' in added).toBe(false)
+    if ('ok' in added) return
+    expect(added.state.draft.slips.map((s) => s.slipNo)).toEqual([1, 2])
+    expect(added.state.activeSlipNo).toBe(2)
+    // A new slip is a fresh sheet: no line on it can be mid-edit.
+    expect(added.state.editingLineNo).toBeNull()
+  })
+
+  it('deletes a draft slip and moves off it', () => {
+    const two = saveRequest([slipOf(1, 'Full Bill'), slipOf(2, 'Gold Bangles')], {
+      activeSlipNo: 2,
+    })
+    const after = retailBillDeleteSlip(deps, { ...two, slipNo: 2 })
+    expect('ok' in after).toBe(false)
+    if ('ok' in after) return
+    expect(after.state.draft.slips.map((s) => s.slipNo)).toEqual([1])
+    expect(after.state.activeSlipNo).toBe(1)
+  })
+
+  it('refuses to delete the last slip — a bill needs one', () => {
+    const one = saveRequest([slipOf(1, 'Full Bill')])
+    const result = retailBillDeleteSlip(deps, { ...one, slipNo: 1 })
+    expect('ok' in result && result.ok === false).toBe(true)
+    if ('ok' in result) expect(result.message).toContain('at least one slip')
+  })
+
+  it('refuses to delete a slip that is not in the draft', () => {
+    // A POSTED slip is never reachable here, and this refuses by number rather
+    // than trusting that. A posted slip is voided, with a reason — never deleted.
+    const one = saveRequest([slipOf(1, 'Full Bill')])
+    const result = retailBillDeleteSlip(deps, { ...one, slipNo: 7 })
+    expect('ok' in result && result.ok === false).toBe(true)
+    if ('ok' in result) expect(result.message).toContain('voided')
+  })
+
+  it('drops the edit marker when the slip holding it is deleted', () => {
+    const two = saveRequest([slipOf(1, 'Full Bill'), slipOf(2, 'Gold Bangles')], {
+      activeSlipNo: 2,
+      editingSlipNo: 2,
+      editingLineNo: 1,
+    })
+    const after = retailBillDeleteSlip(deps, { ...two, slipNo: 2 })
+    if ('ok' in after) return
+    // Otherwise the resumed screen would refuse to save, naming a line on a
+    // slip that no longer exists.
+    expect(after.state.editingSlipNo).toBeNull()
+    expect(after.state.editingLineNo).toBeNull()
   })
 })

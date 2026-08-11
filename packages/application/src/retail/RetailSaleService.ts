@@ -617,7 +617,12 @@ export class RetailSaleService {
         createdByUserId: actor.id,
         slips: validated.map(({ slip, calculation }) => ({
           slipNo: slip.slipNo,
-          slipLabel: slip.slipLabel.trim() || DEFAULT_SLIP_LABEL,
+          // Slip 1 is the full bill unless it is renamed. A later slip that
+          // was never named is "Slip 3", not a second "Full Bill" — the dump
+          // caught two slips of one bill both stored under the same label.
+          slipLabel:
+            slip.slipLabel.trim() ||
+            (slip.slipNo === 1 ? DEFAULT_SLIP_LABEL : `Slip ${slip.slipNo}`),
           sale: this.saleRowOf(actor, input, slip, calculation, 'posted'),
         })),
       },

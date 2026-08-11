@@ -1412,12 +1412,41 @@ function draftDtoOf(draft: DraftBill): RetailDraftStateDto {
  * it has no items yet would mean the operator's work is only safe once it is
  * already good enough to post. The rules that refuse still refuse at save.
  */
+/**
+ * Is there anything here worth coming back to?
+ *
+ * An untouched screen still sends a draft on its debounce — one empty slip,
+ * no items, no customer. Storing that meant the NEXT launch offered to resume a
+ * bill with nothing in it, which trains the operator to dismiss the card that
+ * exists to save their work. A draft has to have something in it to be one.
+ */
+function draftIsEmpty(draft: RetailBillDraftDto): boolean {
+  if (draft.customerName.trim() !== '') return false
+  if ((draft.customerMobile ?? '').trim() !== '') return false
+  return draft.slips.every(
+    (slip) =>
+      slip.items.length === 0 &&
+      slip.amountPaid.trim() === '' &&
+      slip.discount.trim() === '' &&
+      slip.hallmarkCharges.trim() === '' &&
+      slip.otherCharges.trim() === '' &&
+      slip.customerGold.text.trim() === '',
+  )
+}
+
 export function retailDraftSave(
   deps: RetailHandlerDeps,
   request: RetailDraftSaveRequest,
 ): { ok: true } | { ok: false; message: string } {
   try {
     const user = requireUser(deps)
+    if (draftIsEmpty(request.draft)) {
+      // Not merely skipped — CLEARED. Emptying a bill down to nothing is a
+      // decision too, and leaving yesterday's draft behind it would resurrect
+      // work the operator has just finished removing.
+      deps.retail.discardDraft(deps.branchId)
+      return { ok: true }
+    }
     deps.retail.saveDraft(
       user,
       draftBillOf(deps, request.draft, {
