@@ -25,6 +25,10 @@ import {
   type RetailPostRequest,
   type RetailPostResult,
   type RetailSaleDto,
+  type RetailBillCalculateRequest,
+  type RetailBillCalculationDto,
+  type RetailBillDraftDto,
+  type RetailBillPostResult,
   type RetailRoundingDto,
   type RetailSaleSummaryDto,
   type SalesmanDto,
@@ -122,6 +126,13 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_RETAIL.wastageRuleSet, rule) as ReturnType<
       RendererApi['setRetailWastageRule']
     >,
+  retailBillCalculate: (request: RetailBillCalculateRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.billCalculate, request) as Promise<RetailBillCalculationDto>,
+  retailBillSave: (request: { draft: RetailBillDraftDto }) =>
+    ipcRenderer.invoke(IPC_RETAIL.billSave, request) as Promise<RetailBillPostResult>,
+  retailBillNextNo: () => ipcRenderer.invoke(IPC_RETAIL.billNextNo) as Promise<string>,
+  retailBillReceipt: (billId: string) =>
+    ipcRenderer.invoke(IPC_RETAIL.billReceipt, billId) as Promise<string | null>,
   retailRounding: () =>
     ipcRenderer.invoke(IPC_RETAIL.rounding) as Promise<RetailRoundingDto>,
   setRetailRounding: (step: number) =>

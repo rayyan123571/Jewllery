@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SLIP_LABEL,
   Money,
   computeRetailInvoice,
   computeRetailLine,
@@ -11,6 +12,7 @@ import {
   type PaymentMethod,
   type PublicUser,
   type Purity,
+  type RetailBillWithSlips,
   type RetailLineComputed,
   type RetailSale,
   type RetailSaleWithItems,
@@ -20,6 +22,7 @@ import {
 import type {
   AuditRepository,
   CustomerRepository,
+  RetailBillRepository,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -44,6 +47,7 @@ import { amountInWords } from './amountInWords.js'
 
 export interface RetailDependencies {
   readonly retailSales: RetailSaleRepository
+  readonly retailBills: RetailBillRepository
   readonly customers: CustomerRepository
   readonly salesmen: SalesmanRepository
   readonly audit: AuditRepository
@@ -93,6 +97,44 @@ export interface RetailDraftInput {
   readonly confirmedHighWastage?: boolean
   /** Minted by the screen when the sale is started. See migration 008. */
   readonly draftId?: string
+}
+
+/**
+ * One slip's own facts. Everything shared by the visit lives on the bill.
+ *
+ * The split is exactly the one migration 009 draws: items, charges, discount and
+ * payment belong to the document; customer, mobile, salesman, date, time and
+ * rate belong to the visit. Holding the shared facts once is what stops two
+ * slips from the same visit disagreeing about who bought them.
+ */
+export interface RetailSlipInput {
+  readonly slipNo: number
+  readonly slipLabel: string
+  readonly items: readonly RetailItemInput[]
+  readonly customerGold: Weight
+  readonly customerGoldPurity: Purity | null
+  readonly hallmarkCharges: Money
+  readonly otherCharges: Money
+  readonly discount: Money
+  readonly amountPaid: Money
+  readonly paymentMethod: PaymentMethod
+  readonly remarks: string | null
+  /** Per slip, because each slip is its own document in the sequence. */
+  readonly draftId?: string
+}
+
+export interface RetailBillInput {
+  readonly branchId: string
+  readonly saleDate: IsoDate
+  readonly saleTime: string
+  readonly customerId: string | null
+  readonly customerName: string
+  readonly customerMobile: string | null
+  readonly salesmanId: string | null
+  readonly ratePurity: Purity
+  readonly ratePerTolaOverride?: Money
+  readonly slips: readonly RetailSlipInput[]
+  readonly confirmedHighWastage?: boolean
 }
 
 export interface RetailCalculation {
@@ -500,6 +542,184 @@ export class RetailSaleService {
           `Add the customer as an account to sell on credit.`,
       )
     }
+  }
+
+  // ── bills, which group slips ──────────────────────────────────────────────
+
+  /**
+   * Posts a whole bill: every slip, or none of them.
+   *
+   * Each slip is validated FIRST, all of them, before anything is written. That
+   * ordering is the point. Validating and writing slip by slip would leave slip
+   * 1 on disk when slip 3 turns out to have no rate — and while the repository's
+   * transaction would roll that back, the operator would have been shown a
+   * failure for slip 3 with no way to know slip 1 was fine. Validating up front
+   * means the refusal names the slip that is actually wrong, before a single row
+   * is written.
+   *
+   * The write itself is one transaction in the repository. Either the visit is
+   * recorded or none of it is; a customer must never walk out with two invoices
+   * for a three-piece purchase.
+   */
+  postBill(actor: PublicUser, input: RetailBillInput): RetailBillWithSlips {
+    if (input.slips.length === 0) {
+      throw new ValidationError('A bill needs at least one slip before it can be saved.')
+    }
+
+    // Every slip validated before any of them is written. A failure here names
+    // the slip, because "the sale could not be saved" on a four-slip bill tells
+    // the operator nothing about where to look.
+    const validated = input.slips.map((slip) => {
+      try {
+        return { slip, calculation: this.validate(this.saleInputOf(input, slip)) }
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          throw new ValidationError(`${this.slipName(slip)}: ${error.message}`)
+        }
+        throw error
+      }
+    })
+
+    const written = this.deps.retailBills.postBill(
+      {
+        branchId: input.branchId,
+        billDate: input.saleDate,
+        billTime: input.saleTime,
+        customerId: input.customerId,
+        customerNameSnapshot: input.customerName.trim(),
+        customerMobileSnapshot: input.customerMobile,
+        salesmanId: input.salesmanId,
+        salesmanNameSnapshot: input.salesmanId
+          ? (this.deps.salesmen.findById(input.salesmanId)?.name ?? null)
+          : null,
+        status: 'posted',
+        createdByUserId: actor.id,
+        slips: validated.map(({ slip, calculation }) => ({
+          slipNo: slip.slipNo,
+          slipLabel: slip.slipLabel.trim() || DEFAULT_SLIP_LABEL,
+          sale: this.saleRowOf(actor, input, slip, calculation, 'posted'),
+        })),
+      },
+      this.deps.settings.retailBillPrefix(),
+      this.deps.settings.retailInvoicePrefix(),
+    )
+
+    this.deps.audit.append({
+      branchId: input.branchId,
+      userId: actor.id,
+      action: 'TRANSACTION_POSTED',
+      entity: 'retail_bills',
+      entityId: written.bill.id,
+      detail: JSON.stringify({
+        billNo: written.bill.billNo,
+        slips: written.slips.length,
+        invoiceNos: written.slips.map((slip) => slip.sale.invoiceNo),
+        grandTotalPaisa: written.slips.reduce(
+          (sum, slip) => sum + slip.sale.grandTotal.paisa,
+          0,
+        ),
+      }),
+    })
+
+    return written
+  }
+
+  /** "Slip 2 (Gold Bangles)", for a message the operator can act on. */
+  private slipName(slip: RetailSlipInput): string {
+    const label = slip.slipLabel.trim()
+    return label ? `Slip ${slip.slipNo} (${label})` : `Slip ${slip.slipNo}`
+  }
+
+  /** A slip, expressed as the sale input the existing rules already validate. */
+  private saleInputOf(bill: RetailBillInput, slip: RetailSlipInput): RetailDraftInput {
+    return {
+      branchId: bill.branchId,
+      saleDate: bill.saleDate,
+      saleTime: bill.saleTime,
+      customerId: bill.customerId,
+      customerName: bill.customerName,
+      customerMobile: bill.customerMobile,
+      salesmanId: bill.salesmanId,
+      ratePurity: bill.ratePurity,
+      ...(bill.ratePerTolaOverride ? { ratePerTolaOverride: bill.ratePerTolaOverride } : {}),
+      items: slip.items,
+      customerGold: slip.customerGold,
+      customerGoldPurity: slip.customerGoldPurity,
+      hallmarkCharges: slip.hallmarkCharges,
+      otherCharges: slip.otherCharges,
+      discount: slip.discount,
+      amountPaid: slip.amountPaid,
+      paymentMethod: slip.paymentMethod,
+      remarks: slip.remarks,
+      ...(bill.confirmedHighWastage === true ? { confirmedHighWastage: true } : {}),
+      ...(slip.draftId ? { draftId: slip.draftId } : {}),
+    }
+  }
+
+  private saleRowOf(
+    actor: PublicUser,
+    bill: RetailBillInput,
+    slip: RetailSlipInput,
+    calculation: RetailCalculation,
+    status: 'posted' | 'held',
+  ): Parameters<RetailSaleRepository['post']>[0] {
+    const input = this.saleInputOf(bill, slip)
+    return {
+      branchId: input.branchId,
+      saleDate: input.saleDate,
+      saleTime: input.saleTime,
+      customerId: input.customerId,
+      customerNameSnapshot: input.customerName.trim(),
+      customerMobileSnapshot: input.customerMobile,
+      salesmanId: input.salesmanId,
+      salesmanNameSnapshot: input.salesmanId
+        ? (this.deps.salesmen.findById(input.salesmanId)?.name ?? null)
+        : null,
+      ratePurity: input.ratePurity,
+      ratePerTola: calculation.ratePerTola,
+      goldValue: calculation.goldValue,
+      customerGold: input.customerGold,
+      customerGoldPurity: input.customerGoldPurity,
+      customerGoldValue: calculation.customerGoldValue,
+      hallmarkCharges: input.hallmarkCharges,
+      otherCharges: input.otherCharges,
+      discount: input.discount,
+      grandTotal: calculation.grandTotal,
+      amountPaid: input.amountPaid,
+      paymentMethod: input.paymentMethod,
+      balance: calculation.balance,
+      amountInWords: calculation.amountInWords,
+      remarks: input.remarks,
+      status,
+      wastageDirection: calculation.rule.direction,
+      wastageBasis: calculation.rule.basis,
+      draftId: input.draftId ?? null,
+      createdByUserId: actor.id,
+      items: calculation.lines.map((line, index) => ({
+        lineNo: index + 1,
+        itemName: line.itemName,
+        purity: slip.items[index]?.purity ?? input.ratePurity,
+        grossWeight: line.grossWeight,
+        stoneWeight: line.stoneWeight,
+        cutPerTola: line.cutPerTola,
+        netWeight: line.netWeight,
+        wastageBp: line.wastageBp,
+        wastage: line.wastage,
+        fineWeight: line.fineWeight,
+        labourCharges: line.labourCharges,
+        labourMode: line.labourMode,
+        stoneCharges: line.stoneCharges,
+        lineAmount: line.lineAmount,
+      })),
+    }
+  }
+
+  findBillById(id: string): RetailBillWithSlips | null {
+    return this.deps.retailBills.findById(id)
+  }
+
+  peekNextBillNo(): string {
+    return this.deps.retailBills.peekNextBillNo(this.deps.settings.retailBillPrefix())
   }
 
   findById(id: string): RetailSaleWithItems | null {

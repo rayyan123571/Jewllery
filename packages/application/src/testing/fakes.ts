@@ -17,8 +17,10 @@ import {
   type WholesaleEntryWithLines,
   type Customer,
   type NewCustomer,
+  type RetailBillWithSlips,
   type RetailSale,
   type RetailSaleWithItems,
+  type RetailSlip,
   type Salesman,
 } from '@jewellery/domain'
 import type {
@@ -26,11 +28,13 @@ import type {
   CustomerRepository,
   CustomerSearchResult,
   GoldRateRepository,
+  NewRetailBill,
   NewRetailSale,
   NewUser,
   NewWholesaleEntry,
   PartyRepository,
   PartySearchResult,
+  RetailBillRepository,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -465,16 +469,46 @@ export class FakeSalesmanRepository implements SalesmanRepository {
  */
 export class FakeRetailSaleRepository implements RetailSaleRepository {
   readonly rows: RetailSaleWithItems[] = []
-  private next = 1
+  /**
+   * The invoice sequence. Public so the bill fake can roll it back.
+   *
+   * In SQLite the number is allocated by bumping a row INSIDE the caller's
+   * transaction, so a failed bill un-bumps it along with everything else. A
+   * fake whose sequence kept advancing through a rolled-back write would let a
+   * gap appear that the real database never produces.
+   */
+  next = 1
+  /**
+   * Row ids, counted separately from `rows.length`.
+   *
+   * They cannot be derived from the array length: the bill fake BUILDS several
+   * slips before pushing any of them, so every staged slip would be handed the
+   * same id and a lookup by id would find only the first. The real repository
+   * mints a UUID per row and has never had the problem.
+   */
+  idCount = 0
 
   post(sale: NewRetailSale, prefix: string): RetailSaleWithItems {
+    const written = this.build(sale, prefix)
+    this.rows.push(written)
+    return written
+  }
+
+  /**
+   * Constructs a row and allocates its number WITHOUT writing it.
+   *
+   * Split out of `post` for the bill fake, which must build every slip before
+   * committing any of them — see FakeRetailBillRepository.
+   */
+  build(sale: NewRetailSale, prefix: string): RetailSaleWithItems {
     if (sale.draftId && this.rows.some((row) => row.sale.draftId === sale.draftId)) {
       throw new Error('UNIQUE constraint failed: retail_sales.draft_id')
     }
     const invoiceNo = `${prefix}${(this.next++).toString().padStart(5, '0')}`
-    const written: RetailSaleWithItems = {
+    const id = `sale-${++this.idCount}`
+    return {
       sale: {
-        id: `sale-${this.rows.length + 1}`,
+        id,
         invoiceNo,
         branchId: sale.branchId,
         saleDate: sale.saleDate,
@@ -508,10 +542,12 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
         createdAt: toIsoTimestamp(new Date('2026-08-30T09:00:00.000Z')),
         postedAt: null,
       },
-      items: sale.items.map((item, index) => ({ ...item, id: `item-${index}`, saleId: 'sale' })),
+      items: sale.items.map((item, index) => ({
+        ...item,
+        id: `${id}-item-${index}`,
+        saleId: id,
+      })),
     }
-    this.rows.push(written)
-    return written
   }
 
   findById(id: string): RetailSaleWithItems | null {
@@ -551,5 +587,96 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
         sale: { ...found.sale, status: 'void', voidReason: reason },
       }
     }
+  }
+}
+
+/**
+ * Bills, in memory — including the all-or-nothing guarantee.
+ *
+ * `postBill` here is deliberately NOT a loop that pushes as it goes. It builds
+ * every slip first and only then commits them to the arrays, so a slip that
+ * throws part-way leaves this fake in exactly the state SQLite's transaction
+ * would leave the real database: untouched. A fake that half-wrote would make
+ * the atomicity test pass against the real repository and vacuously against
+ * this one, which is the same as not having the test.
+ *
+ * `failOnSlipNo` exists for that test: it makes one slip fail at write time,
+ * the way a CHECK constraint would, after the service has already validated
+ * every slip.
+ */
+export class FakeRetailBillRepository implements RetailBillRepository {
+  readonly bills: RetailBillWithSlips[] = []
+  private next = 1
+  /** Set to make the write of that slip number throw, as a constraint would. */
+  failOnSlipNo: number | null = null
+
+  constructor(private readonly sales: FakeRetailSaleRepository) {}
+
+  postBill(
+    bill: NewRetailBill,
+    billPrefix: string,
+    invoicePrefix: string,
+  ): RetailBillWithSlips {
+    const billNo = `${billPrefix}${this.next.toString().padStart(5, '0')}`
+    const billId = `bill-${this.bills.length + 1}`
+
+    // Built first, committed second. Nothing is visible until all of it is —
+    // and the invoice sequence rewinds on failure, exactly as the real bump
+    // rolls back inside SQLite's transaction.
+    const sequenceBefore = this.sales.next
+    const idsBefore = this.sales.idCount
+    const staged: RetailSlip[] = []
+    try {
+      for (const slip of bill.slips) {
+        if (this.failOnSlipNo === slip.slipNo) {
+          throw new Error(
+            `CHECK constraint failed: retail_sale_items (simulated, slip ${slip.slipNo})`,
+          )
+        }
+        const written = this.sales.build(slip.sale, invoicePrefix)
+        staged.push({ ...written, slipNo: slip.slipNo, slipLabel: slip.slipLabel })
+      }
+    } catch (error) {
+      this.sales.next = sequenceBefore
+      this.sales.idCount = idsBefore
+      throw error
+    }
+
+    this.next += 1
+    for (const slip of staged) this.sales.rows.push({ sale: slip.sale, items: slip.items })
+
+    const written: RetailBillWithSlips = {
+      bill: {
+        id: billId,
+        billNo,
+        branchId: bill.branchId,
+        billDate: bill.billDate,
+        billTime: bill.billTime,
+        customerId: bill.customerId,
+        customerNameSnapshot: bill.customerNameSnapshot,
+        customerMobileSnapshot: bill.customerMobileSnapshot,
+        salesmanId: bill.salesmanId,
+        salesmanNameSnapshot: bill.salesmanNameSnapshot,
+        status: bill.status,
+        createdByUserId: bill.createdByUserId,
+        createdAt: toIsoTimestamp(new Date('2026-08-30T09:00:00.000Z')),
+        postedAt: null,
+      },
+      slips: staged,
+    }
+    this.bills.push(written)
+    return written
+  }
+
+  findById(id: string): RetailBillWithSlips | null {
+    return this.bills.find((row) => row.bill.id === id) ?? null
+  }
+
+  findByBillNo(billNo: string): RetailBillWithSlips | null {
+    return this.bills.find((row) => row.bill.billNo === billNo) ?? null
+  }
+
+  peekNextBillNo(prefix: string): string {
+    return `${prefix}${this.next.toString().padStart(5, '0')}`
   }
 }

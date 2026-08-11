@@ -140,6 +140,7 @@ export function createContainer(options: ContainerOptions): Container {
 
   const retail = new RetailSaleService({
     retailSales: repositories.retailSales,
+    retailBills: repositories.retailBills,
     customers: repositories.customers,
     salesmen: repositories.salesmen,
     audit: repositories.audit,

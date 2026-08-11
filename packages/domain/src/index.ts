@@ -107,6 +107,7 @@ export type {
 
 // ── retail ─────────────────────────────────────────────────────────────────
 export {
+  DEFAULT_SLIP_LABEL,
   LABOUR_MODES,
   PAYMENT_METHODS,
   SALE_STATUSES,
@@ -117,9 +118,12 @@ export {
   type LabourMode,
   type NewCustomer,
   type PaymentMethod,
+  type RetailBill,
+  type RetailBillWithSlips,
   type RetailSale,
   type RetailSaleItem,
   type RetailSaleWithItems,
+  type RetailSlip,
   type SaleStatus,
   type Salesman,
 } from './retail/RetailSale.js'

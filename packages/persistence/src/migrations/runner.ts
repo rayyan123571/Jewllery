@@ -7,6 +7,7 @@ import { migration005 } from './005-retail.js'
 import { migration006 } from './006-retail-wastage-rule.js'
 import { migration007 } from './007-invoice-sequence-no-fy.js'
 import { migration008 } from './008-retail-draft-id.js'
+import { migration009 } from './009-retail-bills.js'
 
 export interface Migration {
   /** Applied in ascending order. Never renumber a released migration. */
@@ -32,6 +33,7 @@ const MIGRATIONS: readonly Migration[] = [
   migration006,
   migration007,
   migration008,
+  migration009,
 ]
 
 /**

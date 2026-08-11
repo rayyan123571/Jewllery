@@ -15,6 +15,7 @@ import type {
   Party,
   PaymentMethod,
   Purity,
+  RetailBillWithSlips,
   RetailSale,
   RetailSaleWithItems,
   Role,
@@ -149,6 +150,7 @@ export interface Repositories {
   readonly customers: CustomerRepository
   readonly salesmen: SalesmanRepository
   readonly retailSales: RetailSaleRepository
+  readonly retailBills: RetailBillRepository
 }
 
 // ── parties (M1) ────────────────────────────────────────────────────────────
@@ -379,4 +381,51 @@ export interface RetailSaleRepository {
 
   /** Marks a posted sale void. Never deletes; the number stays burned. */
   markVoid(id: string, reason: string, voidedAt: IsoTimestamp): void
+}
+
+// ── bills, which group slips ────────────────────────────────────────────────
+
+/** One slip to be written under a bill. The sale itself, plus its place. */
+export interface NewRetailSlip {
+  readonly slipNo: number
+  readonly slipLabel: string
+  readonly sale: NewRetailSale
+}
+
+export interface NewRetailBill {
+  readonly branchId: string
+  readonly billDate: IsoDate
+  readonly billTime: string
+  readonly customerId: string | null
+  readonly customerNameSnapshot: string
+  readonly customerMobileSnapshot: string | null
+  readonly salesmanId: string | null
+  readonly salesmanNameSnapshot: string | null
+  readonly status: SaleStatus
+  readonly createdByUserId: string
+  readonly slips: readonly NewRetailSlip[]
+}
+
+export interface RetailBillRepository {
+  /**
+   * The bill, every slip, every item and BOTH sequence bumps in ONE transaction.
+   *
+   * This is the guarantee the whole bill concept rests on: either the visit is
+   * recorded or none of it is. A bill that posted two of its three slips is
+   * worse than one that posted none — the customer walks out with two invoices
+   * and a third piece of gold nothing in the books accounts for, and no screen
+   * shows that anything is missing.
+   *
+   * Each slip still takes its own invoice number from the same continuous
+   * sequence, because each slip is a real document the customer is handed. The
+   * bill takes a number of its own from a separate sequence. If any slip fails
+   * a constraint, every allocation in this call rolls back with it.
+   */
+  postBill(bill: NewRetailBill, billPrefix: string, invoicePrefix: string): RetailBillWithSlips
+
+  findById(id: string): RetailBillWithSlips | null
+  findByBillNo(billNo: string): RetailBillWithSlips | null
+
+  /** A PREVIEW of the next bill number. Reserves nothing — see `postBill`. */
+  peekNextBillNo(prefix: string): string
 }

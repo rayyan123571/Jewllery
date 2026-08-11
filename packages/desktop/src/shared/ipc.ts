@@ -167,6 +167,15 @@ export interface RendererApi {
   retailNextInvoiceNo(): Promise<string>
   /** The 80mm thermal document for a posted sale, as HTML. */
   retailReceipt(saleId: string): Promise<string | null>
+  /** Every slip in the bill, computed. Pure — writes nothing. */
+  retailBillCalculate(
+    request: RetailBillCalculateRequest,
+  ): Promise<RetailBillCalculationDto>
+  /** Posts every draft slip in ONE transaction. All of it, or none of it. */
+  retailBillSave(request: { draft: RetailBillDraftDto }): Promise<RetailBillPostResult>
+  retailBillNextNo(): Promise<string>
+  /** Every slip in a posted bill, as one print job. */
+  retailBillReceipt(billId: string): Promise<string | null>
   searchCustomers(query: string): Promise<readonly CustomerDto[]>
   createCustomer(
     input: NewCustomerDto,
@@ -416,6 +425,15 @@ export const IPC_RETAIL = {
   /** The rounding step applied to the invoice total. See RetailRoundingDto. */
   rounding: 'settings:retailRounding',
   roundingSet: 'settings:retailRounding:set',
+  // ── bills, which group slips ──────────────────────────────────────────────
+  /** Every slip in the bill, computed. Pure: no writes. */
+  billCalculate: 'retail:bill:calculate',
+  /** Posts every draft slip in ONE transaction. All or nothing. */
+  billSave: 'retail:bill:save',
+  /** A PREVIEW of the next bill number. Reserves nothing. */
+  billNextNo: 'retail:bill:nextNo',
+  /** The 80mm document for every slip in a bill, as one print job. */
+  billReceipt: 'retail:bill:receipt',
   openExternal: 'app:openExternal',
 } as const
 
@@ -574,6 +592,89 @@ export interface RetailCalculationDto {
 export interface RetailPostRequest {
   readonly draft: RetailDraftDto
 }
+
+// ── bills, which group slips ────────────────────────────────────────────────
+//
+// One customer visit, several slips, each its own printable document. The split
+// mirrors migration 009 exactly: what belongs to the VISIT is on the bill, what
+// belongs to the DOCUMENT is on the slip. The screen holds the shared facts once
+// so two slips from one visit cannot disagree about who bought them.
+
+/** One slip as the operator is holding it. Its own items, charges and payment. */
+export interface RetailSlipDto {
+  readonly slipNo: number
+  readonly slipLabel: string
+  /** Minted per slip: each slip is its own document in the invoice sequence. */
+  readonly draftId: string
+  readonly items: readonly RetailItemDto[]
+  readonly customerGold: WeightFieldDto
+  readonly customerGoldPurity: string | null
+  readonly hallmarkCharges: string
+  readonly otherCharges: string
+  readonly discount: string
+  readonly amountPaid: string
+  readonly paymentMethod: string
+  readonly remarks: string | null
+}
+
+/** The visit. Customer, mobile, salesman, date, time and rate — shared. */
+export interface RetailBillDraftDto {
+  readonly saleDate: string
+  readonly saleTime: string
+  readonly customerId: string | null
+  readonly customerName: string
+  readonly customerMobile: string | null
+  readonly salesmanId: string | null
+  readonly ratePurity: string
+  readonly ratePerTolaOverride: string
+  readonly weightUnit: WeightUnit
+  readonly slips: readonly RetailSlipDto[]
+  readonly confirmedHighWastage?: boolean
+}
+
+export interface RetailBillCalculateRequest {
+  readonly draft: RetailBillDraftDto
+  /** Which slip the screen is showing. Its entry row is computed too. */
+  readonly activeSlipNo: number
+  /** The row being typed in DETAILS and not yet added. Contributes nothing. */
+  readonly entry: RetailItemDto | null
+}
+
+/** One slip, computed. The tab shows `total`; the screen shows the rest. */
+export interface RetailSlipCalculationDto {
+  readonly slipNo: number
+  readonly slipLabel: string
+  readonly calculation: RetailCalculationDto
+  /** The slip's own invoice total, for its tab. Preformatted. */
+  readonly total: string
+}
+
+export interface RetailBillCalculationDto {
+  readonly slips: readonly RetailSlipCalculationDto[]
+  /** The active slip's, lifted out so the screen never searches for it. */
+  readonly active: RetailCalculationDto
+  /** Every slip's invoice total added up. What the visit comes to. */
+  readonly billTotal: MoneyDto
+  readonly rateDisplay: string | null
+  readonly rateMissing: boolean
+}
+
+export type RetailBillPostResult =
+  | {
+      readonly ok: true
+      readonly billId: string
+      readonly billNo: string
+      /** One per slip, in slip order. Each is a real document. */
+      readonly slips: readonly {
+        readonly slipNo: number
+        readonly slipLabel: string
+        readonly saleId: string
+        readonly invoiceNo: string
+      }[]
+      readonly billTotal: string
+    }
+  | { readonly ok: false; readonly message: string }
+  | { readonly ok: false; readonly needsConfirmation: true; readonly message: string }
 
 export type RetailPostResult =
   | {

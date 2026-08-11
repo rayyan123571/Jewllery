@@ -63,6 +63,31 @@ describe('the schema', () => {
     }
   })
 
+  it('creates the retail tables, including the bill that groups slips', () => {
+    const tables = userTables(db)
+    for (const expected of [
+      'customers',
+      'salesmen',
+      'retail_sales',
+      'retail_sale_items',
+      'retail_bills',
+      'invoice_sequences',
+    ]) {
+      expect(tables).toContain(expected)
+    }
+  })
+
+  it('gives retail_sales its place in a bill, all three columns nullable', () => {
+    // Nullable is the point: every sale written before migration 009 has no
+    // bill, and a single-slip sale is a whole sale rather than a gap to backfill.
+    const columns = columnsOf(db, 'retail_sales')
+    for (const name of ['bill_id', 'slip_no', 'slip_label']) {
+      const column = columns.find((c) => c.name === name)
+      expect(column, `retail_sales.${name} is missing`).toBeTruthy()
+      expect(column?.notnull).toBe(0)
+    }
+  })
+
   // The hard rule from docs/DECISIONS.md §2, asserted rather than trusted.
   it('has no REAL column anywhere — money and weight are integers', () => {
     const offenders: string[] = []

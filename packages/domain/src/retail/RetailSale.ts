@@ -129,6 +129,55 @@ export interface RetailSaleWithItems {
   readonly items: readonly RetailSaleItem[]
 }
 
+/** The label Slip 1 carries unless the operator renames it. */
+export const DEFAULT_SLIP_LABEL = 'Full Bill'
+
+/**
+ * One customer visit, grouping several slips.
+ *
+ * A customer buys bangles, a chain and a pair of tops together and wants three
+ * separate pieces of paper, because each is for a different person. That is one
+ * visit producing several documents — and the bill is what says they were one
+ * visit rather than three unrelated sales on the same afternoon.
+ *
+ * The customer, the mobile, the salesman, the date and the time live here
+ * because they belong to the VISIT. Items, charges, discount and payment live
+ * on each slip, because they belong to the document. Holding the shared facts
+ * once is what stops two slips from the same visit disagreeing about who bought
+ * them.
+ *
+ * The rate is deliberately NOT here. See migration 009: it stays on each slip
+ * so a posted invoice reproduces from its own row and never depends on a parent.
+ */
+export interface RetailBill {
+  readonly id: string
+  readonly billNo: string
+  readonly branchId: string
+  readonly billDate: IsoDate
+  readonly billTime: string
+  readonly customerId: string | null
+  readonly customerNameSnapshot: string
+  readonly customerMobileSnapshot: string | null
+  readonly salesmanId: string | null
+  readonly salesmanNameSnapshot: string | null
+  readonly status: SaleStatus
+  readonly createdByUserId: string
+  readonly createdAt: IsoTimestamp
+  readonly postedAt: IsoTimestamp | null
+}
+
+/** A slip: a retail sale, plus where it sits in its bill. */
+export interface RetailSlip extends RetailSaleWithItems {
+  readonly slipNo: number
+  readonly slipLabel: string
+}
+
+export interface RetailBillWithSlips {
+  readonly bill: RetailBill
+  /** In slip order, always. */
+  readonly slips: readonly RetailSlip[]
+}
+
 /** A counter salesman, for attributing a sale. Not a system user. */
 export interface Salesman {
   readonly id: string

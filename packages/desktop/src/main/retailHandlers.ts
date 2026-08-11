@@ -38,6 +38,10 @@ import { buildRetailReceiptHtml, type RetailReceiptLine } from '@jewellery/print
 import type {
   CustomerDto,
   MoneyDto,
+  RetailBillCalculateRequest,
+  RetailBillCalculationDto,
+  RetailBillDraftDto,
+  RetailBillPostResult,
   NewCustomerDto,
   RetailCalculateRequest,
   RetailCalculationDto,
@@ -50,6 +54,7 @@ import type {
   RetailPostResult,
   RetailRoundingDto,
   RetailSaleDto,
+  RetailSlipDto,
   RetailSaleSummaryDto,
   SalesmanDto,
   WastageRuleChoice,
@@ -899,6 +904,254 @@ export function retailWastageRuleSet(
   } catch (error) {
     return { ok: false, message: messageOf(error) }
   }
+}
+
+// ── bills, which group slips ────────────────────────────────────────────────
+
+/**
+ * A slip, expressed as the draft the existing calculate path already handles.
+ *
+ * This is the whole trick of the bill layer: a slip IS a retail sale, so every
+ * figure on it is produced by the SAME `retail.calculate` the single-sale screen
+ * used. There is no second calculation for slips, and therefore no second
+ * calculation that can disagree with the one that prices the invoice.
+ */
+function draftOfSlip(bill: RetailBillDraftDto, slip: RetailSlipDto): RetailDraftDto {
+  return {
+    draftId: slip.draftId,
+    saleDate: bill.saleDate,
+    saleTime: bill.saleTime,
+    customerId: bill.customerId,
+    customerName: bill.customerName,
+    customerMobile: bill.customerMobile,
+    salesmanId: bill.salesmanId,
+    ratePurity: bill.ratePurity,
+    ratePerTolaOverride: bill.ratePerTolaOverride,
+    weightUnit: bill.weightUnit,
+    items: slip.items,
+    customerGold: slip.customerGold,
+    customerGoldPurity: slip.customerGoldPurity,
+    hallmarkCharges: slip.hallmarkCharges,
+    otherCharges: slip.otherCharges,
+    discount: slip.discount,
+    amountPaid: slip.amountPaid,
+    paymentMethod: slip.paymentMethod,
+    remarks: slip.remarks,
+    ...(bill.confirmedHighWastage === true ? { confirmedHighWastage: true } : {}),
+  }
+}
+
+/**
+ * Every slip in the bill, computed. Pure — writes nothing.
+ *
+ * Called on every keystroke like `retailCalculate`, and just as tolerant: a
+ * half-typed slip reports its own errors and still answers. The entry row is
+ * computed for the ACTIVE slip only, because that is the only one with a DETAILS
+ * form open.
+ */
+export function retailBillCalculate(
+  deps: RetailHandlerDeps,
+  request: RetailBillCalculateRequest,
+): RetailBillCalculationDto {
+  const bill = request.draft
+  const slips = bill.slips.map((slip) => {
+    const calculation = retailCalculate(deps, {
+      draft: draftOfSlip(bill, slip),
+      entry: slip.slipNo === request.activeSlipNo ? request.entry : null,
+    })
+    return {
+      slipNo: slip.slipNo,
+      slipLabel: slip.slipLabel,
+      calculation,
+      // The tab's own figure. Preformatted here, like every other number that
+      // crosses this boundary.
+      total: calculation.invoiceTotal.rupees,
+    }
+  })
+
+  const active =
+    slips.find((slip) => slip.slipNo === request.activeSlipNo)?.calculation ??
+    slips[0]?.calculation ??
+    retailCalculate(deps, {
+      draft: draftOfSlip(bill, emptySlip()),
+      entry: request.entry,
+    })
+
+  const billTotal = Money.fromPaisa(
+    slips.reduce((sum, slip) => sum + slip.calculation.invoiceTotal.paisa, 0),
+  )
+
+  return {
+    slips,
+    active,
+    billTotal: moneyDto(billTotal),
+    rateDisplay: active.rateDisplay,
+    rateMissing: active.rateMissing,
+  }
+}
+
+/** A bill with no slips is not a real state, but a keystroke can produce one. */
+function emptySlip(): RetailSlipDto {
+  return {
+    slipNo: 1,
+    slipLabel: 'Full Bill',
+    draftId: '',
+    items: [],
+    customerGold: { text: '', exactMg: null },
+    customerGoldPurity: null,
+    hallmarkCharges: '',
+    otherCharges: '',
+    discount: '',
+    amountPaid: '',
+    paymentMethod: 'cash',
+    remarks: null,
+  }
+}
+
+/**
+ * Posts every slip in the bill, in ONE transaction.
+ *
+ * Nothing here decides atomicity — the repository does, in a single
+ * `db.transaction`. What this does is refuse before writing: a slip with no
+ * draft id cannot be made idempotent, and a bill that is half-idempotent is
+ * worse than one that is not, because the retry writes some of it twice.
+ */
+export function retailBillSave(
+  deps: RetailHandlerDeps,
+  request: { draft: RetailBillDraftDto },
+): RetailBillPostResult {
+  try {
+    const user = requireUser(deps)
+    const bill = request.draft
+
+    if (bill.slips.length === 0) {
+      return { ok: false, message: 'Add at least one slip before saving this bill.' }
+    }
+    for (const slip of bill.slips) {
+      if (!slip.draftId || slip.draftId.trim() === '') {
+        return {
+          ok: false,
+          message:
+            `Slip ${slip.slipNo} has no draft id, so saving this bill twice could not ` +
+            `be prevented.`,
+        }
+      }
+    }
+
+    const unit = unitOf(bill as unknown as RetailDraftDto)
+    const ratePurity = purityOf(bill.ratePurity, 'K22')
+    const override = moneyOf(bill.ratePerTolaOverride)
+
+    const written = deps.retail.postBill(user, {
+      branchId: deps.branchId,
+      saleDate: isoDateOf(bill.saleDate),
+      saleTime: bill.saleTime,
+      customerId: bill.customerId,
+      customerName: bill.customerName,
+      customerMobile: bill.customerMobile?.trim() ? bill.customerMobile.trim() : null,
+      salesmanId: bill.salesmanId,
+      ratePurity,
+      ...(override.isPositive ? { ratePerTolaOverride: override } : {}),
+      ...(bill.confirmedHighWastage === true ? { confirmedHighWastage: true } : {}),
+      slips: bill.slips.map((slip) => ({
+        slipNo: slip.slipNo,
+        slipLabel: slip.slipLabel,
+        draftId: slip.draftId,
+        items: slip.items.map((dto) => parseItem(dto, unit, ratePurity)),
+        customerGold: weightOf(slip.customerGold, unit),
+        customerGoldPurity: slip.customerGoldPurity
+          ? purityOf(slip.customerGoldPurity, ratePurity)
+          : null,
+        hallmarkCharges: moneyOf(slip.hallmarkCharges),
+        otherCharges: moneyOf(slip.otherCharges),
+        discount: moneyOf(slip.discount),
+        amountPaid: moneyOf(slip.amountPaid),
+        paymentMethod: isPaymentMethod(slip.paymentMethod) ? slip.paymentMethod : 'cash',
+        remarks: slip.remarks?.trim() ? slip.remarks.trim() : null,
+      })),
+    })
+
+    return {
+      ok: true,
+      billId: written.bill.id,
+      billNo: written.bill.billNo,
+      slips: written.slips.map((slip) => ({
+        slipNo: slip.slipNo,
+        slipLabel: slip.slipLabel,
+        saleId: slip.sale.id,
+        invoiceNo: slip.sale.invoiceNo,
+      })),
+      billTotal: Money.sum(
+        written.slips.map((slip) => slip.sale.grandTotal),
+      ).format(),
+    }
+  } catch (error) {
+    if (error instanceof HighWastageRequiresConfirmationError) {
+      return { ok: false, needsConfirmation: true, message: error.consequence }
+    }
+    return { ok: false, message: messageOf(error) }
+  }
+}
+
+export function retailBillNextNo(deps: RetailHandlerDeps): string {
+  try {
+    return deps.retail.peekNextBillNo()
+  } catch {
+    return '—'
+  }
+}
+
+/**
+ * Every slip in a bill, as ONE print job.
+ *
+ * Each slip's document is built by the same `retailReceipt` that prints it
+ * alone, and they are concatenated with a page break between them. That is the
+ * whole of "Print full bill": there is no second receipt template, so a slip
+ * printed with the bill is byte-identical to the same slip printed on its own.
+ */
+export function retailBillReceipt(deps: RetailHandlerDeps, billId: string): string | null {
+  try {
+    requireUser(deps)
+    const found = deps.retail.findBillById(billId)
+    if (!found || found.slips.length === 0) return null
+
+    const documents = found.slips
+      .map((slip) => retailReceipt(deps, slip.sale.id))
+      .filter((html): html is string => html !== null)
+    if (documents.length === 0) return null
+
+    return joinReceipts(documents)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Splices several complete receipt documents into one printable page.
+ *
+ * The bodies are lifted out and stacked inside the FIRST document's shell, so
+ * the 80mm page setup, the fonts and the styles are the ones the printer
+ * already gets — rather than a second wrapper built here that could drift from
+ * the real one.
+ */
+function joinReceipts(documents: readonly string[]): string {
+  const first = documents[0] as string
+  if (documents.length === 1) return first
+
+  const bodyOf = (html: string): string => {
+    const match = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html)
+    return match?.[1] ?? html
+  }
+
+  const bodies = documents
+    .map(
+      (html, index) =>
+        `<div class="slip-page"${index > 0 ? ' style="page-break-before: always;"' : ''}>` +
+        `${bodyOf(html)}</div>`,
+    )
+    .join('\n')
+
+  return first.replace(/<body([^>]*)>[\s\S]*<\/body>/i, `<body$1>${bodies}</body>`)
 }
 
 // ── the rounding step ───────────────────────────────────────────────────────

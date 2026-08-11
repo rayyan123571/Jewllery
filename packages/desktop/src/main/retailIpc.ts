@@ -3,6 +3,8 @@ import { Settings } from '@jewellery/application'
 import { IPC_RETAIL } from '../shared/ipc.js'
 import type {
   NewCustomerDto,
+  RetailBillCalculateRequest,
+  RetailBillDraftDto,
   RetailCalculateRequest,
   RetailListRequest,
   RetailLoadRequest,
@@ -16,6 +18,10 @@ import {
   customerCreate,
   customerSearch,
   messageOf,
+  retailBillCalculate,
+  retailBillNextNo,
+  retailBillReceipt,
+  retailBillSave,
   retailCalculate,
   retailHold,
   retailList,
@@ -99,6 +105,20 @@ export function registerRetailHandlers(container: Container, session: Session): 
 
   ipcMain.handle(IPC_RETAIL.wastageRuleSet, (_event, rule: WastageRuleChoice) =>
     retailWastageRuleSet(deps, rule),
+  )
+
+  ipcMain.handle(IPC_RETAIL.billCalculate, (_event, request: RetailBillCalculateRequest) =>
+    retailBillCalculate(deps, request),
+  )
+
+  ipcMain.handle(IPC_RETAIL.billSave, (_event, request: { draft: RetailBillDraftDto }) =>
+    retailBillSave(deps, request),
+  )
+
+  ipcMain.handle(IPC_RETAIL.billNextNo, () => retailBillNextNo(deps))
+
+  ipcMain.handle(IPC_RETAIL.billReceipt, (_event, billId: string) =>
+    retailBillReceipt(deps, billId),
   )
 
   ipcMain.handle(IPC_RETAIL.rounding, () => retailRounding(deps))

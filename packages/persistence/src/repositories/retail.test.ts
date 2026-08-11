@@ -314,3 +314,160 @@ describe('customers', () => {
     expect(() => repos.customers.create(NEW_CUSTOMER, userId)).toThrow(/UNIQUE/i)
   })
 })
+
+/**
+ * A bill, in the real database.
+ *
+ * The service test proves the same guarantee against a fake. This proves it
+ * against SQLite, which is where it actually has to hold: `postBill` wraps the
+ * bill row, every slip, every item and BOTH sequence bumps in one transaction,
+ * so a constraint violation on the last slip un-writes the first.
+ */
+describe('a bill groups slips, atomically', () => {
+  function billOf(slips: ReadonlyArray<{ slipNo: number; slipLabel: string }>) {
+    return {
+      branchId: BRANCH,
+      billDate: toIsoDate('2026-08-30'),
+      billTime: '14:05',
+      customerId: null,
+      customerNameSnapshot: 'Walk-in',
+      customerMobileSnapshot: null,
+      salesmanId: null,
+      salesmanNameSnapshot: null,
+      status: 'posted' as const,
+      createdByUserId: userId,
+      slips: slips.map((slip) => ({ ...slip, sale: saleOf() })),
+    }
+  }
+
+  it('writes every slip under one bill, each with its own invoice number', () => {
+    const written = repos.retailBills.postBill(
+      billOf([
+        { slipNo: 1, slipLabel: 'Full Bill' },
+        { slipNo: 2, slipLabel: 'Gold Bangles' },
+        { slipNo: 3, slipLabel: 'Gold Chain' },
+      ]),
+      'RB-',
+      'RS-',
+    )
+
+    expect(written.bill.billNo).toBe('RB-00001')
+    expect(written.slips.map((s) => s.sale.invoiceNo)).toEqual([
+      'RS-00001',
+      'RS-00002',
+      'RS-00003',
+    ])
+    expect(written.slips.map((s) => s.slipLabel)).toEqual([
+      'Full Bill',
+      'Gold Bangles',
+      'Gold Chain',
+    ])
+    // Every item survived the round trip, on the right slip.
+    for (const slip of written.slips) expect(slip.items).toHaveLength(1)
+  })
+
+  it('reads a bill back with its slips in slip order', () => {
+    const written = repos.retailBills.postBill(
+      billOf([
+        { slipNo: 2, slipLabel: 'Gold Chain' },
+        { slipNo: 1, slipLabel: 'Full Bill' },
+      ]),
+      'RB-',
+      'RS-',
+    )
+    const read = repos.retailBills.findById(written.bill.id)
+    expect(read?.slips.map((s) => s.slipNo)).toEqual([1, 2])
+  })
+
+  it('writes NOTHING when one slip violates a constraint', () => {
+    // A zero gross weight trips `CHECK (gross_weight_mg > 0)` on the LAST slip,
+    // after the first two have already been inserted inside the transaction.
+    const bill = billOf([
+      { slipNo: 1, slipLabel: 'Full Bill' },
+      { slipNo: 2, slipLabel: 'Gold Bangles' },
+      { slipNo: 3, slipLabel: 'Gold Chain' },
+    ])
+    const broken = {
+      ...bill,
+      slips: bill.slips.map((slip, index) =>
+        index < 2
+          ? slip
+          : {
+              ...slip,
+              sale: {
+                ...slip.sale,
+                items: slip.sale.items.map((item) => ({ ...item, grossWeight: Weight.ZERO })),
+              },
+            },
+      ),
+    }
+
+    expect(() => repos.retailBills.postBill(broken, 'RB-', 'RS-')).toThrow(/CHECK|constraint/i)
+
+    // Not one row of it landed — bill, slips or items.
+    expect(count('retail_bills')).toBe(0)
+    expect(count('retail_sales')).toBe(0)
+    expect(count('retail_sale_items')).toBe(0)
+  })
+
+  it('rolls the invoice sequence back with the bill that failed', () => {
+    const bill = billOf([{ slipNo: 1, slipLabel: 'Full Bill' }])
+    const broken = {
+      ...bill,
+      slips: bill.slips.map((slip) => ({
+        ...slip,
+        sale: {
+          ...slip.sale,
+          items: slip.sale.items.map((item) => ({ ...item, grossWeight: Weight.ZERO })),
+        },
+      })),
+    }
+    expect(() => repos.retailBills.postBill(broken, 'RB-', 'RS-')).toThrow()
+
+    // The bump rolled back with everything else, so the next real sale takes
+    // the first number rather than leaving a gap nothing accounts for.
+    expect(repos.retailSales.post(saleOf(), 'RS-').sale.invoiceNo).toBe('RS-00001')
+    expect(repos.retailBills.peekNextBillNo('RB-')).toBe('RB-00001')
+  })
+
+  it('refuses two slips with the same number in one bill', () => {
+    expect(() =>
+      repos.retailBills.postBill(
+        billOf([
+          { slipNo: 1, slipLabel: 'Full Bill' },
+          { slipNo: 1, slipLabel: 'Duplicate' },
+        ]),
+        'RB-',
+        'RS-',
+      ),
+    ).toThrow(/UNIQUE/i)
+  })
+
+  it('leaves a sale with no bill alone — a single-slip sale is a whole sale', () => {
+    const solo = repos.retailSales.post(saleOf(), 'RS-')
+    expect(solo.sale.invoiceNo).toBe('RS-00001')
+    // Two of them, to prove the partial unique index tolerates many NULLs.
+    const second = repos.retailSales.post(saleOf(), 'RS-')
+    expect(second.sale.invoiceNo).toBe('RS-00002')
+    expect(count('retail_bills')).toBe(0)
+  })
+
+  it('keeps bill numbers on their own sequence, not the invoice one', () => {
+    repos.retailSales.post(saleOf(), 'RS-')
+    repos.retailSales.post(saleOf(), 'RS-')
+    const written = repos.retailBills.postBill(
+      billOf([{ slipNo: 1, slipLabel: 'Full Bill' }]),
+      'RB-',
+      'RS-',
+    )
+    // Two standalone sales spent RS-00001 and RS-00002; the bill is still the
+    // FIRST bill, and its slip takes the third invoice number.
+    expect(written.bill.billNo).toBe('RB-00001')
+    expect(written.slips[0]?.sale.invoiceNo).toBe('RS-00003')
+  })
+})
+
+function count(table: string): number {
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }
+  return row.n
+}

@@ -35,6 +35,7 @@ import type { DatabaseProvider, SqliteDatabase } from '../Database.js'
 import { SqliteWholesaleRepository } from './wholesale.js'
 import {
   SqliteCustomerRepository,
+  SqliteRetailBillRepository,
   SqliteRetailSaleRepository,
   SqliteSalesmanRepository,
 } from './retail.js'
@@ -649,5 +650,6 @@ export function createRepositories(
     customers: new SqliteCustomerRepository(conn, clock),
     salesmen: new SqliteSalesmanRepository(conn),
     retailSales: new SqliteRetailSaleRepository(conn, clock),
+    retailBills: new SqliteRetailBillRepository(conn, clock),
   }
 }

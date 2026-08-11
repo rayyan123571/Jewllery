@@ -12,6 +12,7 @@ import {
   FakeAuditRepository,
   FakeCustomerRepository,
   FakeGoldRateRepository,
+  FakeRetailBillRepository,
   FakeRetailSaleRepository,
   FakeSalesmanRepository,
   FakeSettingsRepository,
@@ -22,8 +23,10 @@ import { ValidationError } from '../auth/AuthService.js'
 import {
   HighWastageRequiresConfirmationError,
   RetailSaleService,
+  type RetailBillInput,
   type RetailDraftInput,
   type RetailItemInput,
+  type RetailSlipInput,
 } from './RetailSaleService.js'
 
 // No database, no window.
@@ -48,6 +51,7 @@ let audit: FakeAuditRepository
 let customers: FakeCustomerRepository
 let salesmen: FakeSalesmanRepository
 let sales: FakeRetailSaleRepository
+let bills: FakeRetailBillRepository
 let settingsRepo: FakeSettingsRepository
 let service: RetailSaleService
 
@@ -98,10 +102,12 @@ beforeEach(() => {
   customers = new FakeCustomerRepository()
   salesmen = new FakeSalesmanRepository()
   sales = new FakeRetailSaleRepository()
+  bills = new FakeRetailBillRepository(sales)
   settingsRepo = new FakeSettingsRepository()
   rates.seed(BRANCH, 'K22', 237_970, '2026-08-01')
   service = new RetailSaleService({
     retailSales: sales,
+    retailBills: bills,
     customers,
     salesmen,
     audit,
@@ -344,6 +350,145 @@ describe('voiding', () => {
     service.void(actor, first.sale.id, 'entered twice')
     const second = service.post(actor, paidInFull({ draftId: 'b' }))
     expect(second.sale.invoiceNo).toBe('RS-00002')
+  })
+})
+
+/**
+ * One visit, several slips.
+ *
+ * The guarantee under test is the whole reason a bill exists as a row rather
+ * than as a convention: **either every slip posts or none of them does.** A
+ * bill that wrote two of its three slips is worse than one that wrote none —
+ * the customer walks out with two invoices and a third piece of gold that
+ * nothing in the books accounts for, and no screen shows anything is missing.
+ */
+describe('a bill posts atomically, or not at all', () => {
+  const slip = (
+    slipNo: number,
+    label: string,
+    overrides: Partial<RetailSlipInput> = {},
+  ): RetailSlipInput => ({
+    slipNo,
+    slipLabel: label,
+    items: [ITEM],
+    customerGold: Weight.ZERO,
+    customerGoldPurity: null,
+    hallmarkCharges: Money.ZERO,
+    otherCharges: Money.ZERO,
+    discount: Money.ZERO,
+    amountPaid: Money.ZERO,
+    paymentMethod: 'cash',
+    remarks: null,
+    ...overrides,
+  })
+
+  /** Every slip paid in full, which is what the walk-in rule demands. */
+  const bill = (slips: readonly RetailSlipInput[]): RetailBillInput => {
+    const base: RetailBillInput = {
+      branchId: BRANCH,
+      saleDate: TODAY,
+      saleTime: '14:05',
+      customerId: null,
+      customerName: 'Walk-in',
+      customerMobile: null,
+      salesmanId: null,
+      ratePurity: 'K22',
+      slips,
+    }
+    return {
+      ...base,
+      slips: slips.map((s) => ({
+        ...s,
+        amountPaid: service.calculate({
+          ...draft({ items: s.items }),
+          hallmarkCharges: s.hallmarkCharges,
+          otherCharges: s.otherCharges,
+          discount: s.discount,
+        }).grandTotal,
+      })),
+    }
+  }
+
+  it('writes every slip under one bill, each with its own invoice number', () => {
+    const posted = service.postBill(
+      actor,
+      bill([slip(1, 'Full Bill'), slip(2, 'Gold Bangles'), slip(3, 'Gold Chain')]),
+    )
+    expect(posted.slips).toHaveLength(3)
+    expect(posted.bill.billNo).toBe('RB-00001')
+    // Distinct documents, from the same continuous retail sequence.
+    expect(posted.slips.map((s) => s.sale.invoiceNo)).toEqual([
+      'RS-00001',
+      'RS-00002',
+      'RS-00003',
+    ])
+    expect(posted.slips.map((s) => s.slipNo)).toEqual([1, 2, 3])
+    expect(posted.slips.map((s) => s.slipLabel)).toEqual([
+      'Full Bill',
+      'Gold Bangles',
+      'Gold Chain',
+    ])
+  })
+
+  it('shares the customer, the date and the salesman across every slip', () => {
+    const posted = service.postBill(actor, bill([slip(1, 'Full Bill'), slip(2, 'Tops')]))
+    for (const written of posted.slips) {
+      expect(written.sale.customerNameSnapshot).toBe('Walk-in')
+      expect(written.sale.saleDate).toBe(TODAY)
+      expect(written.sale.saleTime).toBe('14:05')
+    }
+  })
+
+  it('writes NOTHING when a later slip fails at write time', () => {
+    // Slip 3 fails the way a CHECK constraint would — after every slip has
+    // already passed validation, which is precisely the case a per-slip write
+    // would get wrong.
+    bills.failOnSlipNo = 3
+    expect(() =>
+      service.postBill(
+        actor,
+        bill([slip(1, 'Full Bill'), slip(2, 'Gold Bangles'), slip(3, 'Gold Chain')]),
+      ),
+    ).toThrow(/CHECK constraint failed/)
+
+    expect(bills.bills).toHaveLength(0)
+    expect(sales.rows).toHaveLength(0)
+  })
+
+  it('leaves the invoice sequence untouched by a bill that failed', () => {
+    bills.failOnSlipNo = 2
+    expect(() =>
+      service.postBill(actor, bill([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')])),
+    ).toThrow()
+
+    // The next real sale takes the FIRST number. A rolled-back allocation that
+    // stayed spent would leave a gap the database never actually produced.
+    bills.failOnSlipNo = null
+    const posted = service.post(actor, paidInFull({ draftId: 'after-failure' }))
+    expect(posted.sale.invoiceNo).toBe('RS-00001')
+  })
+
+  it('refuses the whole bill when ONE slip breaks a rule, and names that slip', () => {
+    expect(() =>
+      service.postBill(
+        actor,
+        bill([slip(1, 'Full Bill'), slip(2, 'Gold Chain', { items: [] })]),
+      ),
+    ).toThrow(/Slip 2 \(Gold Chain\): Add at least one item/)
+    // Validated before anything was written, so slip 1 never reached the disk.
+    expect(sales.rows).toHaveLength(0)
+  })
+
+  it('refuses a bill with no slips at all', () => {
+    expect(() => service.postBill(actor, bill([]))).toThrow(/at least one slip/)
+  })
+
+  it('records one audit entry for the bill, naming every invoice it produced', () => {
+    service.postBill(actor, bill([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]))
+    const entry = audit.entries.find((e) => e.entity === 'retail_bills')
+    expect(entry?.action).toBe('TRANSACTION_POSTED')
+    expect(entry?.detail).toContain('RS-00001')
+    expect(entry?.detail).toContain('RS-00002')
   })
 })
 

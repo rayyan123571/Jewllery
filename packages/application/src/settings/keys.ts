@@ -24,6 +24,8 @@ export const SETTING_KEYS = {
   retailWastageDirection: 'retail.wastage.direction',
   retailWastageBasis: 'retail.wastage.basis',
   retailInvoicePrefix: 'retail.invoicePrefix',
+  /** Prefix for BILL numbers, which are a separate sequence from invoices. */
+  retailBillPrefix: 'retail.billPrefix',
   /** 1 | 100 | 1000 whole rupees. See RETAIL_ROUNDING_STEPS below. */
   retailRoundingNearest: 'retail.rounding.nearest',
 
@@ -160,6 +162,19 @@ export class Settings {
 
   retailInvoicePrefix(): string {
     return this.repo.get(SETTING_KEYS.retailInvoicePrefix)?.trim() || 'RS-'
+  }
+
+  /**
+   * The bill-number prefix. A SEPARATE sequence from invoice numbers.
+   *
+   * A bill and the slips under it are different documents: the customer is
+   * handed one slip per purchase, and the bill is what says those slips were
+   * one visit. Sharing a sequence would mean a bill number and an invoice
+   * number that look alike and count together, so "RS-00007" could be either a
+   * slip the customer is holding or the visit it belonged to.
+   */
+  retailBillPrefix(): string {
+    return this.repo.get(SETTING_KEYS.retailBillPrefix)?.trim() || 'RB-'
   }
 
   /** Whether wastage is added to the net weight or taken out of it. */

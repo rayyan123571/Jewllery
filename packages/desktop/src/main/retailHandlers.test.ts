@@ -4,6 +4,7 @@ import {
   FakeAuditRepository,
   FakeCustomerRepository,
   FakeGoldRateRepository,
+  FakeRetailBillRepository,
   FakeRetailSaleRepository,
   FakeSalesmanRepository,
   FakeSettingsRepository,
@@ -17,6 +18,10 @@ import {
   checkExternalUrl,
   customerCreate,
   customerSearch,
+  retailBillCalculate,
+  retailBillNextNo,
+  retailBillReceipt,
+  retailBillSave,
   retailCalculate,
   retailHold,
   retailList,
@@ -32,7 +37,12 @@ import {
   salesmenList,
   type RetailHandlerDeps,
 } from './retailHandlers.js'
-import type { RetailDraftDto, RetailItemDto } from '../shared/ipc.js'
+import type {
+  RetailBillDraftDto,
+  RetailDraftDto,
+  RetailItemDto,
+  RetailSlipDto,
+} from '../shared/ipc.js'
 
 /**
  * The IPC layer, with no Electron and no window.
@@ -82,12 +92,14 @@ function build(user: PublicUser | null): RetailHandlerDeps {
   settingsRepo = new FakeSettingsRepository()
   const settings = new Settings(settingsRepo)
   const rateService = new RateService({ goldRates: rates, audit, clock })
+  const retailSales = new FakeRetailSaleRepository()
   rates.seed(BRANCH, 'K22', 237_970, '2026-08-01')
 
   return {
     branchId: BRANCH,
     retail: new RetailSaleService({
-      retailSales: new FakeRetailSaleRepository(),
+      retailSales: retailSales,
+      retailBills: new FakeRetailBillRepository(retailSales),
       customers,
       salesmen,
       audit,
@@ -501,6 +513,176 @@ describe('the wastage rule card', () => {
     expect(preview.examples[0]?.options.find((option) => option.isSaved)?.direction).toBe('add')
     // Nothing was written by a preview.
     expect(settingsRepo.get(SETTING_KEYS.retailWastageDirection)).toBeNull()
+  })
+})
+
+describe('the bill boundary', () => {
+  function slip(
+    slipNo: number,
+    slipLabel: string,
+    overrides: Partial<RetailSlipDto> = {},
+  ): RetailSlipDto {
+    return {
+      slipNo,
+      slipLabel,
+      draftId: `draft-slip-${slipNo}`,
+      items: [item()],
+      customerGold: weightField(''),
+      customerGoldPurity: 'K22',
+      hallmarkCharges: '',
+      otherCharges: '',
+      discount: '',
+      amountPaid: '',
+      paymentMethod: 'cash',
+      remarks: null,
+      ...overrides,
+    }
+  }
+
+  function billDraft(slips: readonly RetailSlipDto[]): RetailBillDraftDto {
+    return {
+      saleDate: '2026-08-30',
+      saleTime: '12:48',
+      customerId: null,
+      customerName: 'IMRAN SAHIB',
+      customerMobile: '03001234567',
+      salesmanId: null,
+      ratePurity: 'K22',
+      ratePerTolaOverride: '',
+      weightUnit: 'gram',
+      slips,
+    }
+  }
+
+  /** Each slip paid in full, which is what the walk-in rule demands. */
+  function payableBill(labels: readonly string[]): RetailBillDraftDto {
+    const draft = billDraft(labels.map((label, index) => slip(index + 1, label)))
+    const computed = retailBillCalculate(deps, {
+      draft,
+      activeSlipNo: 1,
+      entry: null,
+    })
+    return {
+      ...draft,
+      slips: draft.slips.map((s, index) => ({
+        ...s,
+        amountPaid: computed.slips[index]?.calculation.grandTotal.rupees ?? '',
+      })),
+    }
+  }
+
+  it('computes every slip, and adds them up to the bill total', () => {
+    const computed = retailBillCalculate(deps, {
+      draft: billDraft([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]),
+      activeSlipNo: 1,
+      entry: null,
+    })
+    expect(computed.slips).toHaveLength(2)
+    expect(computed.billTotal.paisa).toBe(
+      computed.slips[0]!.calculation.invoiceTotal.paisa +
+        computed.slips[1]!.calculation.invoiceTotal.paisa,
+    )
+    // Each tab carries its own figure, preformatted on this side.
+    expect(computed.slips[0]?.total).toBe(computed.slips[0]?.calculation.invoiceTotal.rupees)
+  })
+
+  it('lifts the active slip out, so the screen never searches for it', () => {
+    const computed = retailBillCalculate(deps, {
+      draft: billDraft([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]),
+      activeSlipNo: 2,
+      entry: null,
+    })
+    expect(computed.active).toBe(computed.slips[1]?.calculation)
+  })
+
+  it('computes the entry row for the ACTIVE slip only', () => {
+    const computed = retailBillCalculate(deps, {
+      draft: billDraft([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]),
+      activeSlipNo: 2,
+      entry: item({ itemName: 'RING' }),
+    })
+    expect(computed.slips[0]?.calculation.entry).toBeNull()
+    expect(computed.slips[1]?.calculation.entry?.itemName).toBe('RING')
+  })
+
+  it('answers a bill with no slips rather than throwing on a keystroke', () => {
+    const computed = retailBillCalculate(deps, {
+      draft: billDraft([]),
+      activeSlipNo: 1,
+      entry: null,
+    })
+    expect(computed.slips).toEqual([])
+    expect(computed.billTotal.paisa).toBe(0)
+  })
+
+  it('posts every slip under one bill', () => {
+    const result = retailBillSave(deps, { draft: payableBill(['Full Bill', 'Gold Bangles']) })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.billNo).toBe('RB-00001')
+    expect(result.slips.map((s) => s.invoiceNo)).toEqual(['RS-00001', 'RS-00002'])
+    expect(result.slips.map((s) => s.slipLabel)).toEqual(['Full Bill', 'Gold Bangles'])
+  })
+
+  it('refuses to save without a session, rather than writing rows it cannot attribute', () => {
+    const draft = payableBill(['Full Bill'])
+    const anonymous: RetailHandlerDeps = { ...deps, session: { user: null } }
+    const result = retailBillSave(anonymous, { draft })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('attributed')
+  })
+
+  it('refuses a bill with no slips', () => {
+    const result = retailBillSave(deps, { draft: billDraft([]) })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('at least one slip')
+  })
+
+  it('refuses a slip with no draft id — idempotency could not be guaranteed', () => {
+    const draft = payableBill(['Full Bill', 'Gold Bangles'])
+    const broken = {
+      ...draft,
+      slips: draft.slips.map((s, index) => (index === 1 ? { ...s, draftId: '  ' } : s)),
+    }
+    const result = retailBillSave(deps, { draft: broken })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('Slip 2')
+  })
+
+  it('turns a broken slip into a message naming it, never a thrown promise', () => {
+    const draft = payableBill(['Full Bill', 'Gold Chain'])
+    const broken = {
+      ...draft,
+      slips: draft.slips.map((s, index) => (index === 1 ? { ...s, items: [] } : s)),
+    }
+    const result = retailBillSave(deps, { draft: broken })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/Slip 2 \(Gold Chain\)/)
+  })
+
+  it('previews the next bill number without reserving it', () => {
+    expect(retailBillNextNo(deps)).toBe('RB-00001')
+    expect(retailBillNextNo(deps)).toBe('RB-00001')
+  })
+
+  it('returns nothing for a bill receipt without a session', () => {
+    const anonymous: RetailHandlerDeps = { ...deps, session: { user: null } }
+    expect(retailBillReceipt(anonymous, 'bill-1')).toBeNull()
+  })
+
+  it('prints every slip in one job, each still its own document', () => {
+    const posted = retailBillSave(deps, { draft: payableBill(['Full Bill', 'Gold Bangles']) })
+    expect(posted.ok).toBe(true)
+    if (!posted.ok) return
+
+    const html = retailBillReceipt(deps, posted.billId)
+    expect(html).toBeTruthy()
+    // Both invoice numbers on one page, with a break between them.
+    expect(html).toContain('RS-00001')
+    expect(html).toContain('RS-00002')
+    expect(html).toContain('page-break-before')
+    // One document, not two concatenated shells.
+    expect((html?.match(/<html/gi) ?? []).length).toBe(1)
   })
 })
 

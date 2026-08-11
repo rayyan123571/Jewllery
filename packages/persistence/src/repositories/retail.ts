@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import type BetterSqlite3 from 'better-sqlite3'
 import {
+  DEFAULT_SLIP_LABEL,
   Money,
   Weight,
   parsePurity,
@@ -11,9 +13,12 @@ import {
   type LabourMode,
   type NewCustomer,
   type PaymentMethod,
+  type RetailBill,
+  type RetailBillWithSlips,
   type RetailSale,
   type RetailSaleItem,
   type RetailSaleWithItems,
+  type RetailSlip,
   type SaleStatus,
   type Salesman,
   type WastageBasis,
@@ -22,7 +27,10 @@ import {
 import type {
   CustomerRepository,
   CustomerSearchResult,
+  NewRetailBill,
   NewRetailSale,
+  NewRetailSaleItem,
+  RetailBillRepository,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -313,6 +321,132 @@ export class SqliteSalesmanRepository implements SalesmanRepository {
   }
 }
 
+/**
+ * The SQL for one sale row and its items, shared by the sale and bill writers.
+ *
+ * Extracted rather than duplicated because the bill writer must insert slips
+ * with EXACTLY the columns and constraints a standalone sale gets — a slip is a
+ * retail sale, and a second insert statement that drifted from this one would
+ * quietly make it something else.
+ */
+const INSERT_SALE = `
+  INSERT INTO retail_sales
+    (id, invoice_no, branch_id, sale_date, sale_time, customer_id,
+     customer_name_snapshot, customer_mobile_snapshot, salesman_id,
+     salesman_name_snapshot, rate_purity, rate_per_tola_paisa,
+     gold_value_paisa, customer_gold_mg, customer_gold_purity,
+     customer_gold_value_paisa, hallmark_charges_paisa, other_charges_paisa,
+     discount_paisa, grand_total_paisa, amount_paid_paisa, payment_method,
+     balance_paisa, amount_in_words, remarks, status, void_reason, draft_id,
+     wastage_direction, wastage_basis, created_by, created_at, posted_at,
+     bill_id, slip_no, slip_label)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+
+const INSERT_ITEM = `
+  INSERT INTO retail_sale_items
+    (id, sale_id, line_no, item_name, purity, gross_weight_mg,
+     stone_weight_mg, cut_per_tola_mg, net_weight_mg, wastage_bp,
+     wastage_mg, fine_weight_mg, labour_charges_paisa, labour_mode,
+     stone_charges_paisa, line_amount_paisa)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+
+function saleParams(
+  sale: NewRetailSale,
+  id: string,
+  invoiceNo: string,
+  createdAt: string,
+  bill: { id: string; slipNo: number; slipLabel: string } | null,
+): unknown[] {
+  return [
+    id,
+    invoiceNo,
+    sale.branchId,
+    sale.saleDate,
+    sale.saleTime,
+    sale.customerId,
+    sale.customerNameSnapshot,
+    sale.customerMobileSnapshot,
+    sale.salesmanId,
+    sale.salesmanNameSnapshot,
+    sale.ratePurity,
+    sale.ratePerTola.paisa,
+    sale.goldValue.paisa,
+    sale.customerGold.milligrams,
+    sale.customerGoldPurity,
+    sale.customerGoldValue.paisa,
+    sale.hallmarkCharges.paisa,
+    sale.otherCharges.paisa,
+    sale.discount.paisa,
+    sale.grandTotal.paisa,
+    sale.amountPaid.paisa,
+    sale.paymentMethod,
+    sale.balance.paisa,
+    sale.amountInWords,
+    sale.remarks,
+    sale.status,
+    null,
+    sale.draftId,
+    sale.wastageDirection,
+    sale.wastageBasis,
+    sale.createdByUserId,
+    createdAt,
+    sale.status === 'posted' ? createdAt : null,
+    bill?.id ?? null,
+    bill?.slipNo ?? null,
+    bill?.slipLabel ?? null,
+  ]
+}
+
+function itemParams(item: NewRetailSaleItem, saleId: string): unknown[] {
+  return [
+    randomUUID(),
+    saleId,
+    item.lineNo,
+    item.itemName,
+    item.purity,
+    item.grossWeight.milligrams,
+    item.stoneWeight.milligrams,
+    item.cutPerTola.milligrams,
+    item.netWeight.milligrams,
+    item.wastageBp,
+    item.wastage.milligrams,
+    item.fineWeight.milligrams,
+    item.labourCharges.paisa,
+    item.labourMode,
+    item.stoneCharges.paisa,
+    item.lineAmount.paisa,
+  ]
+}
+
+/**
+ * Takes the next number from a sequence row and bumps it.
+ *
+ * Callers must already be inside a transaction. Two counters saving at the same
+ * moment serialise on this row and cannot both take the same number; if the
+ * caller's transaction then fails, the bump rolls back with it.
+ */
+function allocateNumber(
+  db: BetterSqlite3.Database,
+  key: string,
+  prefix: string,
+  width: number,
+): string {
+  const row = db
+    .prepare('SELECT next_number FROM invoice_sequences WHERE key = ?')
+    .get(key) as { next_number: number } | undefined
+
+  if (!row) {
+    const START = 1
+    db.prepare(
+      'INSERT INTO invoice_sequences (key, prefix, next_number) VALUES (?,?,?)',
+    ).run(key, prefix, START + 1)
+    return `${prefix}${START.toString().padStart(width, '0')}`
+  }
+
+  db.prepare('UPDATE invoice_sequences SET next_number = next_number + 1 WHERE key = ?').run(key)
+  return `${prefix}${row.next_number.toString().padStart(width, '0')}`
+}
+
 export class SqliteRetailSaleRepository implements RetailSaleRepository {
   constructor(
     private readonly conn: DatabaseProvider,
@@ -340,115 +474,16 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
     const createdAt = toIsoTimestamp(this.clock.now())
 
     const run = db.transaction(() => {
-      const invoiceNo = this.allocateInvoiceNo(prefix)
-
-      db.prepare(
-        `INSERT INTO retail_sales
-           (id, invoice_no, branch_id, sale_date, sale_time, customer_id,
-            customer_name_snapshot, customer_mobile_snapshot, salesman_id,
-            salesman_name_snapshot, rate_purity, rate_per_tola_paisa,
-            gold_value_paisa, customer_gold_mg, customer_gold_purity,
-            customer_gold_value_paisa, hallmark_charges_paisa, other_charges_paisa,
-            discount_paisa, grand_total_paisa, amount_paid_paisa, payment_method,
-            balance_paisa, amount_in_words, remarks, status, void_reason, draft_id,
-            wastage_direction, wastage_basis, created_by, created_at, posted_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      ).run(
-        id,
-        invoiceNo,
-        sale.branchId,
-        sale.saleDate,
-        sale.saleTime,
-        sale.customerId,
-        sale.customerNameSnapshot,
-        sale.customerMobileSnapshot,
-        sale.salesmanId,
-        sale.salesmanNameSnapshot,
-        sale.ratePurity,
-        sale.ratePerTola.paisa,
-        sale.goldValue.paisa,
-        sale.customerGold.milligrams,
-        sale.customerGoldPurity,
-        sale.customerGoldValue.paisa,
-        sale.hallmarkCharges.paisa,
-        sale.otherCharges.paisa,
-        sale.discount.paisa,
-        sale.grandTotal.paisa,
-        sale.amountPaid.paisa,
-        sale.paymentMethod,
-        sale.balance.paisa,
-        sale.amountInWords,
-        sale.remarks,
-        sale.status,
-        null,
-        sale.draftId,
-        sale.wastageDirection,
-        sale.wastageBasis,
-        sale.createdByUserId,
-        createdAt,
-        sale.status === 'posted' ? createdAt : null,
-      )
-
-      const insertItem = db.prepare(
-        `INSERT INTO retail_sale_items
-           (id, sale_id, line_no, item_name, purity, gross_weight_mg,
-            stone_weight_mg, cut_per_tola_mg, net_weight_mg, wastage_bp,
-            wastage_mg, fine_weight_mg, labour_charges_paisa, labour_mode,
-            stone_charges_paisa, line_amount_paisa)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      )
-
-      for (const item of sale.items) {
-        insertItem.run(
-          randomUUID(),
-          id,
-          item.lineNo,
-          item.itemName,
-          item.purity,
-          item.grossWeight.milligrams,
-          item.stoneWeight.milligrams,
-          item.cutPerTola.milligrams,
-          item.netWeight.milligrams,
-          item.wastageBp,
-          item.wastage.milligrams,
-          item.fineWeight.milligrams,
-          item.labourCharges.paisa,
-          item.labourMode,
-          item.stoneCharges.paisa,
-          item.lineAmount.paisa,
-        )
-      }
+      const invoiceNo = allocateNumber(db, 'retail', prefix, 5)
+      db.prepare(INSERT_SALE).run(...saleParams(sale, id, invoiceNo, createdAt, null))
+      const insertItem = db.prepare(INSERT_ITEM)
+      for (const item of sale.items) insertItem.run(...itemParams(item, id))
     })
 
     run()
     const written = this.findById(id)
     if (!written) throw new Error('Retail sale vanished immediately after being written.')
     return written
-  }
-
-  /**
-   * Takes the next number and bumps the row. Callers must already be in a
-   * transaction — `post` is the only one, deliberately.
-   */
-  private allocateInvoiceNo(prefix: string): string {
-    const db = this.conn.get()
-    const key = 'retail'
-    const row = db
-      .prepare('SELECT next_number FROM invoice_sequences WHERE key = ?')
-      .get(key) as { next_number: number } | undefined
-
-    if (!row) {
-      const START = 1
-      db.prepare(
-        'INSERT INTO invoice_sequences (key, prefix, next_number) VALUES (?,?,?)',
-      ).run(key, prefix, START + 1)
-      return `${prefix}${START.toString().padStart(5, '0')}`
-    }
-
-    db.prepare('UPDATE invoice_sequences SET next_number = next_number + 1 WHERE key = ?').run(
-      key,
-    )
-    return `${prefix}${row.next_number.toString().padStart(5, '0')}`
   }
 
   peekNextInvoiceNo(prefix: string): string {
@@ -533,5 +568,162 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
       .prepare('SELECT * FROM retail_sale_items WHERE sale_id = ? ORDER BY line_no ASC')
       .all(saleId) as ItemRow[]
     return rows.map(toItem)
+  }
+}
+
+interface BillRow {
+  id: string
+  bill_no: string
+  branch_id: string
+  bill_date: string
+  bill_time: string
+  customer_id: string | null
+  customer_name_snapshot: string
+  customer_mobile_snapshot: string | null
+  salesman_id: string | null
+  salesman_name_snapshot: string | null
+  status: string
+  created_by: string
+  created_at: string
+  posted_at: string | null
+}
+
+function toBill(row: BillRow): RetailBill {
+  return {
+    id: row.id,
+    billNo: row.bill_no,
+    branchId: row.branch_id,
+    billDate: toIsoDate(row.bill_date),
+    billTime: row.bill_time,
+    customerId: row.customer_id,
+    customerNameSnapshot: row.customer_name_snapshot,
+    customerMobileSnapshot: row.customer_mobile_snapshot,
+    salesmanId: row.salesman_id,
+    salesmanNameSnapshot: row.salesman_name_snapshot,
+    status: row.status as SaleStatus,
+    createdByUserId: row.created_by,
+    createdAt: toIsoTimestamp(new Date(row.created_at)),
+    postedAt: row.posted_at ? toIsoTimestamp(new Date(row.posted_at)) : null,
+  }
+}
+
+export class SqliteRetailBillRepository implements RetailBillRepository {
+  constructor(
+    private readonly conn: DatabaseProvider,
+    private readonly clock: Clock,
+  ) {}
+
+  /**
+   * The bill, every slip, every item and BOTH sequences — one transaction.
+   *
+   * This is the whole point of the method, and it is why the slips are not
+   * written by calling `SqliteRetailSaleRepository.post` in a loop. That would
+   * be one transaction per slip: slip 1 commits, slip 3 violates a CHECK, and
+   * the customer leaves with two invoices for a three-piece purchase while the
+   * books show two. Here the outer `transaction()` covers every statement, so
+   * either the visit is recorded or none of it is.
+   *
+   * Each slip still takes its own invoice number from the SAME continuous
+   * retail sequence, because each slip is a real document handed to a customer.
+   * The bill takes its own number from a separate sequence. Every allocation
+   * made in this call rolls back together with everything else.
+   */
+  postBill(
+    bill: NewRetailBill,
+    billPrefix: string,
+    invoicePrefix: string,
+  ): RetailBillWithSlips {
+    const db = this.conn.get()
+    const billId = randomUUID()
+    const createdAt = toIsoTimestamp(this.clock.now())
+
+    const run = db.transaction(() => {
+      const billNo = allocateNumber(db, 'retail_bill', billPrefix, 5)
+
+      db.prepare(
+        `INSERT INTO retail_bills
+           (id, bill_no, branch_id, bill_date, bill_time, customer_id,
+            customer_name_snapshot, customer_mobile_snapshot, salesman_id,
+            salesman_name_snapshot, status, created_by, created_at, posted_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ).run(
+        billId,
+        billNo,
+        bill.branchId,
+        bill.billDate,
+        bill.billTime,
+        bill.customerId,
+        bill.customerNameSnapshot,
+        bill.customerMobileSnapshot,
+        bill.salesmanId,
+        bill.salesmanNameSnapshot,
+        bill.status,
+        bill.createdByUserId,
+        createdAt,
+        bill.status === 'posted' ? createdAt : null,
+      )
+
+      const insertSale = db.prepare(INSERT_SALE)
+      const insertItem = db.prepare(INSERT_ITEM)
+
+      for (const slip of bill.slips) {
+        const saleId = randomUUID()
+        const invoiceNo = allocateNumber(db, 'retail', invoicePrefix, 5)
+        insertSale.run(
+          ...saleParams(slip.sale, saleId, invoiceNo, createdAt, {
+            id: billId,
+            slipNo: slip.slipNo,
+            slipLabel: slip.slipLabel,
+          }),
+        )
+        for (const item of slip.sale.items) insertItem.run(...itemParams(item, saleId))
+      }
+    })
+
+    run()
+    const written = this.findById(billId)
+    if (!written) throw new Error('Retail bill vanished immediately after being written.')
+    return written
+  }
+
+  findById(id: string): RetailBillWithSlips | null {
+    const row = this.conn
+      .get()
+      .prepare('SELECT * FROM retail_bills WHERE id = ?')
+      .get(id) as BillRow | undefined
+    return row ? { bill: toBill(row), slips: this.slipsFor(row.id) } : null
+  }
+
+  findByBillNo(billNo: string): RetailBillWithSlips | null {
+    const row = this.conn
+      .get()
+      .prepare('SELECT * FROM retail_bills WHERE bill_no = ?')
+      .get(billNo.trim()) as BillRow | undefined
+    return row ? { bill: toBill(row), slips: this.slipsFor(row.id) } : null
+  }
+
+  peekNextBillNo(prefix: string): string {
+    const row = this.conn
+      .get()
+      .prepare("SELECT next_number FROM invoice_sequences WHERE key = 'retail_bill'")
+      .get() as { next_number: number } | undefined
+    return `${prefix}${(row?.next_number ?? 1).toString().padStart(5, '0')}`
+  }
+
+  private slipsFor(billId: string): RetailSlip[] {
+    const db = this.conn.get()
+    const rows = db
+      .prepare('SELECT * FROM retail_sales WHERE bill_id = ? ORDER BY slip_no ASC')
+      .all(billId) as Array<SaleRow & { slip_no: number; slip_label: string | null }>
+
+    const itemsOf = db.prepare(
+      'SELECT * FROM retail_sale_items WHERE sale_id = ? ORDER BY line_no ASC',
+    )
+    return rows.map((row) => ({
+      sale: toSale(row),
+      items: (itemsOf.all(row.id) as ItemRow[]).map(toItem),
+      slipNo: row.slip_no,
+      slipLabel: row.slip_label ?? DEFAULT_SLIP_LABEL,
+    }))
   }
 }
