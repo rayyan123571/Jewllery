@@ -28,7 +28,6 @@ export {
   RATTI_PER_TOLA,
 } from './common/units.js'
 export {
-  TOLA_IN_MG,
   formatGram,
   formatTola,
   parseGram,

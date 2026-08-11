@@ -24,6 +24,13 @@ export type {
   ShopRepository,
   UserRepository,
   WholesaleRepository,
+  CustomerRepository,
+  CustomerSearchResult,
+  SalesmanRepository,
+  NewRetailSale,
+  NewRetailSaleItem,
+  RetailSaleFilter,
+  RetailSaleRepository,
 } from './abstractions/repositories.js'
 export type { BackupStore, IdGenerator } from './abstractions/services.js'
 

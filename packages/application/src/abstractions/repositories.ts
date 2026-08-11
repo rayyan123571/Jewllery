@@ -1,22 +1,33 @@
 import type {
   AuditEntry,
+  Branch,
+  Customer,
+  GoldRate,
+  IsoDate,
+  IsoTimestamp,
   Katt,
+  LabourMode,
   Money,
+  NewAuditEntry,
+  NewCustomer,
+  NewGoldRate,
+  NewParty,
+  Party,
+  PaymentMethod,
+  Purity,
+  RetailSale,
+  RetailSaleWithItems,
+  Role,
+  SaleStatus,
+  Salesman,
+  ShopProfile,
+  User,
+  WastageBasis,
+  WastageDirection,
   Weight,
   WholesaleEntry,
   WholesaleEntryKind,
   WholesaleEntryWithLines,
-  Branch,
-  GoldRate,
-  IsoDate,
-  NewAuditEntry,
-  NewGoldRate,
-  NewParty,
-  Party,
-  Purity,
-  Role,
-  ShopProfile,
-  User,
 } from '@jewellery/domain'
 
 /**
@@ -135,6 +146,9 @@ export interface Repositories {
   readonly backupLog: BackupLogRepository
   readonly parties: PartyRepository
   readonly wholesale: WholesaleRepository
+  readonly customers: CustomerRepository
+  readonly salesmen: SalesmanRepository
+  readonly retailSales: RetailSaleRepository
 }
 
 // ── parties (M1) ────────────────────────────────────────────────────────────
@@ -243,4 +257,118 @@ export interface WholesaleRepository {
 
   /** Stamps the original with the id of the entry that reversed it. */
   markReversed(originalId: string, reversalId: string): void
+}
+
+// ── retail ──────────────────────────────────────────────────────────────────
+
+export interface CustomerSearchResult {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly mobile: string | null
+  readonly city: string | null
+  readonly isWalkIn: boolean
+}
+
+export interface CustomerRepository {
+  create(customer: NewCustomer, createdByUserId: string): Customer
+  findById(id: string): Customer | null
+  findByCode(code: string): Customer | null
+  /** Prefix on name, or anywhere in the mobile. Ordered by name. */
+  search(term: string, limit: number): CustomerSearchResult[]
+  /** The next free code for a given prefix, e.g. "C-0007". */
+  nextCode(prefix: string): string
+}
+
+export interface SalesmanRepository {
+  list(activeOnly: boolean): Salesman[]
+  findById(id: string): Salesman | null
+}
+
+export interface NewRetailSaleItem {
+  readonly lineNo: number
+  readonly itemName: string
+  readonly purity: Purity
+  readonly grossWeight: Weight
+  readonly stoneWeight: Weight
+  readonly cutPerTola: Weight
+  readonly netWeight: Weight
+  readonly wastageBp: number
+  readonly wastage: Weight
+  readonly fineWeight: Weight
+  readonly labourCharges: Money
+  readonly labourMode: LabourMode
+  readonly stoneCharges: Money
+  readonly lineAmount: Money
+}
+
+export interface NewRetailSale {
+  readonly branchId: string
+  readonly saleDate: IsoDate
+  readonly saleTime: string
+  readonly customerId: string | null
+  readonly customerNameSnapshot: string
+  readonly customerMobileSnapshot: string | null
+  readonly salesmanId: string | null
+  readonly salesmanNameSnapshot: string | null
+  readonly ratePurity: Purity
+  readonly ratePerTola: Money
+  readonly goldValue: Money
+  readonly customerGold: Weight
+  readonly customerGoldPurity: Purity | null
+  readonly customerGoldValue: Money
+  readonly hallmarkCharges: Money
+  readonly otherCharges: Money
+  readonly discount: Money
+  readonly grandTotal: Money
+  readonly amountPaid: Money
+  readonly paymentMethod: PaymentMethod
+  readonly balance: Money
+  readonly amountInWords: string
+  readonly remarks: string | null
+  readonly status: SaleStatus
+  /**
+   * The wastage rule this sale was PRICED with, stored on the row.
+   *
+   * The rule is a setting the shop can change. Without these two columns,
+   * changing it would silently re-price every past invoice the next time one
+   * was reprinted — history would move under the shop's feet. With them, an old
+   * sale always reproduces exactly, and the setting only affects sales made
+   * after it changed.
+   */
+  readonly wastageDirection: WastageDirection
+  readonly wastageBasis: WastageBasis
+  readonly createdByUserId: string
+  readonly items: readonly NewRetailSaleItem[]
+}
+
+export interface RetailSaleFilter {
+  readonly branchId: string
+  readonly fromDate?: IsoDate
+  readonly toDate?: IsoDate
+  readonly customerId?: string
+  readonly status?: SaleStatus
+  readonly limit: number
+}
+
+export interface RetailSaleRepository {
+  /**
+   * Writes the sale, every item and the sequence bump in ONE transaction.
+   *
+   * The invoice number is allocated INSIDE that transaction, never reserved by
+   * the UI beforehand: two counters saving at the same moment must not be able
+   * to take the same number, and a sale that is abandoned must not leave a hole
+   * that a later sale silently fills.
+   */
+  post(sale: NewRetailSale, prefix: string, financialYear: string): RetailSaleWithItems
+
+  findById(id: string): RetailSaleWithItems | null
+  findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null
+  list(filter: RetailSaleFilter): RetailSale[]
+
+  /** A PREVIEW of the next number. Reserves nothing — see `post`. */
+  peekNextInvoiceNo(prefix: string, financialYear: string): string
+
+  /** Marks a posted sale void. Never deletes; the number stays burned. */
+  markVoid(id: string, reason: string, voidedAt: IsoTimestamp): void
 }

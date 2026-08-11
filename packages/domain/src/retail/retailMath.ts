@@ -1,7 +1,7 @@
 import { Money } from '../common/Money.js'
 import { Weight } from '../common/Weight.js'
 import { scaleDiv } from '../common/rounding.js'
-import { TOLA_IN_MG } from '../common/tola.js'
+import { MG_PER_TOLA } from '../common/units.js'
 import type { LabourMode } from './RetailSale.js'
 
 /**
@@ -76,7 +76,7 @@ export function computeRetailLine(
   rule: WastageRule,
 ): RetailLineComputed {
   const cutDeduction = Weight.fromMilligrams(
-    scaleDiv(input.cutPerTola.milligrams, input.grossWeight.milligrams, TOLA_IN_MG),
+    scaleDiv(input.cutPerTola.milligrams, input.grossWeight.milligrams, MG_PER_TOLA),
   )
 
   const netWeight = input.grossWeight.minus(input.stoneWeight).minus(cutDeduction)
@@ -97,7 +97,7 @@ export function computeRetailLine(
   const labourAmount =
     input.labourMode === 'per_tola'
       ? Money.fromPaisa(
-          scaleDiv(input.labourCharges.paisa, fineWeight.milligrams, TOLA_IN_MG),
+          scaleDiv(input.labourCharges.paisa, fineWeight.milligrams, MG_PER_TOLA),
         )
       : input.labourCharges
 

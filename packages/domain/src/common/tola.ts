@@ -5,10 +5,10 @@ import { MG_PER_TOLA } from './units.js'
 /**
  * Converting between the unit the trade quotes in and the unit we store in.
  *
- * `MG_PER_TOLA` already exists in units.ts and is 11,664 — an exact integer,
- * which is the whole reason weight is stored in milligrams. Nothing here
- * redefines it; this file only adds the conversions that were missing, and
- * every one of them goes through integer arithmetic.
+ * `MG_PER_TOLA` lives in units.ts and is 11,664 — an exact integer, which is
+ * the whole reason weight is stored in milligrams. This file adds ONLY the
+ * conversions that were missing and imports that constant; it does not give it
+ * a second name, because two names for one number is how they drift apart.
  *
  * The bug this file exists to prevent is the one units.ts already warns about:
  * a per-tola rate multiplied by a gram weight gives a figure 11.664× too large.
@@ -19,9 +19,6 @@ import { MG_PER_TOLA } from './units.js'
  * whole milligrams throughout.
  */
 
-/** Exactly one tola, as milligrams. Re-exported so callers need one import. */
-export const TOLA_IN_MG = MG_PER_TOLA
-
 /**
  * A weight as a decimal-tola NUMBER, for display only.
  *
@@ -30,7 +27,7 @@ export const TOLA_IN_MG = MG_PER_TOLA
  * Weight in milligrams and divides by 11,664 at the last step instead.
  */
 export function toTolaNumber(weight: Weight): number {
-  return weight.milligrams / TOLA_IN_MG
+  return weight.milligrams / MG_PER_TOLA
 }
 
 /** Three decimal places of a tola, the precision the trade quotes. */
@@ -38,7 +35,7 @@ export function formatTola(weight: Weight): string {
   const sign = weight.milligrams < 0 ? '-' : ''
   const magnitude = Math.abs(weight.milligrams)
   // Integer arithmetic: scale to milli-tola, then place the point by hand.
-  const milliTola = scaleDiv(magnitude, 1000, TOLA_IN_MG)
+  const milliTola = scaleDiv(magnitude, 1000, MG_PER_TOLA)
   const whole = Math.trunc(milliTola / 1000)
   const fraction = (milliTola % 1000).toString().padStart(3, '0')
   return `${sign}${whole.toLocaleString('en-US')}.${fraction}`
@@ -70,7 +67,7 @@ export function parseTola(input: string): Weight {
   const whole = match[2] === '' ? 0 : Number(match[2])
   const fraction = Number((match[3] ?? '').padEnd(3, '0'))
   const milliTola = whole * 1000 + fraction
-  return Weight.fromMilligrams(sign * scaleDiv(milliTola, TOLA_IN_MG, 1000))
+  return Weight.fromMilligrams(sign * scaleDiv(milliTola, MG_PER_TOLA, 1000))
 }
 
 /** Grams to milligrams as a Weight, for the gram side of the unit toggle. */
