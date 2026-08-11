@@ -42,6 +42,20 @@ const EMPTY_ROW: LineInputDto = { itemName: '', grossGrams: '', kattRatti: '', r
 /** The typeable columns, in tab order. Khalis, rate and amount are computed. */
 const COLUMNS = ['itemName', 'grossGrams', 'kattRatti', 'remarks'] as const
 
+/**
+ * Whether a preformatted figure is worth colouring.
+ *
+ * A zero is not a positive. Every khalis figure on this screen was rendering in
+ * the positive green whether or not anything had been entered, so an empty slip
+ * showed a column of green noughts and the colour stopped meaning anything by
+ * the time a real figure arrived. Semantic colour is for values that are
+ * genuinely non-zero; everything else is ordinary text.
+ */
+function isSignificant(display: string | undefined): boolean {
+  if (!display) return false
+  return /[1-9]/.test(display)
+}
+
 type Tab = 'new' | 'ledger' | 'settle' | 'history'
 
 export function WholesaleScreen({
@@ -401,11 +415,16 @@ export function WholesaleScreen({
                                   {...cell(2)}
                                 />
                               </td>
-                              <td className="numeric positive" title={computed?.purityDisplay}>
+                              <td
+                                className={`numeric${
+                                  isSignificant(computed?.khalisDisplay) ? ' positive' : ' muted'
+                                }`}
+                                title={computed?.purityDisplay}
+                              >
                                 {computed?.khalisDisplay ?? '—'}
                               </td>
-                              <td className="numeric">{computed?.rateDisplay ?? '—'}</td>
-                              <td className="numeric">{computed?.amountDisplay ?? '—'}</td>
+                              <td className="numeric muted">{computed?.rateDisplay ?? '—'}</td>
+                              <td className="numeric muted">{computed?.amountDisplay ?? '—'}</td>
                               <td>
                                 <input
                                   className="input input--cell"
@@ -440,7 +459,11 @@ export function WholesaleScreen({
                           <td>Total</td>
                           <td className="numeric">{totals.gross}</td>
                           <td />
-                          <td className="numeric positive">{totals.khalis}</td>
+                          <td
+                            className={`numeric${isSignificant(totals.khalis) ? ' positive' : ''}`}
+                          >
+                            {totals.khalis}
+                          </td>
                           <td />
                           <td className="numeric">{totals.amount}</td>
                           <td />
@@ -463,7 +486,13 @@ export function WholesaleScreen({
               <div className="stat-strip">
                 <div className="stat-cell">
                   <span className="stat-cell__label">Total Khalis</span>
-                  <span className="stat-cell__value positive">{totals.khalis} g</span>
+                  <span
+                    className={`stat-cell__value${
+                      isSignificant(totals.khalis) ? ' positive' : ''
+                    }`}
+                  >
+                    {totals.khalis} g
+                  </span>
                 </div>
                 <div className="stat-cell">
                   <span className="stat-cell__label">Total Amount</span>
@@ -473,7 +502,11 @@ export function WholesaleScreen({
                   <span className="stat-cell__label">End Balance</span>
                   <span
                     className={`stat-cell__value ${
-                      preview?.endBalance?.direction === 'shop-owes-party' ? 'negative' : 'positive'
+                      !isSignificant(preview?.endBalance?.text)
+                        ? ''
+                        : preview?.endBalance?.direction === 'shop-owes-party'
+                          ? 'negative'
+                          : 'positive'
                     }`}
                   >
                     {preview?.endBalance?.text ?? '—'}

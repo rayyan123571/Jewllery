@@ -37,15 +37,25 @@ export const theme = {
     navyMuted: '#6B6153',
 
     // ── gold ────────────────────────────────────────────────────────────────
-    /** The accent. Used as a 3px indicator and a border, never as a large fill. */
-    gold: '#C9A227',
-    goldBright: '#E0BE4E',
-    /** The active-item and callout fill. Gold at full strength is loud here. */
-    goldSoft: '#F6EAC6',
-    /** goldSoft again, at the strength a whole table row can carry. */
-    goldWash: '#FCF6E6',
-    /** Rate figures, the wordmark, and the active sidebar label on goldSoft. */
-    goldText: '#8A6D10',
+    //
+    // Deep brass, not mustard. The old #C9A227 is retired: on a screen it reads
+    // as a yellow, and a yellow used at 10-15% tint reads as beige. This ramp is
+    // darker and less saturated, which is what metal actually looks like, and it
+    // is used at FULL strength on thin elements rather than washed out on broad
+    // ones. A 2px line of #B8860B is brass; a 200px panel of #F6EAC6 is cream.
+    //
+    /** Text-weight gold. Clears contrast on white, so labels can be gold. */
+    goldDeep: '#7A5C00',
+    /** The core brass. This is the brand colour. */
+    gold: '#A67C00',
+    /** Lines, rules, indicators, rings — everything 1-3px. */
+    goldMetal: '#B8860B',
+    /** Accents on dark only. Never on white. */
+    goldBright: '#D4AF37',
+    /** The highlight stop in a brushed-metal gradient. Never a fill. */
+    goldGlint: '#E8CC7A',
+    /** The one surviving tint, and only under the active nav item. */
+    goldTint: '#F2E7C4',
 
     // ── surfaces ────────────────────────────────────────────────────────────
     /**
@@ -56,23 +66,27 @@ export const theme = {
      * impossible and why the whole screen read as clinical. At this value a
      * white card lifts off the page on its own and the border becomes optional.
      */
-    canvas: '#F6F1E6',
+    // Warm but near-NEUTRAL. The yellow is pulled out of every one of these,
+    // because a yellow-tinted neutral gives gold nothing to contrast against —
+    // the brass simply dissolved into the page. Yellow now lives only in the
+    // gold ramp above, which is what makes it read as a colour at all.
+    canvas: '#F4F3F0',
     surface: '#FFFFFF',
-    surfaceMuted: '#FBF7EE',
+    surfaceMuted: '#FAF9F7',
     /** Card headers, table headers, table footers. */
-    surfaceHeader: '#F8F2E3',
-    border: '#EBE1CC',
-    borderStrong: '#D8C79E',
+    surfaceHeader: '#F2F1ED',
+    border: '#E4E2DC',
+    borderStrong: '#CBC7BD',
     /**
      * The rule between table rows. Barely darker than the row it sits under —
      * a ledger wants to read as lines of figures, not as a grid of boxes.
      */
-    rule: '#F0E9DA',
+    rule: '#EDEBE5',
 
     // ── text ────────────────────────────────────────────────────────────────
-    /** Near-black warmed towards the paper, not a cold #000. */
-    text: '#1F1B14',
-    textMuted: '#6B6153',
+    /** Near-black with a brown undertone, which is what the serif titles want. */
+    text: '#16130C',
+    textMuted: '#6B6659',
     /** Stays white: it is used on the coloured action buttons, not on chrome. */
     textInverse: '#FFFFFF',
 
@@ -104,8 +118,8 @@ export const theme = {
     actionExit: '#B3261E',
 
     /** A control that exists but whose module is not built yet. */
-    disabledSurface: '#F2ECDD',
-    disabledText: '#A0937C',
+    disabledSurface: '#F2F1ED',
+    disabledText: '#A39E92',
   },
 
   size: {
@@ -142,7 +156,7 @@ export const theme = {
     radiusPill: '999px',
 
     /** The gold rule under a module title. Short and deliberate, not full width. */
-    titleRuleWidth: '64px',
+    titleRuleWidth: '72px',
     /** The sidebar crest. */
     crest: '44px',
 
@@ -201,11 +215,26 @@ export const theme = {
    * like dirt on the page.
    */
   shadow: {
-    sm: '0 1px 1px rgba(74, 58, 20, 0.04), 0 2px 6px rgba(74, 58, 20, 0.05)',
-    md: '0 1px 2px rgba(74, 58, 20, 0.05), 0 6px 18px rgba(74, 58, 20, 0.07)',
-    lg: '0 2px 4px rgba(74, 58, 20, 0.06), 0 20px 48px rgba(74, 58, 20, 0.13)',
-    /** The one focus ring, on every interactive element. See index.css. */
-    focus: '0 0 0 3px rgba(201, 162, 39, 0.35)',
+    // Still warm, but the yellow is out of these too — 40,34,20 is a brown-grey,
+    // not a brown-yellow. A yellow shadow on a neutral page reads as staining.
+    sm: '0 1px 1px rgba(40, 34, 20, 0.05), 0 2px 6px rgba(40, 34, 20, 0.07)',
+    md: '0 1px 2px rgba(40, 34, 20, 0.06), 0 6px 18px rgba(40, 34, 20, 0.1)',
+    lg: '0 2px 4px rgba(40, 34, 20, 0.07), 0 20px 48px rgba(40, 34, 20, 0.16)',
+    /** The one focus ring, on every interactive element. Brass, not mustard. */
+    focus: '0 0 0 3px rgba(166, 124, 0, 0.38)',
+  },
+
+  /**
+   * Brushed brass, for the three places a metal edge belongs: the crest ring,
+   * the module-title rule and the active nav indicator.
+   *
+   * The stops are goldMetal → goldGlint → gold. On a 2-3px element the ramp
+   * reads as light catching a machined edge. On anything wider it reads as a
+   * gradient, which is the one thing this interface must never look like — so
+   * it is never applied to a fill.
+   */
+  gradient: {
+    brass: 'linear-gradient(105deg, #B8860B, #E8CC7A, #A67C00)',
   },
 
   /**
@@ -281,6 +310,9 @@ export function themeCssVariables(): string {
   }
   for (const [key, value] of Object.entries(theme.shadow)) {
     lines.push(`  --shadow-${kebab(key)}: ${value};`)
+  }
+  for (const [key, value] of Object.entries(theme.gradient)) {
+    lines.push(`  --gradient-${kebab(key)}: ${value};`)
   }
   lines.push(`  --font-ui: ${theme.font.ui};`)
   lines.push(`  --font-brand: ${theme.font.brand};`)

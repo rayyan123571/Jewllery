@@ -205,18 +205,24 @@ a {
   align-items: center;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid var(--colour-gold-soft);
+  border-bottom: 1px solid var(--colour-gold-metal);
 }
 
 .sidebar__crest {
   width: var(--size-crest);
   height: var(--size-crest);
   border-radius: 50%;
-  /* Thin. A heavy ring reads as a badge; a hairline reads as an engraving. */
-  border: 1px solid var(--colour-gold);
+  /* Thin. A heavy ring reads as a badge; a hairline reads as an engraving.
+     The third and last brushed-brass element: the ring is painted as a border-
+     box gradient behind a padding-box fill, which is the only way to get a
+     gradient onto a circular 1px edge. */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--colour-surface), var(--colour-surface)) padding-box,
+    var(--gradient-brass) border-box;
   display: grid;
   place-items: center;
-  color: var(--colour-gold-text);
+  color: var(--colour-gold-deep);
   font-family: var(--font-brand);
   font-weight: 600;
   font-size: var(--font-size-lg);
@@ -230,7 +236,7 @@ a {
   font-size: var(--font-size-brand);
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--colour-text);
+  color: var(--colour-gold-deep);
   line-height: var(--line-brand);
 }
 
@@ -260,7 +266,10 @@ a {
   line-height: 1.2;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--colour-navy-muted);
+  /* Gold, not grey. These are the only standing text on the screen that is
+     allowed to carry the brand colour, and it costs nothing in legibility at
+     this weight. */
+  color: var(--colour-gold-deep);
 }
 
 .sidebar__section:first-child {
@@ -282,7 +291,7 @@ a {
 
 .sidebar__foot {
   padding: var(--space-8);
-  border-top: 1px solid var(--colour-gold-soft);
+  border-top: 1px solid var(--colour-gold-metal);
 }
 
 .sidebar__exit {
@@ -318,7 +327,7 @@ a {
   /* A gold hairline, not a grey one. It is the thinnest possible statement and
      it runs the full width of the product — one of the four places gold is
      allowed to appear. */
-  border-bottom: 1px solid var(--colour-gold-soft);
+  border-bottom: 1px solid var(--colour-gold-metal);
   box-shadow: var(--shadow-sm);
   min-width: 0;
   z-index: 1;
@@ -343,7 +352,7 @@ a {
   align-items: stretch;
   flex: none;
   padding: var(--space-8) var(--space-12);
-  border: 1px solid var(--colour-gold-soft);
+  border: 1px solid var(--colour-gold-metal);
   border-radius: var(--size-radius);
   background: var(--colour-surface-muted);
 }
@@ -395,7 +404,7 @@ a {
 .rate-panel__value {
   font-size: var(--font-size-lg);
   font-weight: 600;
-  color: var(--colour-gold-text);
+  color: var(--colour-gold-deep);
   padding: 0;
   border-radius: var(--size-radius);
   line-height: var(--line-heading);
@@ -403,7 +412,7 @@ a {
 }
 
 .rate-panel__value:hover:not(:disabled) {
-  background: var(--colour-gold-soft);
+  background: var(--colour-gold-tint);
 }
 
 .rate-panel__input {
@@ -494,8 +503,8 @@ a {
   flex: none;
   border-radius: 50%;
   border: 1px solid var(--colour-gold);
-  background: var(--colour-gold-soft);
-  color: var(--colour-gold-text);
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
   display: grid;
   place-items: center;
   font-size: var(--font-size-sm);
@@ -546,7 +555,7 @@ a {
 }
 
 .action--menu:hover:not(:disabled) {
-  background: var(--colour-gold-wash);
+  background: var(--colour-surface-muted);
 }
 
 /* ── the message region ─────────────────────────────────────────────────────
@@ -697,14 +706,17 @@ a {
   position: relative;
 }
 
+/* Brushed brass. One of exactly three places the gradient is allowed, and it is
+   3px tall — at that size the three stops read as light catching a machined
+   edge rather than as a gradient. */
 .module-title::after {
   content: '';
   position: absolute;
   left: 0;
   bottom: 0;
   width: var(--size-title-rule-width);
-  height: 2px;
-  background: var(--colour-gold);
+  height: 3px;
+  background: var(--gradient-brass);
 }
 
 /* ── cards ──────────────────────────────────────────────────────────────── */
@@ -932,14 +944,14 @@ a {
 }
 
 .action--segment:hover:not(:disabled) {
-  background: var(--colour-gold-soft);
-  color: var(--colour-gold-text);
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
 }
 
 .action--segment:focus-visible {
   box-shadow: none;
-  background: var(--colour-gold-soft);
-  color: var(--colour-gold-text);
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
 }
 
 /* ── calendar ───────────────────────────────────────────────────────────── */
@@ -996,7 +1008,7 @@ a {
 }
 
 .calendar__day:hover:not(:disabled) {
-  background: var(--colour-gold-wash);
+  background: var(--colour-surface-muted);
 }
 
 .calendar__day.is-today {
@@ -1004,9 +1016,9 @@ a {
 }
 
 .calendar__day.is-selected {
-  background: var(--colour-gold-soft);
+  background: var(--colour-gold-tint);
   border-color: var(--colour-gold);
-  color: var(--colour-gold-text);
+  color: var(--colour-gold-deep);
   font-weight: 700;
 }
 
@@ -1097,13 +1109,13 @@ a {
 /* No zebra striping. With a rule this quiet the alternating fill was the loudest
    thing in the table, and it fought the hover state for the same signal. */
 .grid tbody tr:hover td {
-  background: var(--colour-gold-wash);
+  background: var(--colour-surface-muted);
 }
 
 /* The row being typed into. A 2px gold edge, not a fill: the operator needs to
    see where they are without losing the reading of the figures. */
 .grid tbody tr:focus-within td:first-child {
-  box-shadow: inset 2px 0 0 var(--colour-gold);
+  box-shadow: inset 2px 0 0 var(--colour-gold-metal);
 }
 
 .grid td.numeric,
@@ -1115,7 +1127,7 @@ a {
    fill: the figures are the emphasis, the line just says where they start. */
 .grid tfoot td {
   background: transparent;
-  border-top: 2px solid var(--colour-gold);
+  border-top: 2px solid var(--colour-gold-metal);
   border-bottom: none;
   padding-top: var(--space-12);
   font-weight: 600;
@@ -1141,6 +1153,11 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* An em-dash placeholder or a nought is not a value. It recedes. */
+.muted {
+  color: var(--colour-text-muted);
 }
 
 .positive {
@@ -1178,7 +1195,7 @@ a {
 
 .input--cell:focus,
 .input--cell:focus-visible {
-  border-color: var(--colour-gold);
+  border-color: var(--colour-gold-metal);
   border-radius: var(--size-radius);
   background: var(--colour-surface);
   box-shadow: var(--shadow-focus);
@@ -1419,11 +1436,12 @@ a {
    gold at full strength across a 248px item is loud, and dark text on it does
    not clear contrast comfortably for an eight-hour shift. */
 .action--sidebar.is-active {
-  background: var(--colour-gold-soft);
-  color: var(--colour-gold-text);
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
   font-weight: 600;
 }
 
+/* The second of the three brushed-brass elements. */
 .action--sidebar.is-active::before {
   content: '';
   position: absolute;
@@ -1431,7 +1449,7 @@ a {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--colour-gold);
+  background: var(--gradient-brass);
 }
 
 .action--sidebar:disabled {
@@ -1454,8 +1472,8 @@ a {
 }
 
 .action--topbar.is-active {
-  background: var(--colour-gold-soft);
-  color: var(--colour-gold-text);
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
   font-weight: 600;
 }
 
@@ -1486,8 +1504,8 @@ a {
 
 .action--tab.is-active {
   background: var(--colour-surface);
-  color: var(--colour-gold-text);
-  border-bottom-color: var(--colour-gold);
+  color: var(--colour-gold-deep);
+  border-bottom-color: var(--colour-gold-metal);
 }
 
 /* The one dominant action. Solid, flat, and the only filled button in the row. */
@@ -1502,9 +1520,20 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+/* Dark and gold, not green. The five-colour bar was the single loudest thing on
+   the screen and it contained no brand colour at all, so the eye never landed
+   where the brand was. Ink ground, brass edge, bright-gold label — bright gold
+   is legible on ink and illegible on white, which is exactly where it belongs. */
 .action--primary.is-save {
-  background: var(--colour-action-save);
-  border-color: var(--colour-action-save);
+  background: var(--colour-text);
+  border-color: var(--colour-gold-metal);
+  color: var(--colour-gold-bright);
+}
+
+.action--primary.is-save:hover:not(:disabled) {
+  background: var(--colour-gold-deep);
+  border-color: var(--colour-gold-bright);
+  color: var(--colour-gold-bright);
 }
 
 /* The other four. Their semantic colour lives on the border and the label, not
@@ -1524,26 +1553,29 @@ a {
 
 .action--outline:hover:not(:disabled) {
   background: var(--colour-surface-muted);
+  border-color: var(--colour-gold-metal);
 }
 
+/* Second in the hierarchy: brass edge and gold label, so it sits visibly below
+   the ink primary and visibly above the plain ones. */
 .action--outline.is-save-print {
-  border-color: var(--colour-action-save-print);
-  color: var(--colour-action-save-print);
+  border-color: var(--colour-gold-metal);
+  color: var(--colour-gold-deep);
 }
 
-.action--outline.is-print {
-  border-color: var(--colour-action-print);
-  color: var(--colour-action-print);
-}
-
+/* Third: no colour at all. Blue and purple are gone from this screen. */
+.action--outline.is-print,
 .action--outline.is-hold {
-  border-color: var(--colour-action-hold);
-  color: var(--colour-action-hold-text);
+  border-color: var(--colour-border-strong);
+  color: var(--colour-text);
 }
 
+/* Cancel keeps its meaning in the label alone. A red fill on a control that
+   only clears a form was the loudest promise on the screen for the smallest
+   consequence. */
 .action--outline.is-cancel {
-  border-color: var(--colour-action-cancel);
-  color: var(--colour-action-cancel);
+  border-color: var(--colour-border);
+  color: var(--colour-negative);
 }
 
 /* Everything that is not THE save. Outline rather than a fifth solid block. */
@@ -1605,7 +1637,7 @@ a {
 }
 
 .action--quick:hover:not(:disabled) {
-  background: var(--colour-gold-wash);
+  background: var(--colour-surface-muted);
   border-color: var(--colour-border-strong);
 }
 
@@ -1707,7 +1739,7 @@ a {
 .slip {
   font-size: var(--font-size-xs);
   line-height: 1.45;
-  border: 1px solid var(--colour-gold-soft);
+  border: 1px solid var(--colour-gold-metal);
   border-radius: var(--size-radius);
   background: var(--colour-surface-muted);
 }
@@ -1795,7 +1827,7 @@ a {
   background: var(--colour-surface);
   color: var(--colour-text-muted);
   /* The gold thread closing the frame at the bottom of the window. */
-  border-top: 1px solid var(--colour-gold-soft);
+  border-top: 1px solid var(--colour-gold-metal);
   font-size: var(--font-size-xs);
   letter-spacing: 0.01em;
   white-space: nowrap;
@@ -1844,8 +1876,8 @@ a {
   display: inline-block;
   padding: var(--space-4) var(--space-16);
   border-radius: var(--size-radius-pill);
-  background: var(--colour-gold-soft);
-  color: var(--colour-gold-text);
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
   font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -1899,12 +1931,12 @@ a {
 /* An explanation that has to be read, not grey small print stepped over. */
 .callout {
   padding: var(--space-12) var(--space-16);
-  background: var(--colour-gold-soft);
-  border-left: 3px solid var(--colour-gold);
+  background: var(--colour-gold-tint);
+  border-left: 3px solid var(--colour-gold-metal);
   border-radius: 0 var(--size-radius) var(--size-radius) 0;
   font-size: var(--font-size-sm);
   line-height: var(--line-body);
-  color: var(--colour-gold-text);
+  color: var(--colour-gold-deep);
 }
 
 .hint {
@@ -1960,7 +1992,7 @@ a {
   text-align: center;
   padding-bottom: var(--space-32);
   /* A gold hairline, and the only line on the card. */
-  border-bottom: 1px solid var(--colour-gold-soft);
+  border-bottom: 1px solid var(--colour-gold-metal);
   margin-bottom: var(--space-32);
 }
 
@@ -2046,8 +2078,8 @@ a {
 }
 
 .login__submit:hover:not(:disabled) {
-  background: var(--colour-gold-text);
-  border-color: var(--colour-gold-text);
+  background: var(--colour-gold-deep);
+  border-color: var(--colour-gold-deep);
 }
 
 .login__submit:disabled {
@@ -2125,14 +2157,14 @@ a {
 }
 
 .party__option:hover {
-  background: var(--colour-gold-wash);
+  background: var(--colour-surface-muted);
 }
 
 .party__code {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--colour-gold-text);
+  color: var(--colour-gold-deep);
   min-width: 56px;
 }
 
