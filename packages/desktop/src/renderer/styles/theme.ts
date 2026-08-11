@@ -27,14 +27,49 @@ export const theme = {
     // The token NAMES are kept deliberately: renaming them would mean editing
     // every rule that uses them, and the point of a token file is that a
     // re-theme is a change to these values alone.
-    /** The sidebar and top-bar surface. White — the chrome is not a colour block. */
+    /**
+     * ── The chrome is dark ──────────────────────────────────────────────────
+     *
+     * Gold is a mid-value yellow. On white it has nowhere to go: no matter how
+     * deep the hex, a mid-value colour on a light ground is low contrast and
+     * reads washed out. Gold glows against darkness, which is why a jewellery
+     * shop is a dark room with lit cases.
+     *
+     * So the chrome — sidebar, top bar, status bar — is near-black, and it
+     * frames a bright working area that is untouched. The contrast between the
+     * two IS the design; the gold is simply what that contrast is made of.
+     *
+     * Every value below is measured against chromeInk (relative luminance
+     * 0.0062). WCAG contrast ratios:
+     *
+     *   chromeText         12.7 : 1
+     *   chromeTextMuted     5.7 : 1
+     *   goldOnDark          9.4 : 1
+     *   goldOnDarkBright   13.0 : 1
+     *
+     * All four clear 4.5:1 with room to spare.
+     */
+    chromeInk: '#15120E',
+    /** The top bar, one step up, so the two dark surfaces read as layers. */
+    chromeInkRaised: '#1D1914',
+    chromeLine: 'rgba(255, 255, 255, 0.08)',
+    chromeText: 'rgba(255, 255, 255, 0.82)',
+    chromeTextMuted: 'rgba(255, 255, 255, 0.52)',
+    chromeHover: 'rgba(255, 255, 255, 0.06)',
+    /** A scrollbar thumb on dark. The light-side thumb vanishes against ink. */
+    chromeScrollThumb: 'rgba(255, 255, 255, 0.16)',
+    /** EXIT, and errors shown in the chrome. The light-side red is unreadable here. */
+    chromeDanger: '#E06C63',
+    chromeDangerFill: 'rgba(224, 108, 99, 0.1)',
+    /** The close button's hover, the one Windows convention worth keeping. */
+    chromeClose: '#C42B1C',
+
+    // The old light-chrome tokens. Retained as aliases of the surfaces they
+    // now name so nothing outside the chrome had to be rewritten.
     navy: '#FFFFFF',
-    /** The deeper chrome tone: status bar, chrome dividers. */
-    navyDeep: '#FDFAF3',
-    /** Hover on a chrome control. */
-    navyHover: '#FDFAF3',
-    /** Sidebar section labels and muted chrome text. */
-    navyMuted: '#6B6153',
+    navyDeep: '#FAF9F7',
+    navyHover: '#FAF9F7',
+    navyMuted: '#6B6659',
 
     // ── gold ────────────────────────────────────────────────────────────────
     //
@@ -54,8 +89,19 @@ export const theme = {
     goldBright: '#D4AF37',
     /** The highlight stop in a brushed-metal gradient. Never a fill. */
     goldGlint: '#E8CC7A',
-    /** The one surviving tint, and only under the active nav item. */
+    /** The one surviving tint on the LIGHT side, under the active nav item. */
     goldTint: '#F2E7C4',
+
+    // Gold on dark can and must be brighter than gold on white — the ground is
+    // doing the contrast work now, so the metal is free to catch the light.
+    /** Nav labels, rate figures, the wordmark. */
+    goldOnDark: '#D9B451',
+    /** The active nav label and the crest initials. The brightest thing on ink. */
+    goldOnDarkBright: '#EFD68A',
+    /** The active nav item's fill. A wash of the metal, not a block of it. */
+    goldActiveFill: 'rgba(217, 180, 81, 0.12)',
+    /** The user chip's avatar disc. */
+    goldAvatarFill: 'rgba(217, 180, 81, 0.15)',
 
     // ── surfaces ────────────────────────────────────────────────────────────
     /**
@@ -235,6 +281,15 @@ export const theme = {
    */
   gradient: {
     brass: 'linear-gradient(105deg, #B8860B, #E8CC7A, #A67C00)',
+    /**
+     * A solid brass FILL, for the one primary button in the working area.
+     *
+     * Permitted where the 3px rule is not, because the chrome now carries the
+     * darkness and this is the only brass fill on a white ground — it is the
+     * primary action, and it should look like it is made of the same metal as
+     * the frame around the screen.
+     */
+    brassFill: 'linear-gradient(105deg, #B8860B, #A67C00, #B8860B)',
   },
 
   /**

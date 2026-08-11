@@ -155,26 +155,26 @@ a {
   align-self: stretch;
   justify-content: center;
   border-radius: 0;
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
 }
 
 .action--window:hover:not(:disabled) {
-  background: var(--colour-surface-muted);
-  color: var(--colour-text);
+  background: var(--colour-chrome-hover);
+  color: var(--colour-text-inverse);
 }
 
 .action--window:active:not(:disabled) {
-  background: var(--colour-border);
+  background: var(--colour-chrome-line);
 }
 
 /* Close goes red on hover, the convention every Windows user already knows. */
 .window-controls__close:hover:not(:disabled) {
-  background: var(--colour-action-cancel);
+  background: var(--colour-chrome-close);
   color: var(--colour-text-inverse);
 }
 
 .window-controls__close:active:not(:disabled) {
-  background: var(--colour-negative);
+  background: var(--colour-chrome-close);
   color: var(--colour-text-inverse);
 }
 
@@ -189,11 +189,11 @@ a {
 .sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--colour-navy);
-  color: var(--colour-text);
-  /* The one structural line left in the chrome. It separates two full-height
-     surfaces of nearly the same colour, which space cannot do. */
-  border-right: 1px solid var(--colour-border);
+  background: var(--colour-chrome-ink);
+  color: var(--colour-chrome-text);
+  /* A brass hairline, not a grey border. The two surfaces no longer need a line
+     to tell them apart — this one is there because the frame wants an edge. */
+  border-right: 1px solid var(--colour-gold-metal);
   min-height: 0;
 }
 
@@ -205,7 +205,7 @@ a {
   align-items: center;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid var(--colour-gold-metal);
+  border-bottom: 1px solid var(--colour-chrome-line);
 }
 
 .sidebar__crest {
@@ -216,13 +216,11 @@ a {
      The third and last brushed-brass element: the ring is painted as a border-
      box gradient behind a padding-box fill, which is the only way to get a
      gradient onto a circular 1px edge. */
-  border: 1px solid transparent;
-  background:
-    linear-gradient(var(--colour-surface), var(--colour-surface)) padding-box,
-    var(--gradient-brass) border-box;
+  border: 1px solid var(--colour-gold-metal);
+  background: transparent;
   display: grid;
   place-items: center;
-  color: var(--colour-gold-deep);
+  color: var(--colour-gold-on-dark-bright);
   font-family: var(--font-brand);
   font-weight: 600;
   font-size: var(--font-size-lg);
@@ -236,7 +234,7 @@ a {
   font-size: var(--font-size-brand);
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--colour-gold-deep);
+  color: var(--colour-gold-on-dark);
   line-height: var(--line-brand);
 }
 
@@ -248,7 +246,7 @@ a {
   font-weight: 500;
   letter-spacing: var(--tracking-tagline);
   text-transform: uppercase;
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
 }
 
 /* 11px and tight margins. These are wayfinding, not content: they have to be
@@ -266,10 +264,9 @@ a {
   line-height: 1.2;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  /* Gold, not grey. These are the only standing text on the screen that is
-     allowed to carry the brand colour, and it costs nothing in legibility at
-     this weight. */
-  color: var(--colour-gold-deep);
+  /* Brass on ink. On the dark ground these read as metal rather than as the
+     brown they became on white. */
+  color: var(--colour-gold-on-dark);
 }
 
 .sidebar__section:first-child {
@@ -291,12 +288,14 @@ a {
 
 .sidebar__foot {
   padding: var(--space-8);
-  border-top: 1px solid var(--colour-gold-metal);
+  border-top: 1px solid var(--colour-chrome-line);
 }
 
+/* A red LABEL, not a red block. A solid red slab is the loudest object in the
+   application attached to the one control nobody means to press. */
 .sidebar__exit {
-  background: var(--colour-action-exit);
-  color: var(--colour-text-inverse);
+  background: transparent;
+  color: var(--colour-chrome-danger);
   border-radius: var(--size-radius);
   justify-content: center;
   font-weight: 600;
@@ -304,8 +303,18 @@ a {
 }
 
 .sidebar__exit:hover:not(:disabled) {
-  background: var(--colour-action-cancel);
-  color: var(--colour-text-inverse);
+  background: var(--colour-chrome-danger-fill);
+  color: var(--colour-chrome-danger);
+}
+
+.sidebar__exit svg,
+.sidebar__exit:hover:not(:disabled) svg {
+  color: var(--colour-chrome-danger);
+}
+
+/* The light-side thumb disappears against ink. */
+.sidebar__items::-webkit-scrollbar-thumb {
+  background: var(--colour-chrome-scroll-thumb);
 }
 
 /* ── top bar ────────────────────────────────────────────────────────────── */
@@ -323,10 +332,10 @@ a {
   /* The rate panel starts here, 24px off the sidebar edge, rather than floating
      in the middle of 450px of dead space. */
   padding-left: var(--space-24);
-  background: var(--colour-surface);
-  /* A gold hairline, not a grey one. It is the thinnest possible statement and
-     it runs the full width of the product — one of the four places gold is
-     allowed to appear. */
+  /* One step lighter than the sidebar and the status bar, so the three dark
+     surfaces read as layers rather than as one shape with holes in it. */
+  background: var(--colour-chrome-ink-raised);
+  color: var(--colour-chrome-text);
   border-bottom: 1px solid var(--colour-gold-metal);
   box-shadow: var(--shadow-sm);
   min-width: 0;
@@ -352,9 +361,11 @@ a {
   align-items: stretch;
   flex: none;
   padding: var(--space-8) var(--space-12);
-  border: 1px solid var(--colour-gold-metal);
+  /* No box. On ink the dividers between purities carry the structure, and a
+     border round the whole panel just draws a rectangle in the dark. */
+  border: 1px solid transparent;
   border-radius: var(--size-radius);
-  background: var(--colour-surface-muted);
+  background: transparent;
 }
 
 .rate-panel__title {
@@ -366,7 +377,7 @@ a {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
   /* Wide enough for "GOLD RATE (PER TOLA)" on two lines. At 92px it broke into
      four and the panel grew a chin. */
   max-width: 132px;
@@ -390,7 +401,7 @@ a {
 }
 
 .rate-panel__row + .rate-panel__row {
-  border-left: 1px solid var(--colour-border);
+  border-left: 1px solid var(--colour-chrome-line);
 }
 
 .rate-panel__row > span:first-child {
@@ -398,13 +409,13 @@ a {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
 }
 
 .rate-panel__value {
   font-size: var(--font-size-lg);
   font-weight: 600;
-  color: var(--colour-gold-deep);
+  color: var(--colour-gold-on-dark);
   padding: 0;
   border-radius: var(--size-radius);
   line-height: var(--line-heading);
@@ -412,41 +423,42 @@ a {
 }
 
 .rate-panel__value:hover:not(:disabled) {
-  background: var(--colour-gold-tint);
+  background: var(--colour-chrome-hover);
 }
 
 .rate-panel__input {
   width: 110px;
   height: 28px;
   padding: 0 var(--space-8);
-  border: 1px solid var(--colour-gold);
+  border: 1px solid var(--colour-gold-metal);
   border-radius: var(--size-radius);
-  background: var(--colour-surface);
+  background: var(--colour-chrome-ink);
   font-size: var(--font-size-lg);
   font-weight: 700;
   text-align: right;
-  color: var(--colour-text);
+  color: var(--colour-gold-on-dark-bright);
 }
 
 .rate-panel__empty {
   font-size: var(--font-size-sm);
   font-weight: 600;
-  color: var(--colour-negative);
+  /* The light-side red is unreadable on ink. */
+  color: var(--colour-chrome-danger);
 }
 
 .rate-panel--bad {
-  border-color: var(--colour-negative);
-  background: var(--colour-negative-soft);
+  border-color: var(--colour-chrome-danger);
+  background: var(--colour-chrome-danger-fill);
 }
 
 .rate-panel__error {
   align-self: center;
   margin-left: var(--space-12);
   padding-left: var(--space-12);
-  border-left: 1px solid var(--colour-negative);
+  border-left: 1px solid var(--colour-chrome-danger);
   font-size: var(--font-size-xs);
   font-weight: 600;
-  color: var(--colour-negative);
+  color: var(--colour-chrome-danger);
   cursor: help;
 }
 
@@ -457,7 +469,7 @@ a {
   padding: 0 var(--space-16);
   text-align: right;
   min-width: 156px;
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
   line-height: var(--line-heading);
 }
 
@@ -468,7 +480,7 @@ a {
 .clock__date {
   font-size: var(--font-size-sm);
   font-weight: 600;
-  color: var(--colour-text);
+  color: var(--colour-chrome-text);
 }
 
 .clock__time {
@@ -488,13 +500,14 @@ a {
   gap: var(--space-12);
   padding: var(--space-4) var(--space-12);
   margin: 0 var(--space-8);
-  border: 1px solid var(--colour-border);
+  border: 1px solid var(--colour-chrome-line);
   border-radius: var(--size-radius-pill);
-  background: var(--colour-surface);
+  background: transparent;
+  color: var(--colour-chrome-text);
 }
 
 .user-chip:hover:not(:disabled) {
-  background: var(--colour-surface-muted);
+  background: var(--colour-chrome-hover);
 }
 
 .user-chip__avatar {
@@ -502,9 +515,9 @@ a {
   height: 34px;
   flex: none;
   border-radius: 50%;
-  border: 1px solid var(--colour-gold);
-  background: var(--colour-gold-tint);
-  color: var(--colour-gold-deep);
+  border: 1px solid var(--colour-gold-metal);
+  background: var(--colour-gold-avatar-fill);
+  color: var(--colour-gold-on-dark-bright);
   display: grid;
   place-items: center;
   font-size: var(--font-size-sm);
@@ -525,7 +538,7 @@ a {
 
 .user-chip__role {
   font-size: var(--font-size-xs);
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
 }
 
 /* ── popover menu ───────────────────────────────────────────────────────── */
@@ -1424,21 +1437,38 @@ a {
   gap: var(--space-12);
   justify-content: flex-start;
   font-size: var(--font-size-md);
-  color: var(--colour-text);
+  color: var(--colour-chrome-text);
   border-radius: 0;
 }
 
+/* The icon sits a step behind its label, so a column of fourteen glyphs does
+   not compete with the words that actually carry the navigation. */
+.action--sidebar svg {
+  color: var(--colour-chrome-text-muted);
+}
+
 .action--sidebar:hover:not(:disabled) {
-  background: var(--colour-surface-muted);
+  background: var(--colour-chrome-hover);
+  color: var(--colour-text-inverse);
+}
+
+.action--sidebar:hover:not(:disabled) svg {
+  color: var(--colour-chrome-text);
 }
 
 /* Active is a soft ground plus a gold indicator bar, NOT a solid gold block:
    gold at full strength across a 248px item is loud, and dark text on it does
    not clear contrast comfortably for an eight-hour shift. */
+/* Unmistakably the brightest thing in the sidebar: a wash of the metal, a solid
+   brass edge, and the only near-white-gold label on the ink. */
 .action--sidebar.is-active {
-  background: var(--colour-gold-tint);
-  color: var(--colour-gold-deep);
+  background: var(--colour-gold-active-fill);
+  color: var(--colour-gold-on-dark-bright);
   font-weight: 600;
+}
+
+.action--sidebar.is-active svg {
+  color: var(--colour-gold-on-dark);
 }
 
 /* The second of the three brushed-brass elements. */
@@ -1449,11 +1479,11 @@ a {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--gradient-brass);
+  background: var(--colour-gold-metal);
 }
 
 .action--sidebar:disabled {
-  color: var(--colour-disabled-text);
+  color: var(--colour-chrome-text-muted);
 }
 
 .action--topbar {
@@ -1525,15 +1555,18 @@ a {
    where the brand was. Ink ground, brass edge, bright-gold label — bright gold
    is legible on ink and illegible on white, which is exactly where it belongs. */
 .action--primary.is-save {
-  background: var(--colour-text);
-  border-color: var(--colour-gold-metal);
-  color: var(--colour-gold-bright);
+  /* The chrome carries the darkness now, so the primary does not have to. Solid
+     brass, ink label — the only brass fill in the working area, made of the same
+     metal as the frame around the screen. */
+  background: var(--gradient-brass-fill);
+  border-color: var(--colour-gold-deep);
+  color: var(--colour-chrome-ink);
 }
 
 .action--primary.is-save:hover:not(:disabled) {
-  background: var(--colour-gold-deep);
-  border-color: var(--colour-gold-bright);
-  color: var(--colour-gold-bright);
+  background: var(--colour-gold);
+  border-color: var(--colour-gold-deep);
+  color: var(--colour-chrome-ink);
 }
 
 /* The other four. Their semantic colour lives on the border and the label, not
@@ -1824,9 +1857,9 @@ a {
   align-items: center;
   gap: var(--space-32);
   padding: 0 var(--space-24);
-  background: var(--colour-surface);
-  color: var(--colour-text-muted);
-  /* The gold thread closing the frame at the bottom of the window. */
+  background: var(--colour-chrome-ink);
+  color: var(--colour-chrome-text);
+  /* The brass thread closing the frame at the bottom of the window. */
   border-top: 1px solid var(--colour-gold-metal);
   font-size: var(--font-size-xs);
   letter-spacing: 0.01em;
@@ -1836,7 +1869,7 @@ a {
 
 .status-bar strong {
   font-weight: 600;
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
 }
 
 .status-bar__dot {
