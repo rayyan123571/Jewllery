@@ -73,6 +73,7 @@ function saleOf(overrides: Partial<NewRetailSale> = {}): NewRetailSale {
     status: 'posted',
     wastageDirection: 'add',
     wastageBasis: 'net',
+    draftId: null,
     createdByUserId: userId,
     items: computed.map((line, index) => ({
       lineNo: index + 1,

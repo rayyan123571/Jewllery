@@ -35,6 +35,19 @@ export type {
 export type { BackupStore, IdGenerator } from './abstractions/services.js'
 
 export {
+  HighWastageRequiresConfirmationError,
+  RetailSaleService,
+  WASTAGE_CONFIRM_ABOVE_BP,
+  WASTAGE_MAX_BP,
+  type RetailCalculation,
+  type RetailDependencies,
+  type RetailDraftInput,
+  type RetailItemInput,
+} from './retail/RetailSaleService.js'
+export { amountInWords, numberToWords } from './retail/amountInWords.js'
+export { CustomerService, type CustomerDependencies } from './retail/CustomerService.js'
+
+export {
   AuthService,
   MINIMUM_PASSWORD_LENGTH,
   PermissionError,

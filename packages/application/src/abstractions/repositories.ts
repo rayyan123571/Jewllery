@@ -338,6 +338,11 @@ export interface NewRetailSale {
    */
   readonly wastageDirection: WastageDirection
   readonly wastageBasis: WastageBasis
+  /**
+   * The draft this sale was posted from. UNIQUE where not null, so a retry
+   * cannot write a second invoice for one transaction.
+   */
+  readonly draftId: string | null
   readonly createdByUserId: string
   readonly items: readonly NewRetailSaleItem[]
 }
@@ -365,6 +370,8 @@ export interface RetailSaleRepository {
 
   findById(id: string): RetailSaleWithItems | null
   findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null
+  /** The already-posted sale for a draft, if one exists. Idempotency. */
+  findByDraftId(draftId: string): RetailSaleWithItems | null
   list(filter: RetailSaleFilter): RetailSale[]
 
   /** A PREVIEW of the next number. Reserves nothing — see `post`. */

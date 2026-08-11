@@ -2,6 +2,7 @@ import type { Money } from '../common/Money.js'
 import type { Weight } from '../common/Weight.js'
 import type { IsoDate, IsoTimestamp } from '../common/time.js'
 import type { Purity } from '../rates/Purity.js'
+import type { WastageBasis, WastageDirection } from './retailMath.js'
 
 /**
  * A retail sale: one invoice to one customer, over the counter.
@@ -107,6 +108,17 @@ export interface RetailSale {
   readonly remarks: string | null
   readonly status: SaleStatus
   readonly voidReason: string | null
+  /**
+   * The draft this sale was posted from, if any.
+   *
+   * UNIQUE where not null. It is what makes posting idempotent across a
+   * restart: a retry finds the sale that already exists instead of writing a
+   * second invoice for one transaction.
+   */
+  readonly draftId: string | null
+  /** The wastage rule this sale was PRICED with, so it always reprints the same. */
+  readonly wastageDirection: WastageDirection
+  readonly wastageBasis: WastageBasis
   readonly createdByUserId: string
   readonly createdAt: IsoTimestamp
   readonly postedAt: IsoTimestamp | null

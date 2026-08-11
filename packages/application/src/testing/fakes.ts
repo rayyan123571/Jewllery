@@ -15,14 +15,24 @@ import {
   type User,
   type WholesaleEntry,
   type WholesaleEntryWithLines,
+  type Customer,
+  type NewCustomer,
+  type RetailSale,
+  type RetailSaleWithItems,
+  type Salesman,
 } from '@jewellery/domain'
 import type {
   AuditRepository,
+  CustomerRepository,
+  CustomerSearchResult,
   GoldRateRepository,
+  NewRetailSale,
   NewUser,
   NewWholesaleEntry,
   PartyRepository,
   PartySearchResult,
+  RetailSaleRepository,
+  SalesmanRepository,
   SettingsRepository,
   UserRepository,
   WholesaleRepository,
@@ -382,6 +392,155 @@ export class FakeWholesaleRepository implements WholesaleRepository {
     this.entries[index] = {
       ...found,
       entry: { ...found.entry, reversedByEntryId: reversalId },
+    }
+  }
+}
+
+// ── retail ──────────────────────────────────────────────────────────────────
+
+export class FakeCustomerRepository implements CustomerRepository {
+  readonly rows: Customer[] = []
+  private seq = 0
+
+  create(customer: NewCustomer, _createdByUserId: string): Customer {
+    const created: Customer = { ...customer, id: `cust-${++this.seq}` }
+    this.rows.push(created)
+    return created
+  }
+
+  findById(id: string): Customer | null {
+    return this.rows.find((row) => row.id === id) ?? null
+  }
+
+  findByCode(code: string): Customer | null {
+    return this.rows.find((row) => row.code === code) ?? null
+  }
+
+  search(term: string, limit: number): CustomerSearchResult[] {
+    const lower = term.trim().toLowerCase()
+    if (lower === '') return []
+    return this.rows
+      .filter(
+        (row) =>
+          row.name.toLowerCase().startsWith(lower) ||
+          row.code.toLowerCase().startsWith(lower) ||
+          (row.mobile ?? '').includes(lower),
+      )
+      .slice(0, limit)
+      .map((row) => ({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        mobile: row.mobile,
+        city: row.city,
+        isWalkIn: row.isWalkIn,
+      }))
+  }
+
+  nextCode(prefix: string): string {
+    const n = this.rows.filter((row) => row.code.startsWith(prefix)).length + 1
+    return `${prefix}${n.toString().padStart(4, '0')}`
+  }
+}
+
+export class FakeSalesmanRepository implements SalesmanRepository {
+  readonly rows: Salesman[] = []
+
+  list(activeOnly: boolean): Salesman[] {
+    return activeOnly ? this.rows.filter((row) => row.isActive) : [...this.rows]
+  }
+
+  findById(id: string): Salesman | null {
+    return this.rows.find((row) => row.id === id) ?? null
+  }
+}
+
+/**
+ * An in-memory retail sale store.
+ *
+ * Models the two things the real repository guarantees and the service depends
+ * on: a monotonic invoice sequence that never reuses a number, and a unique
+ * draft id so a retry cannot write a second invoice.
+ */
+export class FakeRetailSaleRepository implements RetailSaleRepository {
+  readonly rows: RetailSaleWithItems[] = []
+  private next = 1
+
+  post(sale: NewRetailSale, prefix: string): RetailSaleWithItems {
+    if (sale.draftId && this.rows.some((row) => row.sale.draftId === sale.draftId)) {
+      throw new Error('UNIQUE constraint failed: retail_sales.draft_id')
+    }
+    const invoiceNo = `${prefix}${(this.next++).toString().padStart(5, '0')}`
+    const written: RetailSaleWithItems = {
+      sale: {
+        id: `sale-${this.rows.length + 1}`,
+        invoiceNo,
+        branchId: sale.branchId,
+        saleDate: sale.saleDate,
+        saleTime: sale.saleTime,
+        customerId: sale.customerId,
+        customerNameSnapshot: sale.customerNameSnapshot,
+        customerMobileSnapshot: sale.customerMobileSnapshot,
+        salesmanId: sale.salesmanId,
+        salesmanNameSnapshot: sale.salesmanNameSnapshot,
+        ratePurity: sale.ratePurity,
+        ratePerTola: sale.ratePerTola,
+        goldValue: sale.goldValue,
+        customerGold: sale.customerGold,
+        customerGoldPurity: sale.customerGoldPurity,
+        customerGoldValue: sale.customerGoldValue,
+        hallmarkCharges: sale.hallmarkCharges,
+        otherCharges: sale.otherCharges,
+        discount: sale.discount,
+        grandTotal: sale.grandTotal,
+        amountPaid: sale.amountPaid,
+        paymentMethod: sale.paymentMethod,
+        balance: sale.balance,
+        amountInWords: sale.amountInWords,
+        remarks: sale.remarks,
+        status: sale.status,
+        voidReason: null,
+        draftId: sale.draftId,
+        wastageDirection: sale.wastageDirection,
+        wastageBasis: sale.wastageBasis,
+        createdByUserId: sale.createdByUserId,
+        createdAt: toIsoTimestamp(new Date('2026-08-30T09:00:00.000Z')),
+        postedAt: null,
+      },
+      items: sale.items.map((item, index) => ({ ...item, id: `item-${index}`, saleId: 'sale' })),
+    }
+    this.rows.push(written)
+    return written
+  }
+
+  findById(id: string): RetailSaleWithItems | null {
+    return this.rows.find((row) => row.sale.id === id) ?? null
+  }
+
+  findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null {
+    return this.rows.find((row) => row.sale.invoiceNo === invoiceNo) ?? null
+  }
+
+  findByDraftId(draftId: string): RetailSaleWithItems | null {
+    return this.rows.find((row) => row.sale.draftId === draftId) ?? null
+  }
+
+  list(): RetailSale[] {
+    return this.rows.map((row) => row.sale)
+  }
+
+  peekNextInvoiceNo(prefix: string): string {
+    return `${prefix}${this.next.toString().padStart(5, '0')}`
+  }
+
+  markVoid(id: string, reason: string): void {
+    const index = this.rows.findIndex((row) => row.sale.id === id)
+    const found = this.rows[index]
+    if (index >= 0 && found) {
+      this.rows[index] = {
+        ...found,
+        sale: { ...found.sale, status: 'void', voidReason: reason },
+      }
     }
   }
 }

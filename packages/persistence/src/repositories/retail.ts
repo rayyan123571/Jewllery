@@ -16,6 +16,8 @@ import {
   type RetailSaleWithItems,
   type SaleStatus,
   type Salesman,
+  type WastageBasis,
+  type WastageDirection,
 } from '@jewellery/domain'
 import type {
   CustomerRepository,
@@ -65,6 +67,7 @@ interface SaleRow {
   remarks: string | null
   status: string
   void_reason: string | null
+  draft_id: string | null
   wastage_direction: string
   wastage_basis: string
   created_by: string
@@ -150,6 +153,9 @@ function toSale(row: SaleRow): RetailSale {
     remarks: row.remarks,
     status: row.status as SaleStatus,
     voidReason: row.void_reason,
+    draftId: row.draft_id,
+    wastageDirection: row.wastage_direction as WastageDirection,
+    wastageBasis: row.wastage_basis as WastageBasis,
     createdByUserId: row.created_by,
     createdAt: toIsoTimestamp(new Date(row.created_at)),
     postedAt: row.posted_at ? toIsoTimestamp(new Date(row.posted_at)) : null,
@@ -344,9 +350,9 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
             gold_value_paisa, customer_gold_mg, customer_gold_purity,
             customer_gold_value_paisa, hallmark_charges_paisa, other_charges_paisa,
             discount_paisa, grand_total_paisa, amount_paid_paisa, payment_method,
-            balance_paisa, amount_in_words, remarks, status, void_reason,
+            balance_paisa, amount_in_words, remarks, status, void_reason, draft_id,
             wastage_direction, wastage_basis, created_by, created_at, posted_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         id,
         invoiceNo,
@@ -375,6 +381,7 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
         sale.remarks,
         sale.status,
         null,
+        sale.draftId,
         sale.wastageDirection,
         sale.wastageBasis,
         sale.createdByUserId,
@@ -457,6 +464,14 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
       .get()
       .prepare('SELECT * FROM retail_sales WHERE id = ?')
       .get(id) as SaleRow | undefined
+    return row ? { sale: toSale(row), items: this.itemsFor(row.id) } : null
+  }
+
+  findByDraftId(draftId: string): RetailSaleWithItems | null {
+    const row = this.conn
+      .get()
+      .prepare('SELECT * FROM retail_sales WHERE draft_id = ?')
+      .get(draftId) as SaleRow | undefined
     return row ? { sale: toSale(row), items: this.itemsFor(row.id) } : null
   }
 
