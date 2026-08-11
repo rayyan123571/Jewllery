@@ -1,0 +1,32 @@
+/* The two bundled typefaces.
+ *
+ * Loaded from a relative path inside the bundle. Nothing here touches the
+ * network: the "no web fonts" rule was about the shop's typography not
+ * depending on the shop having internet, and a file committed to the repository
+ * and resolved by Vite at build time satisfies that completely.
+ *
+ * Both are VARIABLE fonts, so one file carries the whole weight axis. The
+ * `font-weight` range on each face is what lets 400/500/600/700 come out of a
+ * single download instead of four.
+ *
+ * `font-display: block` rather than swap. A brief blank is better here than a
+ * flash of Segoe UI: the wordmark and every figure would visibly reflow, and on
+ * a local file the wait is a few milliseconds.
+ *
+ * Licences live beside the files — see assets/fonts/README.md. */
+
+@font-face {
+  font-family: 'Inter Variable';
+  src: url('../assets/fonts/Inter-Variable.ttf') format('truetype-variations');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Cormorant Garamond Variable';
+  src: url('../assets/fonts/CormorantGaramond-Variable.ttf') format('truetype-variations');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: block;
+}

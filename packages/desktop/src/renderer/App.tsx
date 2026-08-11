@@ -183,10 +183,13 @@ function Sidebar({ active }: { active: ModuleId }) {
     <nav className="sidebar" aria-label="Main menu">
       <div className="sidebar__brand">
         <span className="sidebar__crest">AH</span>
-        <span className="sidebar__name">
-          AL-HARAM
-          <br />
-          GOLD JEWELLERS
+        <span>
+          <span className="sidebar__name">
+            AL-HARAM
+            <br />
+            GOLD JEWELLERS
+          </span>
+          <span className="sidebar__tagline">Trust in Purity</span>
         </span>
       </div>
       <div className="sidebar__items">

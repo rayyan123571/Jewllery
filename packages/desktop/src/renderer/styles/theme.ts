@@ -48,13 +48,26 @@ export const theme = {
     goldText: '#8A6D10',
 
     // ── surfaces ────────────────────────────────────────────────────────────
-    canvas: '#FAF7F0',
+    /**
+     * Ivory, and deliberately several steps off white.
+     *
+     * The old #FAF7F0 was so close to the #FFFFFF cards that the only thing
+     * separating them was the 1px border — which is why removing borders was
+     * impossible and why the whole screen read as clinical. At this value a
+     * white card lifts off the page on its own and the border becomes optional.
+     */
+    canvas: '#F6F1E6',
     surface: '#FFFFFF',
-    surfaceMuted: '#FDFAF3',
+    surfaceMuted: '#FBF7EE',
     /** Card headers, table headers, table footers. */
     surfaceHeader: '#F8F2E3',
     border: '#EBE1CC',
     borderStrong: '#D8C79E',
+    /**
+     * The rule between table rows. Barely darker than the row it sits under —
+     * a ledger wants to read as lines of figures, not as a grid of boxes.
+     */
+    rule: '#F0E9DA',
 
     // ── text ────────────────────────────────────────────────────────────────
     /** Near-black warmed towards the paper, not a cold #000. */
@@ -128,6 +141,11 @@ export const theme = {
     radiusLarge: '14px',
     radiusPill: '999px',
 
+    /** The gold rule under a module title. Short and deliberate, not full width. */
+    titleRuleWidth: '64px',
+    /** The sidebar crest. */
+    crest: '44px',
+
     /** Scrollbars. 8px, no stepper buttons — see the ::-webkit rules. */
     scrollbar: '8px',
 
@@ -173,23 +191,46 @@ export const theme = {
    * Elevation, warm-tinted rather than grey. A grey shadow over a warm white
    * ground reads as dirt; the same shadow mixed towards the paper reads as depth.
    */
+  /**
+   * Elevation, warm-tinted rather than grey, and two-layer.
+   *
+   * A single soft blur reads as fog. A tight contact shadow plus a wider
+   * ambient one reads as an object resting on paper — which is what a card on
+   * an ivory ground is meant to be. Every value is mixed towards the paper
+   * (74,58,20 is a warm brown), never neutral: a grey shadow over ivory looks
+   * like dirt on the page.
+   */
   shadow: {
-    sm: '0 1px 2px rgba(74, 58, 20, 0.06)',
-    md: '0 4px 12px rgba(74, 58, 20, 0.08)',
-    lg: '0 16px 40px rgba(74, 58, 20, 0.14)',
+    sm: '0 1px 1px rgba(74, 58, 20, 0.04), 0 2px 6px rgba(74, 58, 20, 0.05)',
+    md: '0 1px 2px rgba(74, 58, 20, 0.05), 0 6px 18px rgba(74, 58, 20, 0.07)',
+    lg: '0 2px 4px rgba(74, 58, 20, 0.06), 0 20px 48px rgba(74, 58, 20, 0.13)',
     /** The one focus ring, on every interactive element. See index.css. */
     focus: '0 0 0 3px rgba(201, 162, 39, 0.35)',
   },
 
+  /**
+   * Three faces, bundled locally. See styles/fonts.css.
+   *
+   * Segoe UI was never a decision, it was a default — and at 13–15px, which is
+   * where almost every word in this application lives, it is visibly looser and
+   * blurrier than Inter. The whole interface is set in Inter now, and the serif
+   * is reserved for the four places the brand actually speaks.
+   */
   font: {
-    /** Segoe UI Variable is the Windows 11 system face; this is a Windows app. */
-    ui: "'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif",
-    /** The wordmark and module titles ONLY. Never body text, never figures. */
-    brand: "Georgia, 'Times New Roman', serif",
-    /** Weights and amounts. Tabular figures keep decimal points in a column. */
-    numeric: "'Segoe UI Variable Text', 'Consolas', monospace",
+    /** Everything: labels, buttons, menu items, body. */
+    ui: "'Inter Variable', 'Segoe UI', system-ui, sans-serif",
+    /** Wordmark, module titles, invoice header. NOTHING else. */
+    brand: "'Cormorant Garamond Variable', Georgia, 'Times New Roman', serif",
+    /**
+     * Figures. The same face as the UI, with tabular numerals switched on —
+     * a jeweller reads columns of weights all day, and if the decimal points
+     * do not line up nothing else on the screen matters.
+     */
+    numeric: "'Inter Variable', 'Segoe UI', system-ui, sans-serif",
+    /** The feature string every figure carries. Applied via --font-numeric-features. */
+    numericFeatures: "'tnum' 1, 'ss01' 1",
     size: {
-      /** Sidebar section headings only. Nothing readable-as-prose goes here. */
+      /** Section headings and overlines only. Nothing readable-as-prose. */
       xxs: '11px',
       xs: '12px',
       sm: '13px',
@@ -197,13 +238,32 @@ export const theme = {
       md: '15px',
       lg: '18px',
       xl: '22px',
-      xxl: '28px',
+      /** Stat figures. The second-largest thing on any screen. */
+      xxl: '26px',
+      /** Module titles, in the display serif. The largest, by a clear margin. */
+      display: '30px',
+      /** The wordmark in the sidebar lockup. */
+      brand: '17px',
+      /** The wordmark on the login card, where there is room for it to breathe. */
+      brandLarge: '26px',
     },
+  },
+
+  /**
+   * Letter-spacing. Small caps labels need air or they read as a smear; display
+   * serif at 30px needs slightly negative tracking or it reads as spaced-out.
+   */
+  tracking: {
+    display: '-0.01em',
+    label: '0.1em',
+    tagline: '0.22em',
   },
 
   line: {
     body: '1.5',
-    heading: '1.25',
+    heading: '1.2',
+    /** The two-line wordmark. Tight enough that it reads as one lockup. */
+    brand: '1.05',
   },
 } as const
 
@@ -225,8 +285,12 @@ export function themeCssVariables(): string {
   lines.push(`  --font-ui: ${theme.font.ui};`)
   lines.push(`  --font-brand: ${theme.font.brand};`)
   lines.push(`  --font-numeric: ${theme.font.numeric};`)
+  lines.push(`  --font-numeric-features: ${theme.font.numericFeatures};`)
   for (const [key, value] of Object.entries(theme.font.size)) {
     lines.push(`  --font-size-${kebab(key)}: ${value};`)
+  }
+  for (const [key, value] of Object.entries(theme.tracking)) {
+    lines.push(`  --tracking-${kebab(key)}: ${value};`)
   }
   for (const [key, value] of Object.entries(theme.line)) {
     lines.push(`  --line-${kebab(key)}: ${value};`)

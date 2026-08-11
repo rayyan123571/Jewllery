@@ -343,11 +343,15 @@ export function WholesaleScreen({
                         <tr>
                           <th className="grid__index">#</th>
                           <th>Item Name</th>
-                          <th className="numeric">Gross (g)</th>
-                          <th className="numeric">Katt (r/t)</th>
-                          <th className="numeric">Khalis (g)</th>
-                          <th className="numeric">Rate/tola</th>
-                          <th className="numeric">Amount (Rs.)</th>
+                          {/* Short forms. At 11px uppercase with tracking the
+                              parenthesised units grew past their own columns
+                              and every heading ellipsised. The units are on the
+                              figures themselves. */}
+                          <th className="numeric">Gross g</th>
+                          <th className="numeric">Katt r/t</th>
+                          <th className="numeric">Khalis g</th>
+                          <th className="numeric">Rate</th>
+                          <th className="numeric">Amount</th>
                           <th>Remarks</th>
                           <th className="grid__action">Action</th>
                         </tr>
@@ -625,7 +629,7 @@ function InvoicePreview({
           <br />
           GOLD JEWELLERS
         </div>
-        <div className="slip__centre">Trust in Purity</div>
+        <div className="slip__tagline">Trust in Purity</div>
         <div className="slip__rule" />
         <div className="slip__row">
           <span>Invoice No.</span>

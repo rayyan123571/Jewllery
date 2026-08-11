@@ -91,7 +91,7 @@ export function PartySelector({
             }}
             suggestions={matches.map((m) => m.name)}
             className="input"
-            placeholder="Search by name or code"
+            placeholder="Search name or code"
             inputRef={nameRef}
             disabled={disabled ?? false}
             ariaLabel="Party"

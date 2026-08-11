@@ -1,44 +1,69 @@
 /**
- * Small inline icons for the sidebar and module bar.
+ * Every icon in the application.
  *
  * Inline rather than an icon package: an offline desktop app should not depend
- * on a font or an icon CDN, and these are the only glyphs the shell needs.
- * Drawn on a 24-unit grid with a 1.7 stroke to match the mockup's weight.
+ * on a font or an icon CDN, and these are the only glyphs the interface needs.
+ *
+ * ── The rules every glyph obeys ────────────────────────────────────────────
+ * They were not obeyed before, and mixed stroke weights are the fastest way to
+ * make an interface look assembled rather than drawn.
+ *
+ *   1. **One grid.** 24×24, with the artwork inside a 20×20 optical box —
+ *      2px of air on every side, so a 16px icon beside 14px text has the same
+ *      visual weight as its neighbour.
+ *   2. **One stroke.** 1.5, set once on the <svg>. No glyph overrides it, and
+ *      none is drawn as a filled shape, because a filled glyph next to a
+ *      stroked one reads as two different sets.
+ *   3. **One terminal.** Round caps and round joins throughout.
+ *   4. **One corner radius.** Rectangles are drawn with rx≈2, circles are true
+ *      circles. No mitred corners anywhere.
+ *   5. **currentColor only.** No glyph carries a colour; they inherit, so an
+ *      icon in a disabled control greys out with its label.
+ *
+ * Several were redrawn to get here: cart and purchase were near-duplicates at
+ * different scales, scale (the balance) was drawn off-grid and out of the
+ * optical box, and book, stock and tools all sat a pixel or two proud of it.
  */
 
 const PATHS: Record<string, string> = {
-  home: 'M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5',
-  cart: 'M3 4h2l2.2 10.5h10.1L20 7H6M9 20a1 1 0 1 0 2 0 1 1 0 0 0-2 0m7 0a1 1 0 1 0 2 0 1 1 0 0 0-2 0',
-  wholesale: 'M12 3v4m0 0-2.5 2.5M12 7l2.5 2.5M4 11h16l-1.5 9h-13z',
-  purchase: 'M3 5h3l2 11h10l2-8H7M8 20a1 1 0 1 0 2 0 1 1 0 0 0-2 0m8 0a1 1 0 1 0 2 0 1 1 0 0 0-2 0',
-  stock: 'M4 7.5 12 3l8 4.5v9L12 21l-8-4.5zM4 7.5 12 12m0 0 8-4.5M12 12v9',
-  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8M4.5 20a7.5 7.5 0 0 1 15 0',
+  // ── navigation ──────────────────────────────────────────────────────────
+  home: 'M3.5 10.2 12 3.6l8.5 6.6M6 9v11h12V9',
+  cart: 'M3.5 4.5h2.2l2.1 9.8h9.3l1.9-7.2H6.6M9.5 19a1 1 0 1 0 2 0 1 1 0 0 0-2 0m6 0a1 1 0 1 0 2 0 1 1 0 0 0-2 0',
+  // A shop scale with a pan hanging from each arm: the wholesale counter.
+  wholesale: 'M12 4.2v15.6M6 7.4h12M12 4.2 6 7.4M12 4.2l6 3.2M4 12.4h4l-2-5zM16 12.4h4l-2-5zM4 12.4a2 2 0 0 0 4 0M16 12.4a2 2 0 0 0 4 0M8.5 19.8h7',
+  // Deliberately the mirror of `cart`, not a second drawing of it.
+  purchase:
+    'M20.5 4.5h-2.2l-2.1 9.8H6.9L5 7.1h12.4M12.5 19a1 1 0 1 0 2 0 1 1 0 0 0-2 0m-6 0a1 1 0 1 0 2 0 1 1 0 0 0-2 0',
+  stock: 'M12 3.8 20 8v8L12 20.2 4 16V8zM4 8l8 4.2M12 12.2 20 8M12 12.2v8',
+  user: 'M12 11.6a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6M4.8 20a7.2 7.2 0 0 1 14.4 0',
   suppliers:
-    'M9 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6m8 1a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5M3 20a6 6 0 0 1 12 0m2 0a5 5 0 0 1 4-4.9',
-  book: 'M5 4h11a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2zm2 0v14M9 8h6M9 11h6',
-  chart: 'M4 20V10m5 10V5m5 15v-7m5 7V8',
-  scale: 'M12 4v16M7 8h10M5 8l-2 5a3 3 0 0 0 6 0zm14 0-2 5a3 3 0 0 0 6 0zM8 20h8',
-  shield: 'M12 3.5 5 6.5v5c0 4.2 2.9 7.7 7 8.9 4.1-1.2 7-4.7 7-8.9v-5zM9 12l2.2 2.2L15.5 10',
-  gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6m8-3a8 8 0 0 0-.2-1.7l2-1.5-2-3.4-2.3 1a8 8 0 0 0-3-1.7L14 2h-4l-.5 2.7a8 8 0 0 0-3 1.7l-2.3-1-2 3.4 2 1.5a8 8 0 0 0 0 3.4l-2 1.5 2 3.4 2.3-1a8 8 0 0 0 3 1.7L10 22h4l.5-2.7a8 8 0 0 0 3-1.7l2.3 1 2-3.4-2-1.5c.1-.6.2-1.1.2-1.7',
+    'M9.2 11.4a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4M3.4 19.4a5.8 5.8 0 0 1 11.6 0M17 11.4a2.6 2.6 0 1 0 0-5.2M19 19.4a4.6 4.6 0 0 0-3.2-4.4',
+  book: 'M6 4.4h10.4a1.6 1.6 0 0 1 1.6 1.6v13.6H7.6A1.6 1.6 0 0 1 6 18V4.4Zm2 0v13.6M10 8.4h5M10 11.6h5',
+  chart: 'M4.5 19.5V11m5 8.5V5.5m5 14V13m5 6.5V8',
+  scale: 'M12 4.8v14.4M7 7.6h10M12 4.8 7 7.6M12 4.8l5 2.8M4 13.2h5l-2.5-5.6zM15 13.2h5l-2.5-5.6zM4 13.2a2.5 2.5 0 0 0 5 0M15 13.2a2.5 2.5 0 0 0 5 0M8.5 19.2h7',
+  shield: 'M12 4 5.5 6.6v5c0 3.9 2.7 7.1 6.5 8.2 3.8-1.1 6.5-4.3 6.5-8.2v-5zM9.4 11.8l2 2 3.2-3.6',
+  gear: 'M12 14.6a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2M19.4 12a7.4 7.4 0 0 0-.2-1.6l1.8-1.3-1.8-3.1-2.1.9a7.4 7.4 0 0 0-2.7-1.6L14 4h-4l-.4 2.3a7.4 7.4 0 0 0-2.7 1.6l-2.1-.9L3 10.1l1.8 1.3a7.4 7.4 0 0 0 0 3.2L3 15.9 4.8 19l2.1-.9a7.4 7.4 0 0 0 2.7 1.6L10 22h4l.4-2.3a7.4 7.4 0 0 0 2.7-1.6l2.1.9 1.8-3.1-1.8-1.3c.1-.5.2-1 .2-1.6',
   users:
-    'M9 12a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2.5 20a6.5 6.5 0 0 1 13 0m1.5-8a3 3 0 1 0 0-6m4.5 14a5 5 0 0 0-4-4.9',
-  tools: 'M14.5 4.5a4 4 0 0 0 5 5l-10 10-5-5zM4 20l2-2',
-  exit: 'M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 8l-4 4 4 4M6 12h9',
-  refresh: 'M20 12a8 8 0 1 1-2.6-5.9M20 4v4h-4',
-  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14m5.5-1.5L21 21',
-  plus: 'M12 5v14M5 12h14',
-  trash: 'M4 7h16M9 7V5h6v2m-8 0 1 13h8l1-13',
-  eye: 'M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12m9.5 2.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5',
-  save: 'M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6',
-  print: 'M7 9V4h10v5M7 18H5v-6h14v6h-2M8 15h8v5H8z',
-  pause: 'M9 5v14M15 5v14',
-  cross: 'M6 6l12 12M18 6 6 18',
-  upload: 'M12 16V5m0 0-4 4m4-4 4 4M4 19h16',
-  barcode: 'M4 5v14M7 5v14M10 5v10M13 5v14M16 5v10M20 5v14',
-  calendar: 'M4 6h16v14H4zM4 10h16M8 4v4M16 4v4',
-  chevron: 'M7 10l5 5 5-5',
-  'chevron-left': 'M14 7l-5 5 5 5',
-  'chevron-right': 'M10 7l5 5-5 5',
+    'M9.2 11.4a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4M3.4 19.4a5.8 5.8 0 0 1 11.6 0M16.6 11.4a2.8 2.8 0 1 0 0-5.6M19 19.4a4.6 4.6 0 0 0-3.4-4.4',
+  tools: 'M14.6 5.2a3.8 3.8 0 0 0 4.6 4.6l-9.4 9.4-4.6-4.6zM4.6 19.4l1.8-1.8',
+  exit: 'M13.6 4.6H18a1.6 1.6 0 0 1 1.6 1.6v11.6A1.6 1.6 0 0 1 18 19.4h-4.4M10 8.4 6.4 12l3.6 3.6M6.4 12h8.4',
+
+  // ── controls ────────────────────────────────────────────────────────────
+  refresh: 'M19.4 12a7.4 7.4 0 1 1-2.4-5.5M19.6 4.6v4h-4',
+  search: 'M11 17.4a6.4 6.4 0 1 0 0-12.8 6.4 6.4 0 0 0 0 12.8M15.8 15.8 19.8 19.8',
+  plus: 'M12 5.2v13.6M5.2 12h13.6',
+  trash: 'M4.6 7h14.8M9.4 7V4.8h5.2V7M6.6 7l.9 12.2h9l.9-12.2M10.4 10.6v5.6M13.6 10.6v5.6',
+  eye: 'M3 12s3.6-6.2 9-6.2S21 12 21 12s-3.6 6.2-9 6.2S3 12 3 12m9 2.4a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8',
+  save: 'M5.4 4.6h11L18.6 7v12.4H5.4zM8.6 4.6v4.8h6.4V4.6M8.6 19.4v-5.6h6.8v5.6',
+  print: 'M7.4 9.4V4.6h9.2v4.8M7.4 17.4H5.2v-6.2h13.6v6.2h-2.2M8.2 14.6h7.6v4.8H8.2z',
+  pause: 'M9.6 5.2v13.6M14.4 5.2v13.6',
+  cross: 'M6.4 6.4l11.2 11.2M17.6 6.4 6.4 17.6',
+  upload: 'M12 15.6V5.2m0 0L8.4 8.8M12 5.2l3.6 3.6M4.6 18.8h14.8',
+  barcode: 'M4.6 5.4v13.2M7.6 5.4v13.2M10.6 5.4v9.4M13.6 5.4v13.2M16.6 5.4v9.4M19.4 5.4v13.2',
+  calendar: 'M4.6 6.6h14.8v12.8H4.6zM4.6 10.4h14.8M8.4 4.6v3.8M15.6 4.6v3.8',
+  chevron: 'M7.4 10.2 12 14.8l4.6-4.6',
+  'chevron-left': 'M13.8 7.4 9.2 12l4.6 4.6',
+  'chevron-right': 'M10.2 7.4 14.8 12l-4.6 4.6',
 }
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
@@ -50,7 +75,8 @@ export function Icon({ name, size = 16 }: { name: string; size?: number }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.7}
+      // One weight, set once. No glyph is allowed to override it.
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

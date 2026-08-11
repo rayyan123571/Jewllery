@@ -32,6 +32,10 @@ body {
   color: var(--colour-text);
   background: var(--colour-canvas);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Inter's contextual alternates and kerning. Off by default in Chromium for
+     some feature sets, and the difference at 13-15px is visible. */
+  font-feature-settings: 'kern' 1, 'calt' 1;
 }
 
 /* Every figure on the screen. Tabular digits keep decimal points in a column,
@@ -42,11 +46,15 @@ body {
 .rate-panel__value,
 .rate-panel__input,
 .stat__value,
+.stat-cell__value,
+.calendar__day,
+.party__code,
 .clock__time,
+.clock__date,
 .slip {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
+  font-feature-settings: var(--font-numeric-features);
 }
 
 /* ── one focus treatment, everywhere ────────────────────────────────────────
@@ -138,7 +146,6 @@ a {
   display: flex;
   align-self: stretch;
   margin-left: var(--space-4);
-  border-left: 1px solid var(--colour-border);
 }
 
 .action--window {
@@ -184,40 +191,58 @@ a {
   flex-direction: column;
   background: var(--colour-navy);
   color: var(--colour-text);
+  /* The one structural line left in the chrome. It separates two full-height
+     surfaces of nearly the same colour, which space cannot do. */
   border-right: 1px solid var(--colour-border);
   min-height: 0;
 }
 
+/* The brand lockup. The same three parts — crest, two-line wordmark, tagline —
+   appear here, on the login card and on the slip, so the product reads as one
+   thing rather than three screens that happen to share a colour. */
 .sidebar__brand {
   display: flex;
   align-items: center;
   gap: var(--space-12);
   padding: var(--space-12) var(--space-16);
-  border-bottom: 1px solid var(--colour-border);
+  border-bottom: 1px solid var(--colour-gold-soft);
 }
 
 .sidebar__crest {
-  width: 40px;
-  height: 40px;
+  width: var(--size-crest);
+  height: var(--size-crest);
   border-radius: 50%;
-  border: 1.5px solid var(--colour-gold);
+  /* Thin. A heavy ring reads as a badge; a hairline reads as an engraving. */
+  border: 1px solid var(--colour-gold);
   display: grid;
   place-items: center;
   color: var(--colour-gold-text);
   font-family: var(--font-brand);
-  font-weight: 700;
-  font-size: var(--font-size-base);
+  font-weight: 600;
+  font-size: var(--font-size-lg);
   letter-spacing: 0.02em;
   flex: none;
 }
 
 .sidebar__name {
+  display: block;
   font-family: var(--font-brand);
-  font-size: var(--font-size-md);
-  font-weight: 700;
+  font-size: var(--font-size-brand);
+  font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--colour-gold-text);
-  line-height: var(--line-heading);
+  color: var(--colour-text);
+  line-height: var(--line-brand);
+}
+
+.sidebar__tagline {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-xxs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tagline);
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
 }
 
 /* 11px and tight margins. These are wayfinding, not content: they have to be
@@ -228,11 +253,12 @@ a {
    scrolling" is the harder requirement of the two — at 12/6 the fourteenth,
    Tools, fell off the bottom. Measured, not guessed. */
 .sidebar__section {
-  margin: var(--space-8) 0 var(--space-4);
+  margin: 6px 0 var(--space-4);
   padding: 0 var(--space-16);
   font-size: var(--font-size-xxs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--colour-navy-muted);
 }
@@ -252,12 +278,11 @@ a {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: var(--space-8);
 }
 
 .sidebar__foot {
   padding: var(--space-8);
-  border-top: 1px solid var(--colour-border);
+  border-top: 1px solid var(--colour-gold-soft);
 }
 
 .sidebar__exit {
@@ -290,7 +315,10 @@ a {
      in the middle of 450px of dead space. */
   padding-left: var(--space-24);
   background: var(--colour-surface);
-  border-bottom: 1px solid var(--colour-border);
+  /* A gold hairline, not a grey one. It is the thinnest possible statement and
+     it runs the full width of the product — one of the four places gold is
+     allowed to appear. */
+  border-bottom: 1px solid var(--colour-gold-soft);
   box-shadow: var(--shadow-sm);
   min-width: 0;
   z-index: 1;
@@ -315,7 +343,7 @@ a {
   align-items: stretch;
   flex: none;
   padding: var(--space-8) var(--space-12);
-  border: 1px solid var(--colour-border);
+  border: 1px solid var(--colour-gold-soft);
   border-radius: var(--size-radius);
   background: var(--colour-surface-muted);
 }
@@ -330,7 +358,9 @@ a {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--colour-text-muted);
-  max-width: 92px;
+  /* Wide enough for "GOLD RATE (PER TOLA)" on two lines. At 92px it broke into
+     four and the panel grew a chin. */
+  max-width: 132px;
   line-height: var(--line-heading);
 }
 
@@ -363,12 +393,13 @@ a {
 }
 
 .rate-panel__value {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
   color: var(--colour-gold-text);
   padding: 0;
   border-radius: var(--size-radius);
   line-height: var(--line-heading);
+  letter-spacing: -0.01em;
 }
 
 .rate-panel__value:hover:not(:disabled) {
@@ -650,43 +681,63 @@ a {
   max-height: none;
 }
 
+/* The largest thing on the screen, in the display serif, with a short gold rule
+   under it. The rule is 64px and not full width on purpose: a full-width line
+   is a divider and reads as structure, a short one is a mark and reads as
+   authorship. */
 .module-title {
   font-family: var(--font-brand);
-  font-size: var(--font-size-xl);
-  font-weight: 700;
+  font-size: var(--font-size-display);
+  font-weight: 600;
   line-height: var(--line-heading);
   color: var(--colour-text);
-  letter-spacing: 0.01em;
+  letter-spacing: var(--tracking-display);
   margin: 0 0 var(--space-16);
+  padding-bottom: var(--space-12);
+  position: relative;
+}
+
+.module-title::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--size-title-rule-width);
+  height: 2px;
+  background: var(--colour-gold);
 }
 
 /* ── cards ──────────────────────────────────────────────────────────────── */
 
+/* No border. A white card on an ivory ground separates itself; the 1px grey
+   rectangle around it was doing no work the background was not already doing,
+   and a dozen of them is what made the screen read as a form rather than a
+   surface. Elevation does the lifting instead. */
 .panel {
   background: var(--colour-surface);
-  border: 1px solid var(--colour-border);
   border-radius: var(--size-radius-large);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
+/* A card header is an overline, not a title bar. The tinted band with a rule
+   under it was the single most admin-panel thing on the screen. */
 .panel__title {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  min-height: 36px;
-  padding: var(--space-8) var(--space-16);
-  background: var(--colour-surface-header);
-  border-bottom: 1px solid var(--colour-border);
-  font-size: var(--font-size-sm);
+  min-height: 32px;
+  padding: var(--space-16) var(--space-24) var(--space-4);
+  background: transparent;
+  font-size: var(--font-size-xxs);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--colour-text);
+  color: var(--colour-text-muted);
 }
 
 .panel__body {
-  padding: var(--space-16);
+  padding: var(--space-12) var(--space-24) var(--space-24);
 }
 
 /* A body whose only child is a table: the table draws its own edges. */
@@ -707,10 +758,10 @@ a {
 
 .tabs {
   display: flex;
-  gap: var(--space-4);
-  border-bottom: 1px solid var(--colour-border);
-  padding: 0 var(--space-12);
-  background: var(--colour-surface-muted);
+  gap: var(--space-8);
+  border-bottom: 1px solid var(--colour-rule);
+  padding: 0 var(--space-24);
+  background: transparent;
 }
 
 /* ── fields ─────────────────────────────────────────────────────────────── */
@@ -718,7 +769,8 @@ a {
 .field-row {
   /* Was a rigid five-column grid, which meant every field was as narrow as the
      narrowest useful one and none could breathe. Auto-fit lets the row reflow
-     at any window width instead of squeezing.
+     at any window width instead of squeezing. Padding matches the card body so
+     the fields line up with the header overline above them.
 
      150px, not 200px: at 200px the five column-units (Party spans two) needed
      more width than the workspace has beside a 248px sidebar and a 320px rail,
@@ -729,8 +781,8 @@ a {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: var(--space-16);
-  padding: var(--space-16) var(--space-16) var(--space-16);
-  background: var(--colour-surface);
+  padding: var(--space-12) var(--space-24) var(--space-16);
+  background: transparent;
   align-items: start;
 }
 
@@ -767,8 +819,7 @@ a {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-12);
-  padding: var(--space-16);
-  border-top: 1px solid var(--colour-border);
+  padding: 0 var(--space-24) var(--space-24);
 }
 
 .panel__foot--flush {
@@ -1015,32 +1066,36 @@ a {
   width: var(--size-col-action);
 }
 
+/* A column heading is an overline: 11px, letter-spaced, muted, no fill. The
+   tinted header band was the other half of the spreadsheet look.
+   Tracking is 0.06em here rather than the 0.1em labels elsewhere use: at 0.1em
+   the headings grew past their own columns and every one of them ellipsised. */
 .grid th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--colour-surface-header);
-  /* Horizontal rules only. Full gridlines read as a spreadsheet, not a product. */
+  background: var(--colour-surface);
   border-bottom: 1px solid var(--colour-border);
-  padding: var(--size-cell-padding);
-  font-size: var(--font-size-sm);
+  padding: var(--space-8) var(--space-12);
+  font-size: var(--font-size-xxs);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--colour-text-muted);
   text-align: left;
   white-space: nowrap;
 }
 
+/* Barely darker than the row above it. A ledger is lines of figures; the rule
+   is there to guide the eye along one, not to draw a box around each cell. */
 .grid td {
-  border-bottom: 1px solid var(--colour-border);
+  border-bottom: 1px solid var(--colour-rule);
   padding: var(--size-cell-padding);
   height: var(--size-row-height);
 }
 
-.grid tbody tr:nth-child(even) td {
-  background: var(--colour-surface-muted);
-}
-
+/* No zebra striping. With a rule this quiet the alternating fill was the loudest
+   thing in the table, and it fought the hover state for the same signal. */
 .grid tbody tr:hover td {
   background: var(--colour-gold-wash);
 }
@@ -1056,11 +1111,15 @@ a {
   text-align: right;
 }
 
+/* The totals row is one of gold's four jobs. A 2px gold rule above it and no
+   fill: the figures are the emphasis, the line just says where they start. */
 .grid tfoot td {
-  background: var(--colour-surface-header);
-  border-top: 1px solid var(--colour-border-strong);
+  background: transparent;
+  border-top: 2px solid var(--colour-gold);
   border-bottom: none;
-  font-weight: 700;
+  padding-top: var(--space-12);
+  font-weight: 600;
+  color: var(--colour-text);
 }
 
 .grid__index {
@@ -1182,7 +1241,6 @@ a {
   align-items: stretch;
   min-height: var(--size-stat-strip-height);
   background: var(--colour-surface);
-  border: 1px solid var(--colour-border);
   border-radius: var(--size-radius-large);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
@@ -1193,29 +1251,32 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-12);
-  padding: 0 var(--space-16);
+  padding: 0 var(--space-24);
   min-width: 0;
 }
 
+/* The one line worth keeping inside the strip: three figures in a row need to
+   be told apart, and space alone cannot do it at this width. Barely there. */
 .stat-cell + .stat-cell {
-  border-left: 1px solid var(--colour-border);
+  border-left: 1px solid var(--colour-rule);
 }
 
 .stat-cell__label {
   font-size: var(--font-size-xxs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--colour-text-muted);
   white-space: nowrap;
 }
 
+/* 26px. The second-largest thing on the screen after the module title, which is
+   the point — these are the figures the whole slip exists to produce. */
 .stat-cell__value {
-  font-family: var(--font-numeric);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-xl);
-  font-weight: 700;
+  font-size: var(--font-size-xxl);
+  font-weight: 600;
   line-height: var(--line-heading);
+  letter-spacing: -0.01em;
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1292,7 +1353,7 @@ a {
 }
 
 .summary-line + .summary-line {
-  border-top: 1px solid var(--colour-border);
+  border-top: 1px solid var(--colour-rule);
 }
 
 .summary-line__value {
@@ -1581,11 +1642,10 @@ a {
   text-align: center;
 }
 
-/* The bar lives inside the entry card, so it needs the card's own inset. */
+/* Inside the entry card. Separated by space, not by a rule. */
 .panel > .action-bar {
   margin-top: 0;
-  padding: var(--space-16);
-  border-top: 1px solid var(--colour-border);
+  padding: var(--space-4) var(--space-24) var(--space-24);
 }
 
 .toolbar {
@@ -1628,15 +1688,44 @@ a {
   overflow-y: auto;
 }
 
+/* Flex children shrink by default, and .panel clips what overflows — so an
+   over-tall rail was SQUASHING its cards and cutting them off mid-sentence
+   instead of scrolling them. They keep their natural height; the rail scrolls. */
+.rail > * {
+  flex: none;
+}
+
 .quick-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-8);
 }
 
+/* The slip is a facsimile of paper, so it is framed like one: a gold hairline
+   and a slight inset, so it reads as an artefact sitting inside the card rather
+   than as another region of the interface. */
 .slip {
   font-size: var(--font-size-xs);
-  line-height: var(--line-body);
+  line-height: 1.45;
+  border: 1px solid var(--colour-gold-soft);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface-muted);
+}
+
+.panel__body.slip {
+  padding: var(--space-12) var(--space-16);
+  margin: 0 var(--space-16) var(--space-16);
+}
+
+/* The rail is the tightest column on the screen: three cards in 320px beside a
+   table that must not shrink. Its cards keep the card language but not the
+   full 24px inset. */
+.rail .panel__title {
+  padding: var(--space-12) var(--space-16) var(--space-4);
+}
+
+.rail .panel__body {
+  padding: var(--space-8) var(--space-16) var(--space-16);
 }
 
 .slip__rule {
@@ -1667,11 +1756,25 @@ a {
   min-width: 0;
 }
 
+/* The same lockup as the sidebar and the login card, at slip scale. */
 .slip__brand {
   text-align: center;
   font-family: var(--font-brand);
-  font-size: var(--font-size-base);
-  font-weight: 700;
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  line-height: var(--line-brand);
+  color: var(--colour-text);
+}
+
+.slip__tagline {
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-tagline);
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
+  margin-top: 3px;
 }
 
 .slip__centre {
@@ -1689,10 +1792,12 @@ a {
   align-items: center;
   gap: var(--space-32);
   padding: 0 var(--space-24);
-  background: var(--colour-surface-muted);
+  background: var(--colour-surface);
   color: var(--colour-text-muted);
-  border-top: 1px solid var(--colour-border);
-  font-size: var(--font-size-sm);
+  /* The gold thread closing the frame at the bottom of the window. */
+  border-top: 1px solid var(--colour-gold-soft);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -1842,9 +1947,8 @@ a {
 .login__card {
   width: 440px;
   background: var(--colour-surface);
-  border: 1px solid var(--colour-border);
   border-radius: var(--size-radius-large);
-  padding: var(--space-32);
+  padding: var(--space-48) var(--space-32) var(--space-32);
   box-shadow: var(--shadow-lg);
 }
 
@@ -1854,26 +1958,29 @@ a {
   align-items: center;
   gap: var(--space-12);
   text-align: center;
-  padding-bottom: var(--space-24);
-  border-bottom: 1px solid var(--colour-border);
-  margin-bottom: var(--space-24);
+  padding-bottom: var(--space-32);
+  /* A gold hairline, and the only line on the card. */
+  border-bottom: 1px solid var(--colour-gold-soft);
+  margin-bottom: var(--space-32);
 }
 
 .login__brand .sidebar__crest {
-  width: 48px;
-  height: 48px;
-  font-size: var(--font-size-md);
+  width: 56px;
+  height: 56px;
+  font-size: var(--font-size-xl);
 }
 
 .login__brand .sidebar__name {
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-brand-large);
   text-align: center;
 }
 
 .login__tagline {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xxs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tagline);
+  text-transform: uppercase;
   color: var(--colour-text-muted);
-  letter-spacing: 0.04em;
 }
 
 /* Caps Lock is the commonest reason a correct password is refused, and a masked
@@ -2125,14 +2232,12 @@ a {
 }
 
 .form-section__title {
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-xxs);
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--colour-text-muted);
   margin-bottom: var(--space-12);
-  padding-bottom: var(--space-8);
-  border-bottom: 1px solid var(--colour-border);
 }
 
 .form-grid {
