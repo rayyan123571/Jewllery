@@ -23,6 +23,42 @@ import { createActionRegistry, type ActionContext, type ActionId } from '../acti
  *      ready ⇒ enabled                                     → no button that looks live and isn't
  */
 
+function weight(): { mg: number; gram: string; tola: string } {
+  return { mg: 0, gram: '0.000', tola: '0.000' }
+}
+
+function money(): { paisa: number; rupees: string; whole: string } {
+  return { paisa: 0, rupees: '0.00', whole: '0' }
+}
+
+/** An empty retail calculation, in the shape the main process returns. */
+function emptyCalculation() {
+  return {
+    lines: [],
+    entry: null,
+    totalFine: weight(),
+    customerGold: weight(),
+    remainingGold: weight(),
+    goldValue: money(),
+    totalLabour: money(),
+    totalStone: money(),
+    itemsTotal: money(),
+    hallmarkCharges: money(),
+    otherCharges: money(),
+    discount: money(),
+    customerGoldValue: money(),
+    grandTotal: money(),
+    amountPaid: money(),
+    balance: money(),
+    amountInWords: 'Rupees Zero Only',
+    ratePerTola: { paisa: 23_797_000, rupees: '237,970.00', whole: '237,970' },
+    rateDisplay: 'Rs. 237,970',
+    rateMissing: false,
+    wastageRuleLabel: 'Wastage added to net weight, calculated on net weight',
+    warnings: [],
+  }
+}
+
 const noopApi = {
   bootstrap: vi.fn(async () => ({
     shop: { name: 'AL-HARAM GOLD JEWELLERS', ownerName: 'Haji Abdul Rehman', address: 'Lahore' },
@@ -41,7 +77,6 @@ const noopApi = {
       integrityOk: true,
     },
     databaseConnected: true,
-    financialYear: '01-07-2026 To 30-06-2027',
     appVersion: '1.0.0.0',
   })),
   login: vi.fn(),
@@ -78,6 +113,54 @@ const noopApi = {
   // this suite is about which controls exist and whether they are wired.
   rateHistory: vi.fn(async () => []),
   changePassword: vi.fn(),
+
+  // The retail screen and the settings screen ask for these on mount. Empty
+  // answers are enough: this suite is about which controls exist and whether
+  // they are wired, not about the figures — those are covered with no window at
+  // all, in the domain, application and IPC-handler tests.
+  retailCalculate: vi.fn(async () => emptyCalculation()),
+  retailSave: vi.fn(),
+  retailHold: vi.fn(),
+  retailLoad: vi.fn(async () => null),
+  retailList: vi.fn(async () => []),
+  retailVoid: vi.fn(),
+  retailNextInvoiceNo: vi.fn(async () => 'RS-00001'),
+  retailReceipt: vi.fn(async () => null),
+  searchCustomers: vi.fn(async () => []),
+  createCustomer: vi.fn(),
+  listSalesmen: vi.fn(async () => []),
+  retailWastageRule: vi.fn(async () => ({
+    savedDirection: 'add',
+    savedBasis: 'net',
+    examples: [
+      {
+        title: 'A plain piece',
+        note: null,
+        sample: {
+          grossTola: '4.050',
+          stoneTola: '0.000',
+          cutTola: '0.000',
+          wastagePercent: '14.00',
+          rateDisplay: 'Rs 237,970/tola',
+        },
+        options: [
+          {
+            direction: 'add',
+            basis: 'net',
+            label: 'Added to net weight, calculated on net weight',
+            wastageDisplay: '0.567 tola',
+            fineDisplay: '4.617 tola',
+            amountDisplay: 'Rs 1,098,608',
+            isSaved: true,
+            isSelected: true,
+          },
+        ],
+      },
+    ],
+  })),
+  setRetailWastageRule: vi.fn(async () => ({ ok: true as const })),
+  openExternal: vi.fn(async () => ({ ok: true as const })),
+
   windowControls: {
     minimize: vi.fn(async () => {}),
     toggleMaximize: vi.fn(async () => true),
@@ -288,10 +371,20 @@ describe('the shell chrome matches the mockup', () => {
   it('shows the status bar fields', async () => {
     render(<App />)
     await screen.findByText('AL-HARAM GOLD JEWELLERS')
-    expect(screen.getByText('01-07-2026 To 30-06-2027')).toBeTruthy()
     expect(screen.getByText('Connected')).toBeTruthy()
     expect(screen.getByText('14-07-2026 09:15 PM')).toBeTruthy()
     expect(screen.getByText('1.0.0.0')).toBeTruthy()
+  })
+
+  it('no longer shows a financial year', async () => {
+    // It was a hard-coded 1 July to 30 June convention that nothing read, in
+    // the one strip the operator checks for whether the database is connected
+    // and when the last backup ran. Invoice numbers stopped resetting per year
+    // in migration 007, which was the last thing that depended on the idea.
+    render(<App />)
+    await screen.findByText('AL-HARAM GOLD JEWELLERS')
+    expect(screen.queryByText(/Financial Year/)).toBeNull()
+    expect(screen.queryByText(/To 30-06-/)).toBeNull()
   })
 
   it('never renders a signed weight or amount anywhere on the screen', async () => {

@@ -50,6 +50,13 @@ export type ActionVariant =
   | 'icon'
   /** Attached to an input, sharing its border — the "+" and the search glyph. */
   | 'segment'
+  /**
+   * A labelled segment that switches the MEANING of the input beside it, e.g.
+   * a labour charge being a fixed amount or an amount per tola. Wider than a
+   * `segment` because it carries a word rather than a glyph, and it can be
+   * active — the number in the box means nothing without it.
+   */
+  | 'mode'
   /** A row in a popover menu. */
   | 'menu'
   | 'window'

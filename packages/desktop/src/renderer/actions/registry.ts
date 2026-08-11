@@ -82,11 +82,32 @@ export type ActionId =
   | 'wholesale.settle'
   | 'wholesale.settle.confirm'
   | 'wholesale.settle.back'
+  // ── retail sale (M5) ──────────────────────────────────────────────────────
+  | 'retail.customer.add'
+  | 'retail.customer.pick'
+  | 'retail.customer.save'
+  | 'retail.customer.cancel'
+  | 'retail.rate.refresh'
+  | 'retail.unit.toggle'
+  | 'retail.item.add'
+  | 'retail.item.clear'
+  | 'retail.labour.mode'
+  | 'retail.item.edit'
+  | 'retail.item.delete'
+  | 'retail.save'
+  | 'retail.save-and-print'
+  | 'retail.print'
+  | 'retail.hold'
+  | 'retail.new'
+  | 'retail.cancel'
+  | 'retail.wastage.confirm'
+  | 'retail.wastage.back'
   // ── quick actions panel ───────────────────────────────────────────────────
   | 'quick.wholesale-ledger'
   | 'quick.return-receive'
   | 'quick.print-last-invoice'
   | 'quick.party-balance'
+  | 'quick.retail-whatsapp'
   // ── settings and backup (M0, live) ────────────────────────────────────────
   | 'backup.run'
   | 'backup.restore'
@@ -293,11 +314,45 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'wholesale.import-from-stock': notBuilt('Import from Stock', 'stock'),
     'wholesale.scan-barcode': notBuilt('Scan Barcode', 'stock'),
 
+    // M5 — Sale (Retail). Built, so these are live. Each hands off to the
+    // screen that owns the state, exactly as the wholesale ones do.
+    'retail.customer.add': screen('Add Customer', 'retail.customer.add'),
+    // One entry for the whole match list; each row supplies its own onActivate.
+    'retail.customer.pick': screen('Select Customer', 'retail.customer.pick'),
+    'retail.customer.save': screen('Save Customer', 'retail.customer.save'),
+    'retail.customer.cancel': screen('Cancel', 'retail.customer.cancel'),
+    'retail.rate.refresh': screen('Use the recorded rate', 'retail.rate.refresh'),
+    'retail.unit.toggle': screen('Show weights in grams or tola', 'retail.unit.toggle'),
+    // Rendered once per row for edit and delete, each supplying its own
+    // onActivate — the registry holds the control, the row holds which line.
+    'retail.item.add': screen('ADD ITEM', 'retail.item.add', 'F2'),
+    'retail.item.clear': screen('CLEAR ENTRY', 'retail.item.clear'),
+    'retail.labour.mode': screen('Charge labour as a fixed amount or per tola', 'retail.labour.mode'),
+    'retail.item.edit': screen('Edit this line', 'retail.item.edit'),
+    'retail.item.delete': screen('Remove this line', 'retail.item.delete'),
+    'retail.save': screen('SAVE', 'retail.save', 'F5'),
+    'retail.save-and-print': screen('SAVE & PRINT', 'retail.save-and-print', 'F6'),
+    'retail.print': screen('PRINT', 'retail.print', 'F7'),
+    'retail.hold': screen('HOLD', 'retail.hold', 'F8'),
+    'retail.new': screen('NEW SALE', 'retail.new', 'F9'),
+    'retail.cancel': screen('CANCEL', 'retail.cancel'),
+    // High wastage is a question with a Continue button, so both answers are
+    // real controls rather than one button and a dismiss.
+    'retail.wastage.confirm': screen('Save this sale anyway', 'retail.wastage.confirm'),
+    'retail.wastage.back': screen('Go back and check the wastage', 'retail.wastage.back'),
+
     'quick.wholesale-ledger': screen('Whole Sale Ledger', 'wholesale.tab.ledger'),
     'quick.return-receive': screen('Return / Receive', 'wholesale.tab.return'),
     'quick.print-last-invoice': screen('Print Last Invoice', 'wholesale.print'),
     // Party Balance belongs to Customers (M1's own screen), not to Whole Sale.
     'quick.party-balance': notBuilt('Party Balance', 'customers'),
+    // Leaves the application. Marked as such on the button itself, because a
+    // control that hands the shop's PC to another program should say so before
+    // it is pressed rather than after.
+    'quick.retail-whatsapp': screen(
+      'Send on WhatsApp — opens outside this application',
+      'quick.retail-whatsapp',
+    ),
   }
 }
 

@@ -276,6 +276,41 @@ export const theme = {
      * what happened at 1366px wide, where the fixed columns alone left it 22px.
      */
     colNameMin: '180px',
+
+    // ── retail items table ──────────────────────────────────────────────────
+    // Eleven columns, against the wholesale grid's nine, in the same 918px the
+    // left column has beside a 248px sidebar and a 320px rail. They are a
+    // budget, measured from the widest real content at 13px tabular figures
+    // plus the 24px of cell padding, not eight independent preferences:
+    //
+    //   36 (#) + 56 + 74×3 + 78 + 84×2 + 116 + 76 (action) = 752
+    //   919 − 752 = 167 … minus the 16px the column's own scrollbar takes when
+    //   the fixed cards push it over its height budget, which is the normal
+    //   state at 830px of window. Measured, not assumed: at 167 the table
+    //   scrolled sideways inside its card on every sale.
+    //
+    // Reusing the wholesale widths put the table 118px over its own card and it
+    // scrolled sideways on every sale.
+    /** "22K". The narrowest column that still fits its own heading. */
+    colPurity: '56px',
+    /** Gross, Net and Wastage. "47.240" at 13px tabular is 48px plus padding. */
+    colWeight: '74px',
+    /** Fine weight, one step wider: it is the emphasised figure on the row. */
+    colFine: '78px',
+    /** Labour and Stone. "4,500.00" needs more than a weight does. */
+    colCharge: '84px',
+    /** An amount. "1,102,596.13" is the widest content in the table. */
+    colRetailAmount: '116px',
+    colRetailNameMin: '148px',
+
+    /**
+     * A row in the CALCULATIONS rail.
+     *
+     * Shorter than a form control on purpose. There are twelve of these in a
+     * 320px column beside a table that must not shrink, and at the full 38px
+     * control height the rail alone wanted 640px of an 830px window.
+     */
+    calcRowHeight: '32px',
   },
 
   /** The spacing scale. Every gap and pad in the application is one of these. */

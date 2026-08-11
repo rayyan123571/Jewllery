@@ -54,6 +54,10 @@ const PATHS: Record<string, string> = {
   plus: 'M12 5.2v13.6M5.2 12h13.6',
   trash: 'M4.6 7h14.8M9.4 7V4.8h5.2V7M6.6 7l.9 12.2h9l.9-12.2M10.4 10.6v5.6M13.6 10.6v5.6',
   eye: 'M3 12s3.6-6.2 9-6.2S21 12 21 12s-3.6 6.2-9 6.2S3 12 3 12m9 2.4a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8',
+  // Edit in place. Deliberately NOT the eye: opening a line for editing changes
+  // it, and a glyph that means "look at this" on a control that means "change
+  // this" is how a row gets edited by someone who meant to read it.
+  pencil: 'M4.6 19.4h3.2L18.4 8.8a1.8 1.8 0 0 0 0-2.6l-.6-.6a1.8 1.8 0 0 0-2.6 0L4.6 16.2zM14 7l3 3',
   save: 'M5.4 4.6h11L18.6 7v12.4H5.4zM8.6 4.6v4.8h6.4V4.6M8.6 19.4v-5.6h6.8v5.6',
   print: 'M7.4 9.4V4.6h9.2v4.8M7.4 17.4H5.2v-6.2h13.6v6.2h-2.2M8.2 14.6h7.6v4.8H8.2z',
   pause: 'M9.6 5.2v13.6M14.4 5.2v13.6',

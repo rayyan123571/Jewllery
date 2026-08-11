@@ -5,7 +5,9 @@ import { Icon } from './shell/Icon.js'
 import { MODULES, isModuleBuilt, moduleById, type ModuleId } from './shell/modules.js'
 import { ModulePlaceholder } from './shell/ModulePlaceholder.js'
 import { WholesaleScreen } from './modules/wholesale/WholesaleScreen.js'
+import { RetailScreen } from './modules/retail/RetailScreen.js'
 import { GoldRateScreen } from './modules/rates/GoldRateScreen.js'
+import { SettingsScreen } from './modules/settings/SettingsScreen.js'
 import { MessageRegion, MessagesProvider } from './components/Messages.js'
 import { isoOf, isoToday, toDisplayDate } from './format/dates.js'
 import type { BootstrapDto } from '../shared/ipc.js'
@@ -27,7 +29,6 @@ const EMPTY_BOOTSTRAP: BootstrapDto = {
   rates: [],
   backup: { lastBackupAt: null, lastBackupDisplay: 'Never', daysSince: null, integrityOk: false },
   databaseConnected: false,
-  financialYear: '',
   appVersion: '0.0.0',
 }
 
@@ -110,11 +111,16 @@ function AppShell() {
         minimizeWindow: () => void window.api?.windowControls.minimize(),
         toggleMaximizeWindow: () => void window.api?.windowControls.toggleMaximize(),
         closeWindow: () => void window.api?.windowControls.close(),
+        // Two controls open a dialog owned by a selector rather than by the
+        // screen, so they raise their own event; everything else is handed to
+        // whichever screen is mounted.
         dispatch: (id) =>
           window.dispatchEvent(
             id === 'wholesale.party.add'
               ? new CustomEvent('jewellery:add-party')
-              : new CustomEvent('jewellery:action', { detail: id }),
+              : id === 'retail.customer.add'
+                ? new CustomEvent('jewellery:add-customer')
+                : new CustomEvent('jewellery:action', { detail: id }),
           ),
       }),
     [refreshRates, runBackup],
@@ -170,12 +176,16 @@ function AppShell() {
               {busy ? <div className="banner">{busy}</div> : null}
               {active === 'wholesale' ? (
                 <WholesaleScreen today={today} onPosted={() => void reload()} />
+              ) : active === 'sale-retail' ? (
+                <RetailScreen today={today} onPosted={() => void reload()} />
               ) : active === 'gold-rate' ? (
                 <GoldRateScreen
                   rates={boot.rates}
                   today={today}
                   onSaved={() => void reload()}
                 />
+              ) : active === 'settings' ? (
+                <SettingsScreen />
               ) : (
                 <ModulePlaceholder id={active} />
               )}
@@ -508,9 +518,11 @@ function StatusBar({ boot }: { boot: BootstrapDto }) {
       <span>
         <strong>Company :</strong> {boot.shop?.name ?? 'Not set'}
       </span>
-      <span>
-        <strong>Financial Year :</strong> {boot.financialYear || '—'}
-      </span>
+      {/* No financial year. It was a hard-coded 1 July to 30 June convention
+          that nothing read, in the one strip the operator checks for whether
+          the database is connected and when the last backup ran. Invoice
+          numbers stopped resetting per year in migration 007, which was the
+          last thing that depended on the idea. */}
       <span>
         <strong>Database :</strong> {boot.databaseConnected ? 'Connected' : 'Not connected'}
         <span

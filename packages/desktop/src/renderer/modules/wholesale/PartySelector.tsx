@@ -3,6 +3,7 @@ import { Action } from '../../actions/Action.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import { GhostInput } from '../../components/GhostInput.js'
 import { Modal } from '../../components/Modal.js'
+import { useDebouncedSearch } from '../../components/useDebouncedSearch.js'
 import { Icon } from '../../shell/Icon.js'
 import type { PartyDto } from '../../../shared/ipc.js'
 
@@ -34,7 +35,6 @@ export function PartySelector({
 }) {
   const [query, setQuery] = useState('')
   const [code, setCode] = useState('')
-  const [matches, setMatches] = useState<readonly PartyDto[]>([])
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -47,16 +47,9 @@ export function PartySelector({
   }, [selected])
 
   // Debounced, so a fast typist fires one query rather than one per keystroke.
-  useEffect(() => {
-    if (query.trim().length === 0) {
-      setMatches([])
-      return
-    }
-    const timer = setTimeout(() => {
-      void window.api.searchParties(query).then(setMatches)
-    }, 150)
-    return () => clearTimeout(timer)
-  }, [query])
+  // The debounce itself now lives in useDebouncedSearch, shared with the retail
+  // customer selector — same 150 ms, same empty-term rule, one implementation.
+  const matches = useDebouncedSearch(query, (term) => window.api.searchParties(term))
 
   const pick = useCallback(
     (party: PartyDto) => {

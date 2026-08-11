@@ -1760,6 +1760,34 @@ a {
   text-align: center;
 }
 
+/* The retail bar carries six: the five a slip has, plus NEW SALE. Fixed at six
+   across for the same reason the wholesale bar is fixed at five — a row of
+   slip actions splitting onto two lines is how the wrong one gets hit. */
+.action-bar--six {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+/* The item entry card's own footer: two controls, sized to their labels and
+   pushed right, so they read as belonging to the card above them rather than
+   competing with the six slip actions further down. */
+.action-bar--entry {
+  grid-template-columns: repeat(2, auto);
+  justify-content: end;
+}
+
+/* A field whose value is MISSING, not zero. Used by the gold rate box when no
+   rate has been recorded for that purity and date: pricing gold at nothing is
+   invisible on an invoice and wrong in the ledger, so it is shown as absent. */
+.input--bad,
+.input--bad::placeholder {
+  color: var(--colour-negative);
+}
+
+.input--bad {
+  border-color: var(--colour-negative);
+  background: var(--colour-negative-soft);
+}
+
 /* Inside the entry card. Separated by space, not by a rule. */
 .panel > .action-bar {
   margin-top: 0;
@@ -2393,4 +2421,380 @@ a {
   width: auto;
   height: var(--size-button-height);
   padding: 0 var(--space-24);
+}
+
+/* ── retail sale (M5) ───────────────────────────────────────────────────────
+   No new colour, no new font and no new shape. Everything below is the same
+   card, parchment, ink and brass language the Whole Sale screen already uses,
+   applied to a screen carrying about twice as many fields — which is why the
+   only genuinely new things here are DENSITIES, and every one of them is a
+   token in theme.ts. */
+
+/* The customer type-ahead and its "add" button, sharing one outline exactly as
+   the party selector does. Spans two columns for the same reason: at one column
+   the search box collapses to a few characters, and a type-ahead you cannot
+   read is worse than a plain list. */
+.customer {
+  grid-column: span 2;
+  position: relative;
+}
+
+.customer__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: var(--space-4) 0 0;
+  padding: var(--space-4);
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border-strong);
+  border-radius: var(--size-radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.customer__list--empty {
+  max-height: none;
+  padding: 0;
+}
+
+.customer__list--empty .empty {
+  padding: var(--space-24) var(--space-16);
+}
+
+/* A walk-in is marked, because it is the one thing about a customer that
+   changes what the sale is allowed to do: there is no ledger to carry a
+   balance on, so the sale has to be paid in full. */
+.customer__walkin {
+  margin-left: auto;
+  padding: 0 var(--space-8);
+  border-radius: var(--size-radius-pill);
+  background: var(--colour-parchment);
+  color: var(--colour-gold-deep);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+/* ── item entry ─────────────────────────────────────────────────────────── */
+
+/* Exactly three columns, not auto-fit. The nine fields are three rows of three
+   and they are read as rows: Weight sits beside Purity, Wastage beside Net,
+   Fine beside Wastage. Reflowing to four columns at a wide window would break
+   that reading for no gain. */
+.entry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-12) var(--space-16);
+  padding: var(--space-12) var(--space-24) 0;
+}
+
+.entry-grid--charges {
+  padding-bottom: var(--space-4);
+}
+
+/* A field the application filled in, on a parchment ground so it reads as
+   derived rather than typed. Distinct from .input--derived, which is the
+   disabled dashed treatment for a value copied from elsewhere — these are the
+   results of the calculation, and they are the point of the card. */
+.input--computed {
+  background: var(--colour-parchment);
+  border-color: var(--colour-parchment-line);
+  color: var(--colour-text);
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+}
+
+/* Fine weight. The one figure on this card that the sale is priced from. */
+.input--computed.is-emphasis {
+  color: var(--colour-gold-deep);
+  border-color: var(--colour-gold-metal);
+  font-size: var(--font-size-md);
+}
+
+/* The mode toggle attached to Labour Charges: a fixed amount, or per tola. A
+   segment of the same input group, so the pair still reads as one control. */
+.action--mode {
+  flex: none;
+  padding: 0 var(--space-12);
+  border: none;
+  border-left: 1px solid var(--colour-border);
+  border-radius: 0;
+  background: var(--colour-surface-muted);
+  color: var(--colour-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.action--mode:hover:not(:disabled) {
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
+}
+
+.action--mode.is-active {
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
+}
+
+.field__hint {
+  display: block;
+  margin-top: var(--space-4);
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+}
+
+/* ── the items table ────────────────────────────────────────────────────────
+   Eleven columns in the width the wholesale grid uses for nine. The widths are
+   a budget, and they live in theme.ts; see the note there. */
+.grid--retail {
+  table-layout: fixed;
+  min-width: calc(
+    var(--size-col-index) + var(--size-col-purity) + var(--size-col-weight) * 3 +
+      var(--size-col-fine) + var(--size-col-charge) * 2 + var(--size-col-retail-amount) +
+      var(--size-col-action) + var(--size-col-retail-name-min)
+  );
+}
+
+.col--purity {
+  width: var(--size-col-purity);
+}
+.col--weight {
+  width: var(--size-col-weight);
+}
+.col--fine {
+  width: var(--size-col-fine);
+}
+.col--charge {
+  width: var(--size-col-charge);
+}
+.col--retail-amount {
+  width: var(--size-col-retail-amount);
+}
+
+/* Six rows before it scrolls: the floor under the one region whose length the
+   operator controls. */
+.table-scroll--retail {
+  min-height: calc(var(--size-row-height) * 6);
+}
+
+.grid td.is-fine {
+  color: var(--colour-gold-deep);
+  font-weight: 600;
+}
+
+/* Edit and delete, side by side.
+ *
+ * Two 32px icon buttons and the whitespace between them came to 68px in a 68px
+ * cell, so the second wrapped underneath the first and every row in the table
+ * became 106px tall — six rows of items turned into two. A flex row with no
+ * text node between the buttons, at 30px, fits with room. */
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.row-actions .action--icon {
+  width: 30px;
+  height: 30px;
+}
+
+/* The row being edited in the entry card above.
+ *
+ * A brass edge AND a wash, because this is the highest-risk state on the
+ * screen: the operator is holding a line in their hand, and if they cannot see
+ * which one, they will save the sale and lose the change. The save is refused
+ * while this is showing — the marker is what makes that refusal read as an
+ * explanation rather than as a bug. */
+.grid tbody tr.row--editing td {
+  background: var(--colour-row-focus);
+}
+
+.grid tbody tr.row--editing td:first-child {
+  box-shadow: inset 3px 0 0 var(--colour-gold-metal);
+}
+
+.row-badge {
+  display: inline-block;
+  margin-left: var(--space-4);
+  padding: 0 var(--space-4);
+  border-radius: var(--size-radius-pill);
+  background: var(--colour-gold-tint);
+  color: var(--colour-gold-deep);
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── the calculations rail ──────────────────────────────────────────────────
+   Twelve label/figure pairs in 320px, beside a table that must not shrink. A
+   full-height form control per row wanted more than the whole window has, so a
+   row here is 32px and its control fills it. */
+.calc-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 124px;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--size-calc-row-height);
+}
+
+.calc-line + .calc-line {
+  margin-top: var(--space-4);
+}
+
+.calc-line__label {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calc-line .input,
+.calc-line .select {
+  height: var(--size-calc-row-height);
+  padding: 0 var(--space-8);
+  font-size: var(--font-size-sm);
+}
+
+.calc-line__pair {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+/* The brass hairline between the gold group and the money group. Two kinds of
+   quantity live in this card, and netting them in the eye is exactly the
+   mistake the sign convention exists to prevent (DECISIONS §4). */
+.calc-rule {
+  height: 1px;
+  margin: var(--space-12) 0;
+  background: var(--colour-gold-metal);
+}
+
+.calc-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+  padding-top: var(--space-12);
+  border-top: 2px solid var(--colour-gold-metal);
+}
+
+.calc-total__label {
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--colour-text-muted);
+}
+
+.calc-total__value {
+  font-size: var(--font-size-xxl);
+  font-weight: 700;
+  line-height: var(--line-heading);
+  letter-spacing: -0.01em;
+  color: var(--colour-gold-deep);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+}
+
+.calc-words {
+  margin: var(--space-8) 0 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-body);
+  color: var(--colour-text-muted);
+}
+
+/* The remaining balance. Brass at zero, the negative token when money is still
+   owed — the figure an operator checks before taking payment. */
+.balance-figure {
+  display: block;
+  margin-top: var(--space-4);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: var(--line-heading);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+  color: var(--colour-gold-deep);
+}
+
+.balance-figure.is-outstanding {
+  color: var(--colour-negative);
+}
+
+.slip__words {
+  margin-top: var(--space-8);
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* A control that hands the shop's PC to another program. It says so before it
+   is pressed rather than after. */
+.quick-actions__note {
+  grid-column: 1 / -1;
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+  line-height: var(--line-body);
+}
+
+/* ── the wastage rule card (Settings) ──────────────────────────────────────
+   The three rules that are NOT in force are shown greyed beside the one that
+   is, so the shop can compare all four against a past invoice rather than
+   flipping the setting four times to find out. */
+.rule-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: var(--space-12);
+  font-size: var(--font-size-sm);
+}
+
+.rule-table th {
+  padding: var(--space-8) var(--space-12);
+  background: var(--colour-ink-panel);
+  color: var(--colour-gold-on-dark);
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rule-table th.numeric,
+.rule-table td.numeric {
+  text-align: right;
+}
+
+.rule-table td {
+  padding: var(--space-8) var(--space-12);
+  border-bottom: 1px solid var(--colour-rule);
+  color: var(--colour-disabled-text);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+}
+
+.rule-table tr.is-current td {
+  background: var(--colour-parchment);
+  color: var(--colour-text);
+  font-weight: 600;
+}
+
+.rule-table tr.is-current td:first-child {
+  box-shadow: inset 3px 0 0 var(--colour-gold-metal);
+}
+
+.rule-table tr.is-current td.numeric {
+  color: var(--colour-gold-deep);
 }

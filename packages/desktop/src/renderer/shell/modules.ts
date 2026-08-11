@@ -53,7 +53,7 @@ export interface ModuleDefinition {
 
 export const MODULES: readonly ModuleDefinition[] = [
   { id: 'dashboard', label: 'Dashboard', builtIn: null, inTopBar: true, icon: 'home' },
-  { id: 'sale-retail', label: 'Sale (Retail)', builtIn: 'M5', inTopBar: true, icon: 'cart', group: 'SALES' },
+  { id: 'sale-retail', label: 'Sale (Retail)', builtIn: null, inTopBar: true, icon: 'cart', group: 'SALES' },
   { id: 'wholesale', label: 'Whole Sale', builtIn: 'M2', inTopBar: true, icon: 'wholesale', group: 'SALES' },
   { id: 'purchase', label: 'Purchase', builtIn: 'M6', inTopBar: true, icon: 'purchase', group: 'SALES' },
   { id: 'stock', label: 'Stock Management', builtIn: 'M4', inTopBar: true, icon: 'stock', group: 'INVENTORY' },
