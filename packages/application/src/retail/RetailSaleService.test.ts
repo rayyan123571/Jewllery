@@ -60,7 +60,7 @@ const ITEM: RetailItemInput = {
   purity: 'K22',
   grossWeight: parseTola('4.050'),
   stoneWeight: Weight.ZERO,
-  cutPerTola: Weight.ZERO,
+  purityDeduction: Weight.ZERO,
   wastageBp: 1400,
   labourCharges: Money.fromRupees(5_000),
   labourMode: 'fixed',
@@ -495,11 +495,13 @@ describe('a bill posts atomically, or not at all', () => {
 describe('the worked example from the brief', () => {
   it('computes add-on-net as the defaults specify', () => {
     const line = service.calculate(
-      draft({ items: [{ ...ITEM, cutPerTola: parseTola('0.570'), labourCharges: Money.ZERO }] }),
+      draft({ items: [{ ...ITEM, purityDeduction: parseTola('0.570'), labourCharges: Money.ZERO }] }),
     ).lines[0]
-    expect(formatTola(line?.netWeight ?? Weight.ZERO)).toBe('1.742')
-    expect(formatTola(line?.wastage ?? Weight.ZERO)).toBe('0.244')
-    expect(formatTola(line?.fineWeight ?? Weight.ZERO)).toBe('1.986')
-    expect(line?.lineAmount.format()).toBe('472,492.05')
+    // The deduction is ABSOLUTE: 4.050 less 0.570 is 3.480, not 4.050 less
+    // 0.570-per-tola. See the ruling on RetailLineInput.purityDeduction.
+    expect(formatTola(line?.netWeight ?? Weight.ZERO)).toBe('3.480')
+    expect(formatTola(line?.wastage ?? Weight.ZERO)).toBe('0.487')
+    expect(formatTola(line?.fineWeight ?? Weight.ZERO)).toBe('3.967')
+    expect(line?.lineAmount.format()).toBe('944,086.40')
   })
 })

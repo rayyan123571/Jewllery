@@ -66,9 +66,12 @@ const noopApi = {
     branchName: 'Main Branch',
     user: { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
     rates: [
-      { purity: '22K', ratePerGramPaisa: 895_000, effectiveFrom: '2026-07-15', display: 'Rs. 8,950' },
-      { purity: '21K', ratePerGramPaisa: 855_000, effectiveFrom: '2026-07-15', display: 'Rs. 8,550' },
-      { purity: '18K', ratePerGramPaisa: 730_000, effectiveFrom: '2026-07-15', display: 'Rs. 7,300' },
+      // 24K deliberately unpriced: an unset purity is a real state on a fresh
+      // install and must still appear on the card.
+      { purity: '24K', ratePerTolaPaisa: null, effectiveFrom: null, display: null },
+      { purity: '22K', ratePerTolaPaisa: 895_000, effectiveFrom: '2026-07-15', display: 'Rs. 8,950' },
+      { purity: '21K', ratePerTolaPaisa: 855_000, effectiveFrom: '2026-07-15', display: 'Rs. 8,550' },
+      { purity: '18K', ratePerTolaPaisa: 730_000, effectiveFrom: '2026-07-15', display: 'Rs. 7,300' },
     ],
     backup: {
       lastBackupAt: '2026-07-14T21:15:00.000Z',
@@ -413,6 +416,37 @@ describe('the shell chrome matches the mockup', () => {
     expect(screen.getByText('7,300')).toBeTruthy()
   })
 
+  /**
+   * Every glyph the shell renders must exist.
+   *
+   * An unknown name used to resolve silently to `gear`, which is how the retail
+   * Time field and the WHATSAPP button both ended up advertising "configure".
+   * `Icon` now renders a visible question mark and warns, and this catches the
+   * name before anybody sees either.
+   */
+  it('renders no unknown icon anywhere in the shell', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+    const complaints = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((message) => message.startsWith('Icon:'))
+    expect(complaints).toEqual([])
+    warn.mockRestore()
+  })
+
+  it('lists every purity on the rate card, unset ones included', async () => {
+    render(<App />)
+    await screen.findByText('GOLD RATE')
+    // The fixture prices 22K, 21K and 18K but never 24K. All four appear, and
+    // the unpriced one says so rather than being dropped or shown as zero.
+    for (const purity of ['24K', '22K', '21K', '18K']) {
+      expect(screen.getByText(purity)).toBeTruthy()
+    }
+    expect(screen.getByLabelText('Set 24K rate — none recorded')).toBeTruthy()
+    expect(screen.queryByText('0')).toBeNull()
+  })
+
   it('gives every purity its own editable figure and refresh', async () => {
     render(<App />)
     await screen.findByText('GOLD RATE')
@@ -420,6 +454,8 @@ describe('the shell chrome matches the mockup', () => {
       expect(screen.getByLabelText(`Edit ${purity} rate`)).toBeTruthy()
       expect(screen.getByLabelText(`Refresh ${purity} rate`)).toBeTruthy()
     }
+    // The unset one still gets its own refresh; it is a purity, not a gap.
+    expect(screen.getByLabelText('Refresh 24K rate')).toBeTruthy()
   })
 
   /**

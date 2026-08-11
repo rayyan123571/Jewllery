@@ -36,22 +36,26 @@ export function registerIpcHandlers(
   session: Session,
   onQuit: () => void,
 ): void {
-  const ratesDto = (): RateDto[] => {
-    const current = container.rates.currentRates(container.branchId)
-    return PURITIES.flatMap((purity) => {
-      const rate = current[purity]
-      if (!rate) return []
-      return [
-        {
-          purity: formatPurity(purity),
-          ratePerTolaPaisa: rate.ratePerTola.paisa,
-          effectiveFrom: rate.effectiveFrom,
-          // Preformatted here. The renderer displays it, never computes with it.
-          display: `Rs. ${rate.ratePerTola.formatWhole()}`,
-        },
-      ]
+  /**
+   * Every purity the shop deals in, whether or not it has a rate today.
+   *
+   * A purity with no rate used to be dropped from this list entirely, so the
+   * rate card silently showed three of four and nothing said 18K existed. It
+   * now crosses with `ratePerTolaPaisa: null` and is rendered as UNSET — never
+   * as zero, which would be a price (DECISIONS §7), and never as absent, which
+   * would hide a purity the operator can sell in.
+   */
+  const ratesDto = (): RateDto[] =>
+    PURITIES.map((purity) => {
+      const rate = container.rates.currentRates(container.branchId)[purity]
+      return {
+        purity: formatPurity(purity),
+        ratePerTolaPaisa: rate?.ratePerTola.paisa ?? null,
+        effectiveFrom: rate?.effectiveFrom ?? null,
+        // Preformatted here. The renderer displays it, never computes with it.
+        display: rate ? `Rs. ${rate.ratePerTola.formatWhole()}` : null,
+      }
     })
-  }
 
   const backupDto = (): BackupStatusDto => {
     const last = container.backups.lastGoodBackup()

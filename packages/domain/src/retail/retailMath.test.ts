@@ -16,7 +16,7 @@ const RATE = Money.fromRupees(237_970)
 
 /**
  * The worked example from the brief, to the digit:
- *   gross 4.050 tola · stone 0.000 · cut 0.570 · wastage 14.00% · 237,970/tola
+ *   gross 4.050 tola · stone 0.000 · deduction 0.570 · polish 14.00% · 237,970/tola
  *
  * The four wastage rules produce four different invoices from these same
  * inputs, which is exactly why the rule is a setting and not a constant.
@@ -25,7 +25,7 @@ const EXAMPLE: RetailLineInput = {
   itemName: 'Bangles',
   grossWeight: parseTola('4.050'),
   stoneWeight: Weight.ZERO,
-  cutPerTola: parseTola('0.570'),
+  purityDeduction: parseTola('0.570'),
   wastageBp: 1400,
   labourCharges: Money.ZERO,
   labourMode: 'fixed',
@@ -47,14 +47,14 @@ describe('the four wastage rules produce four different invoices', () => {
     expect(line.lineAmount.paisa).toBeGreaterThan(0)
   })
 
-  it('shares one net weight across all four — the cut is rule-independent', () => {
-    // gross 4.050 tola, cut 0.570/tola => 0.570 x 4.050 = 2.3085 tola removed.
+  it('shares one net weight across all four — the deduction is rule-independent', () => {
+    // gross 4.050 less an ABSOLUTE 0.570 deduction is 3.480, whatever the rule.
     const nets = Object.values(RULES).map(
       (rule) => computeRetailLine(EXAMPLE, rule).netWeight.milligrams,
     )
     expect(new Set(nets).size).toBe(1)
     expect(formatTola(computeRetailLine(EXAMPLE, RULES['add on net'] as WastageRule).netWeight))
-      .toBe('1.742')
+      .toBe('3.480')
   })
 
   it('takes a bigger wastage on gross than on net', () => {
@@ -79,25 +79,71 @@ describe('the four wastage rules produce four different invoices', () => {
   })
 })
 
-describe('the cut is per tola of gross, not a flat deduction', () => {
-  it('scales with the weight of the piece', () => {
-    const rule = RULES['add on net'] as WastageRule
-    const single = computeRetailLine(
-      { ...EXAMPLE, grossWeight: parseTola('1.000') },
-      rule,
-    )
-    const double = computeRetailLine(
-      { ...EXAMPLE, grossWeight: parseTola('2.000') },
-      rule,
-    )
-    // Twice the gross, twice the cut deduction.
-    const singleCut = single.grossWeight.minus(single.netWeight).milligrams
-    const doubleCut = double.grossWeight.minus(double.netWeight).milligrams
-    expect(doubleCut).toBe(singleCut * 2)
+/**
+ * The purity deduction is ABSOLUTE.
+ *
+ * The shopkeeper reads it off the piece and types it; he does not enter a rate
+ * for the software to multiply. That is a ruling about how this shop works, and
+ * these are the tests that hold it — the same field used to be quoted per tola
+ * of gross and the difference is invisible on a one-tola item, which is exactly
+ * why it needs asserting on items that are not one tola.
+ */
+describe('the purity deduction is absolute, not a rate', () => {
+  const rule = RULES['add on net'] as WastageRule
+
+  it('removes the figure typed, whatever the piece weighs', () => {
+    const deduction = parseTola('0.090')
+    for (const gross of ['1.000', '2.000', '4.050', '11.500']) {
+      const line = computeRetailLine(
+        { ...EXAMPLE, grossWeight: parseTola(gross), purityDeduction: deduction },
+        rule,
+      )
+      expect(line.grossWeight.minus(line.netWeight).milligrams).toBe(deduction.milligrams)
+    }
   })
 
-  it('subtracts stone weight before the cut is applied to gross', () => {
-    const rule = RULES['add on net'] as WastageRule
+  it('does NOT scale with the weight of the piece', () => {
+    const single = computeRetailLine({ ...EXAMPLE, grossWeight: parseTola('1.000') }, rule)
+    const double = computeRetailLine({ ...EXAMPLE, grossWeight: parseTola('2.000') }, rule)
+    const singleCut = single.grossWeight.minus(single.netWeight).milligrams
+    const doubleCut = double.grossWeight.minus(double.netWeight).milligrams
+    // The old per-tola field would have made this 2x. It must be 1x.
+    expect(doubleCut).toBe(singleCut)
+  })
+
+  it('takes the mockup’s own figures: 2.000 less 0.090 is 1.910', () => {
+    const line = computeRetailLine(
+      {
+        ...EXAMPLE,
+        grossWeight: parseTola('2.000'),
+        stoneWeight: Weight.ZERO,
+        purityDeduction: parseTola('0.090'),
+      },
+      rule,
+    )
+    expect(formatTola(line.netWeight)).toBe('1.910')
+  })
+
+  it('totals across items the way the summary adds them up', () => {
+    // Two 2.000-tola items at 0.090 each deduct 0.180 BETWEEN them — which is
+    // the figure the reference mockup's summary showed, and the reason this
+    // ruling was made.
+    const item = {
+      ...EXAMPLE,
+      grossWeight: parseTola('2.000'),
+      stoneWeight: Weight.ZERO,
+      purityDeduction: parseTola('0.090'),
+    }
+    const lines = [computeRetailLine(item, rule), computeRetailLine(item, rule)]
+    const deducted = lines.reduce(
+      (sum, line) => sum + line.grossWeight.minus(line.stoneWeight).minus(line.netWeight).milligrams,
+      0,
+    )
+    expect(formatTola(Weight.fromMilligrams(deducted))).toBe('0.180')
+    expect(formatTola(Weight.sum(lines.map((l) => l.netWeight)))).toBe('3.820')
+  })
+
+  it('subtracts stone weight as well as the deduction', () => {
     const withStone = computeRetailLine(
       { ...EXAMPLE, stoneWeight: parseTola('0.500') },
       rule,
@@ -125,10 +171,14 @@ describe('labour', () => {
       { ...EXAMPLE, labourCharges: Money.fromRupees(1_000), labourMode: 'per_tola' },
       rule,
     )
-    // Fine is under two tola here, so per-tola labour must be under Rs 2,000
-    // and nowhere near the 4.050 tola of gross.
-    expect(line.labourAmount.paisa).toBeLessThan(Money.fromRupees(2_000).paisa)
-    expect(line.labourAmount.paisa).toBeGreaterThan(0)
+    // Gross is 4.050 tola and fine is 3.967, so Rs 1,000/tola is Rs 3,967.25 —
+    // NOT the Rs 4,050.07 it would be if labour were charged on gross. The two
+    // figures are close, which is exactly why this asserts the number rather
+    // than a band it happens to fall in.
+    expect(line.labourAmount.paisa).toBe(396_725)
+    expect(line.labourAmount.paisa).not.toBe(
+      Math.round((100_000 * line.grossWeight.milligrams) / 11_664),
+    )
   })
 
   it('adds labour and stone charges on top of the metal', () => {

@@ -104,11 +104,18 @@ export function RateCard({
                   <Action
                     id="rate.edit"
                     variant="plain"
-                    className="rate-card__value"
-                    ariaLabel={`Edit ${rate.purity} rate`}
-                    onActivate={() => begin(rate.purity, rate.display)}
+                    className={`rate-card__value${rate.display ? '' : ' is-unset'}`}
+                    ariaLabel={
+                      rate.display
+                        ? `Edit ${rate.purity} rate`
+                        : `Set ${rate.purity} rate — none recorded`
+                    }
+                    onActivate={() => begin(rate.purity, rate.display ?? '')}
                   >
-                    {rate.display.replace(/^Rs\.?\s*/, '')}
+                    {/* Every purity the shop deals in is listed, whether or not
+                        it has a rate. An unset one shows as unset and invites
+                        the rate — never as a zero, which is a price. */}
+                    {rate.display ? rate.display.replace(/^Rs\.?\s*/, '') : 'Not set'}
                   </Action>
                 )}
                 {/* Its own refresh, per purity — the mockup shows four, and one

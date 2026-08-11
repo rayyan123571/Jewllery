@@ -62,8 +62,12 @@ export interface RetailSaleItem {
   readonly purity: Purity
   readonly grossWeight: Weight
   readonly stoneWeight: Weight
-  /** Deduction quoted per tola of gross, in milligrams. */
-  readonly cutPerTola: Weight
+  /**
+   * The purity deduction taken off this item, in milligrams. ABSOLUTE — see
+   * RetailLineInput.purityDeduction. Stored per row so an invoice reprints
+   * exactly whatever the field means later.
+   */
+  readonly purityDeduction: Weight
   readonly netWeight: Weight
   /** Basis points: 14.00% is 1400. Never a float — see DECISIONS §2. */
   readonly wastageBp: number

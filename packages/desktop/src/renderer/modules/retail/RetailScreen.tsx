@@ -82,7 +82,7 @@ const EMPTY_ENTRY: RetailItemDto = {
   purity: 'K22',
   grossWeight: EMPTY_WEIGHT,
   stoneWeight: EMPTY_WEIGHT,
-  cutPerTola: EMPTY_WEIGHT,
+  purityDeduction: EMPTY_WEIGHT,
   wastagePercent: '',
   labourCharges: '',
   labourMode: 'fixed',
@@ -265,7 +265,7 @@ export function RetailScreen({
   const active: RetailCalculationDto | null = calc?.active ?? null
   const lines = active?.lines ?? []
 
-  const setEntryWeight = (key: 'grossWeight' | 'stoneWeight' | 'cutPerTola', text: string) =>
+  const setEntryWeight = (key: 'grossWeight' | 'stoneWeight' | 'purityDeduction', text: string) =>
     // exactMg is cleared: the operator has typed, so the text is authoritative
     // again. It is only ever set by the unit toggle.
     setEntry((current) => ({ ...current, [key]: { text, exactMg: null } }))
@@ -360,7 +360,7 @@ export function RetailScreen({
                 ...row,
                 grossWeight: fieldFrom(line.gross, next),
                 stoneWeight: fieldFrom(line.stone, next),
-                cutPerTola: fieldFrom(line.cutPerTola, next),
+                purityDeduction: fieldFrom(line.purityDeduction, next),
               }
             }),
             customerGold: fieldFrom(computed.calculation.customerGold, next),
@@ -372,7 +372,7 @@ export function RetailScreen({
           ...row,
           grossWeight: fieldFrom(current.active.entry?.gross, next),
           stoneWeight: fieldFrom(current.active.entry?.stone, next),
-          cutPerTola: fieldFrom(current.active.entry?.cutPerTola, next),
+          purityDeduction: fieldFrom(current.active.entry?.purityDeduction, next),
         }))
       }
       setForm((f) => ({ ...f, weightUnit: next }))
@@ -1196,7 +1196,7 @@ function DetailsCard({
   unit: WeightUnit
   itemNameRef: React.RefObject<HTMLInputElement | null>
   onName: (value: string) => void
-  onWeight: (key: 'grossWeight' | 'stoneWeight' | 'cutPerTola', text: string) => void
+  onWeight: (key: 'grossWeight' | 'stoneWeight' | 'purityDeduction', text: string) => void
   onPercent: (value: string) => void
   onLabour: (value: string) => void
   onLabourMode: () => void
@@ -1269,11 +1269,23 @@ function DetailsCard({
           />
         </NumberedField>
 
-        <NumberedField n={4} label="Purity Deduction">
+        <NumberedField
+          n={4}
+          label={`Purity Deduction (${unitWord})`}
+          /* The implied share of gross, computed on main. A deduction is typed
+             as an absolute figure, so nothing on the screen would otherwise say
+             whether 0.900 on a 2.000-tola piece was a slip of the finger — this
+             turns it into "45.00%", which is obviously wrong at a glance. */
+          hint={
+            computed && computed.gross.mg > 0
+              ? `${show(computed.purityDeduction, unit)} of ${show(computed.gross, unit)} = ${computed.purityDeductionPercent}%`
+              : undefined
+          }
+        >
           <input
             className="input input--numeric"
-            value={entry.cutPerTola.text}
-            onChange={(e) => onWeight('cutPerTola', e.target.value)}
+            value={entry.purityDeduction.text}
+            onChange={(e) => onWeight('purityDeduction', e.target.value)}
             placeholder="0.000"
             inputMode="decimal"
             aria-label="Purity deduction"
@@ -1339,18 +1351,21 @@ function DetailsCard({
 function NumberedField({
   n,
   label,
+  hint,
   children,
 }: {
   n?: number
   label: string
+  hint?: string | undefined
   children: React.ReactNode
 }) {
   return (
-    <label className="numbered-field">
+    <label className={`numbered-field${hint ? ' has-hint' : ''}`}>
       <span className="numbered-field__label">
         {n === undefined ? label : `${n}. ${label}`}
       </span>
       {children}
+      {hint ? <span className="numbered-field__hint">{hint}</span> : null}
     </label>
   )
 }

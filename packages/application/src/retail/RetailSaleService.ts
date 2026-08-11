@@ -66,7 +66,8 @@ export interface RetailItemInput {
   readonly purity: Purity
   readonly grossWeight: Weight
   readonly stoneWeight: Weight
-  readonly cutPerTola: Weight
+  /** ABSOLUTE for this item — see RetailLineInput.purityDeduction. */
+  readonly purityDeduction: Weight
   readonly wastageBp: number
   readonly labourCharges: Money
   readonly labourMode: LabourMode
@@ -210,7 +211,7 @@ export class RetailSaleService {
           itemName: item.itemName,
           grossWeight: item.grossWeight,
           stoneWeight: item.stoneWeight,
-          cutPerTola: item.cutPerTola,
+          purityDeduction: item.purityDeduction,
           wastageBp: item.wastageBp,
           labourCharges: item.labourCharges,
           labourMode: item.labourMode,
@@ -360,7 +361,7 @@ export class RetailSaleService {
           purity: input.items[index]?.purity ?? input.ratePurity,
           grossWeight: line.grossWeight,
           stoneWeight: line.stoneWeight,
-          cutPerTola: line.cutPerTola,
+          purityDeduction: line.purityDeduction,
           netWeight: line.netWeight,
           wastageBp: line.wastageBp,
           wastage: line.wastage,
@@ -427,7 +428,7 @@ export class RetailSaleService {
       if (!item.grossWeight.isPositive) {
         throw new ValidationError(`"${label}" has no weight. Enter one or remove the line.`)
       }
-      if (item.stoneWeight.isNegative || item.cutPerTola.isNegative) {
+      if (item.stoneWeight.isNegative || item.purityDeduction.isNegative) {
         throw new ValidationError(`"${label}" has a negative stone weight or cut.`)
       }
 
@@ -701,7 +702,7 @@ export class RetailSaleService {
         purity: slip.items[index]?.purity ?? input.ratePurity,
         grossWeight: line.grossWeight,
         stoneWeight: line.stoneWeight,
-        cutPerTola: line.cutPerTola,
+        purityDeduction: line.purityDeduction,
         netWeight: line.netWeight,
         wastageBp: line.wastageBp,
         wastage: line.wastage,

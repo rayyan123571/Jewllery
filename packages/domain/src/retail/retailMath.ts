@@ -43,8 +43,20 @@ export interface RetailLineInput {
   readonly itemName: string
   readonly grossWeight: Weight
   readonly stoneWeight: Weight
-  /** Deduction quoted per tola of gross weight. */
-  readonly cutPerTola: Weight
+  /**
+   * The purity deduction for THIS item, as an absolute weight.
+   *
+   * Absolute, not a per-tola rate, and the difference is the shop's own
+   * working: the shopkeeper reads the deduction off the piece and types it. He
+   * does not enter a rate for the software to multiply — so on a 2.000-tola
+   * item, 0.090 removes exactly 0.090, and two such items deduct 0.180 between
+   * them.
+   *
+   * This is deliberately NOT `cutPerTola`, which is quoted per tola of gross
+   * and is what the wholesale side means by a cut. Two quantities that are
+   * subtracted differently must not share a name.
+   */
+  readonly purityDeduction: Weight
   readonly wastageBp: number
   /** Fixed amount, or an amount per tola of fine weight — see labourMode. */
   readonly labourCharges: Money
@@ -67,19 +79,19 @@ export interface RetailLineComputed extends RetailLineInput {
 /**
  * One line, from typed weights to a rounded amount.
  *
- * The cut is quoted per tola of GROSS, so the deduction scales with the piece:
- * a 0.570 cut on 4.050 tola removes 0.570 × 4.050 tola-worth of metal, not a
- * flat 0.570.
+ *   net = gross − stone − purityDeduction
+ *
+ * All three are absolute weights, so the subtraction is the one the operator
+ * does in their head. See `purityDeduction` for why this is not a rate.
  */
 export function computeRetailLine(
   input: RetailLineInput,
   rule: WastageRule,
 ): RetailLineComputed {
-  const cutDeduction = Weight.fromMilligrams(
-    scaleDiv(input.cutPerTola.milligrams, input.grossWeight.milligrams, MG_PER_TOLA),
-  )
-
-  const netWeight = input.grossWeight.minus(input.stoneWeight).minus(cutDeduction)
+  // Subtracted as typed. No scaling: see the note on `purityDeduction`.
+  const netWeight = input.grossWeight
+    .minus(input.stoneWeight)
+    .minus(input.purityDeduction)
 
   const base = rule.basis === 'gross' ? input.grossWeight : netWeight
   const wastage = Weight.fromMilligrams(

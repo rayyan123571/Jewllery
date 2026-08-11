@@ -293,7 +293,7 @@ export interface NewRetailSaleItem {
   readonly purity: Purity
   readonly grossWeight: Weight
   readonly stoneWeight: Weight
-  readonly cutPerTola: Weight
+  readonly purityDeduction: Weight
   readonly netWeight: Weight
   readonly wastageBp: number
   readonly wastage: Weight

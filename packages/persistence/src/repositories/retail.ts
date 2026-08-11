@@ -92,6 +92,7 @@ interface ItemRow {
   gross_weight_mg: number
   stone_weight_mg: number
   cut_per_tola_mg: number
+  purity_deduction_mg: number
   net_weight_mg: number
   wastage_bp: number
   wastage_mg: number
@@ -179,7 +180,7 @@ function toItem(row: ItemRow): RetailSaleItem {
     purity: parsePurity(row.purity),
     grossWeight: Weight.fromMilligrams(row.gross_weight_mg),
     stoneWeight: Weight.fromMilligrams(row.stone_weight_mg),
-    cutPerTola: Weight.fromMilligrams(row.cut_per_tola_mg),
+    purityDeduction: Weight.fromMilligrams(row.purity_deduction_mg),
     netWeight: Weight.fromMilligrams(row.net_weight_mg),
     wastageBp: row.wastage_bp,
     wastage: Weight.fromMilligrams(row.wastage_mg),
@@ -345,7 +346,7 @@ const INSERT_SALE = `
 const INSERT_ITEM = `
   INSERT INTO retail_sale_items
     (id, sale_id, line_no, item_name, purity, gross_weight_mg,
-     stone_weight_mg, cut_per_tola_mg, net_weight_mg, wastage_bp,
+     stone_weight_mg, purity_deduction_mg, net_weight_mg, wastage_bp,
      wastage_mg, fine_weight_mg, labour_charges_paisa, labour_mode,
      stone_charges_paisa, line_amount_paisa)
   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
@@ -406,7 +407,7 @@ function itemParams(item: NewRetailSaleItem, saleId: string): unknown[] {
     item.purity,
     item.grossWeight.milligrams,
     item.stoneWeight.milligrams,
-    item.cutPerTola.milligrams,
+    item.purityDeduction.milligrams,
     item.netWeight.milligrams,
     item.wastageBp,
     item.wastage.milligrams,

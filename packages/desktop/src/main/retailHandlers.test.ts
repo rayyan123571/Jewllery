@@ -139,7 +139,7 @@ function item(overrides: Partial<RetailItemDto> = {}): RetailItemDto {
     purity: 'K22',
     grossWeight: weightField('47.240'),
     stoneWeight: weightField(''),
-    cutPerTola: weightField(''),
+    purityDeduction: weightField(''),
     wastagePercent: '14.00',
     labourCharges: '4500',
     labourMode: 'fixed',

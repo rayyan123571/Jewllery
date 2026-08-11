@@ -49,6 +49,24 @@ const PATHS: Record<string, string> = {
   exit: 'M13.6 4.6H18a1.6 1.6 0 0 1 1.6 1.6v11.6A1.6 1.6 0 0 1 18 19.4h-4.4M10 8.4 6.4 12l3.6 3.6M6.4 12h8.4',
 
   // ── controls ────────────────────────────────────────────────────────────
+  /**
+   * A clock face with hands at ten past ten.
+   *
+   * Added because the retail Time field was falling back to `gear` — an unknown
+   * icon name silently resolved to the settings cog, so the field advertised
+   * "configure" on a control that takes a time. A missing glyph should look
+   * missing, not look like something else; `Icon` now warns instead.
+   */
+  clock: 'M12 20.4a8.4 8.4 0 1 0 0-16.8 8.4 8.4 0 0 0 0 16.8M12 7.4V12l3.2 1.9',
+  /**
+   * WhatsApp, drawn on this grid rather than pasted from the brand kit.
+   *
+   * A speech bubble with a handset, at 1.5 stroke and round caps like every
+   * other glyph here. The official mark is a filled shape and would have been
+   * the only filled icon in the application.
+   */
+  whatsapp:
+    'M4.4 19.6 5.7 15.6a7.6 7.6 0 1 1 2.9 2.8zM9.2 9.1c-.2.5-.2 1.2.2 1.9a7 7 0 0 0 3.4 3.3c.8.4 1.5.3 1.9 0l.6-.6-1.7-1.2-.7.6a5 5 0 0 1-1.9-1.9l.6-.7-1.2-1.7z',
   refresh: 'M19.4 12a7.4 7.4 0 1 1-2.4-5.5M19.6 4.6v4h-4',
   search: 'M11 17.4a6.4 6.4 0 1 0 0-12.8 6.4 6.4 0 0 0 0 12.8M15.8 15.8 19.8 19.8',
   plus: 'M12 5.2v13.6M5.2 12h13.6',
@@ -68,10 +86,31 @@ const PATHS: Record<string, string> = {
   chevron: 'M7.4 10.2 12 14.8l4.6-4.6',
   'chevron-left': 'M13.8 7.4 9.2 12l4.6 4.6',
   'chevron-right': 'M10.2 7.4 14.8 12l-4.6 4.6',
+
+  /** Rendered when a name is not known. Deliberately unmistakable. */
+  'icon-missing':
+    'M12 20.4a8.4 8.4 0 1 0 0-16.8 8.4 8.4 0 0 0 0 16.8M9.6 9.6a2.4 2.4 0 1 1 3.2 2.3v1.5M12 16.6v.01',
 }
 
+/** Every glyph this component knows. Exported so a test can assert against it. */
+export const ICON_NAMES = Object.keys(PATHS)
+
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
-  const path = PATHS[name] ?? PATHS['gear']
+  /*
+   * A missing glyph used to resolve silently to `gear`, and it cost two real
+   * defects: the retail Time field and the WHATSAPP button both advertised
+   * "configure" because `clock` and `whatsapp` did not exist. A fallback that
+   * looks like a deliberate choice is worse than no fallback.
+   *
+   * It still renders something rather than throwing — a broken icon must not
+   * take a counter's screen down mid-sale — but it renders a QUESTION MARK, so
+   * the fault is visible on the screen, and it says so in the console.
+   */
+  const known = PATHS[name]
+  if (!known && typeof console !== 'undefined') {
+    console.warn(`Icon: no glyph named "${name}". Add it to PATHS in shell/Icon.tsx.`)
+  }
+  const path = known ?? PATHS['icon-missing']
   return (
     <svg
       width={size}

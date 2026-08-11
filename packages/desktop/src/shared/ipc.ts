@@ -37,10 +37,17 @@ export type IpcChannel = (typeof IPC)[keyof typeof IPC]
  */
 export interface RateDto {
   readonly purity: string
-  readonly ratePerTolaPaisa: number
-  readonly effectiveFrom: string
+  /**
+   * Null when no rate has ever been recorded for this purity.
+   *
+   * Null, not zero. Zero is a price — it says gold is free — and it is invisible
+   * on an invoice. Every purity the shop deals in appears in this list so the
+   * rate card can show all four; the ones without a rate show as unset.
+   */
+  readonly ratePerTolaPaisa: number | null
+  readonly effectiveFrom: string | null
   /** Preformatted for display, so the renderer never does money arithmetic. */
-  readonly display: string
+  readonly display: string | null
 }
 
 /**
@@ -481,7 +488,13 @@ export interface RetailItemDto {
   readonly purity: string
   readonly grossWeight: WeightFieldDto
   readonly stoneWeight: WeightFieldDto
-  readonly cutPerTola: WeightFieldDto
+  /**
+   * The purity deduction for this item, as an ABSOLUTE weight.
+   *
+   * Typed as read off the piece: 0.090 on a 2.000-tola item removes 0.090, not
+   * 0.090 per tola. See RetailLineInput.purityDeduction and migration 010.
+   */
+  readonly purityDeduction: WeightFieldDto
   /** Per cent to two places, e.g. "14.00". Converted to basis points on main. */
   readonly wastagePercent: string
   readonly labourCharges: string
@@ -534,7 +547,9 @@ export interface RetailLineDto {
   readonly purityCode: string
   readonly gross: WeightDto
   readonly stone: WeightDto
-  readonly cutPerTola: WeightDto
+  readonly purityDeduction: WeightDto
+  /** The deduction as a share of gross, e.g. "4.50" — computed on main. */
+  readonly purityDeductionPercent: string
   readonly net: WeightDto
   readonly wastagePercent: string
   readonly wastage: WeightDto

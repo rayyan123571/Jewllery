@@ -530,6 +530,13 @@ a {
   border-radius: var(--size-radius);
 }
 
+/* An unset purity reads as an invitation, not as a figure. */
+.rate-card__value.is-unset {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--colour-text-muted);
+}
+
 .rate-card__value:hover:not(:disabled) {
   color: var(--colour-gold-deep);
 }
@@ -3486,6 +3493,30 @@ a {
 
 .numbered-field .input.numeric {
   text-align: right;
+}
+
+/* The implied-percentage line under the purity deduction. It spans both
+   columns of the field so it reads as a note on the figure above it. */
+.numbered-field.has-hint {
+  grid-template-areas: 'label control' 'hint hint';
+  row-gap: 0;
+}
+
+.numbered-field.has-hint > .numbered-field__label {
+  grid-area: label;
+}
+
+.numbered-field.has-hint > .input,
+.numbered-field.has-hint > .input-group {
+  grid-area: control;
+}
+
+.numbered-field__hint {
+  grid-area: hint;
+  font-size: var(--font-size-xxs);
+  color: var(--colour-text-muted);
+  text-align: right;
+  line-height: 1.2;
 }
 
 /* Stacked to the right of DETAILS, as the mockup draws: the unit toggle, SAVE

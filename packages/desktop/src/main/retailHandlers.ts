@@ -13,6 +13,7 @@ import {
   isSaleStatus,
   parsePurity,
   parseTola,
+  scaleDiv,
   toIsoDate,
   totalsOfRetail,
   type IsoDate,
@@ -198,7 +199,7 @@ function parseItem(dto: RetailItemDto, unit: WeightUnit, ratePurity: Purity): Re
     purity: purityOf(dto.purity, ratePurity),
     grossWeight: weightOf(dto.grossWeight, unit),
     stoneWeight: weightOf(dto.stoneWeight, unit),
-    cutPerTola: weightOf(dto.cutPerTola, unit),
+    purityDeduction: weightOf(dto.purityDeduction, unit),
     wastageBp: basisPointsOf(dto.wastagePercent),
     labourCharges: moneyOf(dto.labourCharges),
     labourMode: isLabourMode(dto.labourMode) ? dto.labourMode : 'fixed',
@@ -274,6 +275,21 @@ function weightDto(weight: Weight): WeightDto {
   return { mg: weight.milligrams, gram: formatGram(weight), tola: formatTola(weight) }
 }
 
+/**
+ * A deduction as a share of the gross it came off, to two places.
+ *
+ * Basis points via the exact integer path, then placed by hand — the same
+ * treatment every other percentage in this system gets. Zero gross yields
+ * "0.00" rather than a division by zero.
+ */
+function percentOfGross(deduction: Weight, gross: Weight): string {
+  if (gross.milligrams === 0) return '0.00'
+  const bp = scaleDiv(deduction.milligrams, 10_000, gross.milligrams)
+  const sign = bp < 0 ? '-' : ''
+  const magnitude = Math.abs(bp)
+  return `${sign}${Math.trunc(magnitude / 100)}.${(magnitude % 100).toString().padStart(2, '0')}`
+}
+
 function moneyDto(amount: Money): MoneyDto {
   return { paisa: amount.paisa, rupees: amount.format(), whole: amount.formatWhole() }
 }
@@ -285,7 +301,13 @@ function lineDto(computed: RetailLineComputed, purity: Purity): RetailLineDto {
     purityCode: purity,
     gross: weightDto(computed.grossWeight),
     stone: weightDto(computed.stoneWeight),
-    cutPerTola: weightDto(computed.cutPerTola),
+    purityDeduction: weightDto(computed.purityDeduction),
+    // The implied share of gross, so a wrong entry is visible on the screen
+    // rather than only in the total. Computed HERE, like every other figure.
+    purityDeductionPercent: percentOfGross(
+      computed.purityDeduction,
+      computed.grossWeight,
+    ),
     net: weightDto(computed.netWeight),
     wastagePercent: (computed.wastageBp / 100).toFixed(2),
     wastage: weightDto(computed.wastage),
@@ -307,7 +329,8 @@ function emptyLineDto(dto: RetailItemDto, error: string | null): RetailLineDto {
     purityCode: dto.purity,
     gross: zeroWeight,
     stone: zeroWeight,
-    cutPerTola: zeroWeight,
+    purityDeduction: zeroWeight,
+    purityDeductionPercent: '0.00',
     net: zeroWeight,
     wastagePercent: '0.00',
     wastage: zeroWeight,
@@ -613,7 +636,7 @@ function receiptLine(sale: RetailSaleWithItems) {
         itemName: item.itemName,
         grossWeight: item.grossWeight,
         stoneWeight: item.stoneWeight,
-        cutPerTola: item.cutPerTola,
+        purityDeduction: item.purityDeduction,
         wastageBp: item.wastageBp,
         labourCharges: item.labourCharges,
         labourMode: item.labourMode,
@@ -664,7 +687,7 @@ function saleDto(found: RetailSaleWithItems): RetailSaleDto {
           itemName: item.itemName,
           grossWeight: item.grossWeight,
           stoneWeight: item.stoneWeight,
-          cutPerTola: item.cutPerTola,
+          purityDeduction: item.purityDeduction,
           wastageBp: item.wastageBp,
           labourCharges: item.labourCharges,
           labourMode: item.labourMode,
@@ -859,7 +882,7 @@ export function retailWastageRule(
             itemName: 'Sample',
             grossWeight: parseTola(sample.grossTola),
             stoneWeight: parseTola(sample.stoneTola),
-            cutPerTola: parseTola(sample.cutTola),
+            purityDeduction: parseTola(sample.cutTola),
             wastageBp: basisPointsOf(sample.wastagePercent),
             labourCharges: Money.ZERO,
             labourMode: 'fixed' as const,
@@ -1180,7 +1203,7 @@ function roundingSampleTotal(deps: RetailHandlerDeps, step: number): Money {
       itemName: 'Sample',
       grossWeight: parseTola(sample.grossTola),
       stoneWeight: parseTola(sample.stoneTola),
-      cutPerTola: parseTola(sample.cutTola),
+      purityDeduction: parseTola(sample.cutTola),
       wastageBp: basisPointsOf(sample.wastagePercent),
       labourCharges: Money.ZERO,
       labourMode: 'fixed',
