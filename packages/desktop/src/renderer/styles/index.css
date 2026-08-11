@@ -3003,10 +3003,27 @@ a {
    except the item columns (sideways) and the summary rail (down), which is the
    no-page-scroll contract in Section 5. */
 
+/*
+   The one screen with a hard height budget, so it takes the page padding down
+   with it. Measured at 1550x830 with two items: at 24px of content padding and
+   an 8px row gap the screen wanted 799px of a 755px box — 44px over, which
+   `overflow: hidden` would have swallowed by clipping the action bar rather
+   than by showing a scrollbar. That is the worst of both.
+
+   The 44px comes from padding and gaps only. No font drops below 14px and no
+   control below 36px; see Section 5.
+*/
+.content:has(.retail) {
+  padding: var(--space-12);
+}
+
 .retail {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  gap: var(--space-8);
+  gap: var(--space-4);
+  /* head · slip tabs · notices · body · actions. The notices row is always
+     present even when empty, so the body and the action bar cannot slide onto
+     each other's tracks. */
   flex: 1;
   min-height: 0;
 }
@@ -3048,14 +3065,14 @@ a {
 
 /* The DateField renders its own wrapper; it is given the same two-column shape
    so the three rows line up on one axis. */
-.retail__head .field.date-field {
+.bill-fields > .field {
   display: grid;
   grid-template-columns: 78px 168px;
   align-items: center;
   gap: var(--space-8);
 }
 
-.retail__head .field.date-field > .field__label {
+.bill-fields > .field > .field__label {
   font-size: var(--font-size-sm);
   color: var(--colour-text-muted);
   white-space: nowrap;
@@ -3184,6 +3201,17 @@ a {
 
 /* ── the working area ─────────────────────────────────────────────────────── */
 
+/* A REAL grid row, not `display: contents` — the whole point is that it
+   occupies a track whether or not it has anything in it. Empty, it is 0 high. */
+.retail__notices {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* Deliberately NOT `:empty { display: none }` — a display:none grid item is not
+   a grid item, so hiding it collapsed the track list by one and dropped the
+   action bar onto a zero-height row. An empty grid row is already 0 high. */
+
 .retail__body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--size-rail-width);
@@ -3199,10 +3227,18 @@ a {
   min-width: 0;
 }
 
-/* The rail is the ONE region allowed to scroll downwards, and only if it must. */
+/*
+   The ONE region allowed to scroll downwards, and only if it must.
+
+   `max-content`, not `auto`: an auto track in a too-short container compresses
+   its item, and `.panel` clips — so BILL CALCULATIONS lost its last two rows
+   silently instead of the rail growing a scrollbar. max-content makes the
+   tracks take the height they need and lets the CONTAINER overflow, which is
+   the behaviour that was asked for.
+*/
 .retail__rail {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: max-content max-content;
   gap: var(--space-8);
   align-content: start;
   min-height: 0;
@@ -3253,6 +3289,10 @@ a {
   border-right: 1px solid var(--colour-rule);
 }
 
+.item-labels__spacer {
+  /* Empty on purpose: it holds the height of the columns' numbered header. */
+}
+
 .item-labels__cell {
   display: flex;
   align-items: center;
@@ -3287,10 +3327,14 @@ a {
   color: var(--colour-text);
 }
 
+.items-card__head {
+  justify-content: space-between;
+}
+
 .item-labels__add {
-  height: var(--size-input-group-button);
-  margin-top: var(--space-8);
-  font-size: var(--font-size-xs);
+  height: 20px;
+  padding: 0 var(--space-8);
+  font-size: var(--font-size-xxs);
 }
 
 /* The ONE region on this screen that scrolls sideways. Four columns fit; a
@@ -3332,11 +3376,12 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 var(--space-8);
+  padding: 0 var(--space-4);
   border: 1px solid var(--colour-border);
   border-radius: var(--size-radius);
   background: var(--colour-surface);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-base);
+  line-height: 1;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -3412,8 +3457,8 @@ a {
 .details-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4) var(--space-12);
-  padding: var(--space-8);
+  gap: 2px var(--space-12);
+  padding: var(--space-4) var(--space-8);
 }
 
 .numbered-field {
@@ -3459,25 +3504,30 @@ a {
 /* ── PAYMENT ──────────────────────────────────────────────────────────────── */
 
 .payment-block {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-12);
   border: 1px solid var(--colour-border);
   border-radius: var(--size-radius);
   background: var(--colour-surface);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-8) var(--space-12);
+  padding: var(--space-4) var(--space-12);
 }
 
+/* Beside the fields, not above them: a heading on its own line cost 22px of a
+   budget that had none to give. */
 .payment-block__title {
   font-size: var(--font-size-xxs);
   font-weight: 700;
   letter-spacing: var(--tracking-label);
   color: var(--colour-gold-deep);
-  margin-bottom: var(--space-4);
 }
 
 .payment-block__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: var(--space-8) var(--space-16);
+  gap: var(--space-16);
   align-items: center;
 }
 
@@ -3691,4 +3741,72 @@ a {
 .is-whatsapp {
   color: var(--colour-positive);
   border-color: var(--colour-positive);
+}
+
+/*
+   ── The short-window budget ────────────────────────────────────────────────
+
+   At 1366x768 the content box is 716px and the screen's fixed regions want 776.
+   The 60px comes entirely from padding, gaps and chrome heights — every control
+   stays at or above the 36px floor and every figure stays at 14px.
+
+   Measured, not guessed: head 118, tabs 44, details 222, payment 46, actions 52,
+   gaps 32 and an items card that needs 262 sum to 776 against 716.
+*/
+@media (max-height: 810px) {
+  /* Ten label rows are a fixed cost, so this is where the largest single
+     saving is: 11 rows (a column header plus ten cells) at 2px each. */
+  .retail {
+    --size-item-cell-height: 18px;
+    gap: 2px;
+  }
+
+  .items-card__head,
+  .details-card__head {
+    height: 20px;
+  }
+
+  .details-grid {
+    gap: 0 var(--space-12);
+    padding: var(--space-4) var(--space-8);
+  }
+
+  .slip-tab {
+    height: 40px;
+  }
+
+  .payment-block {
+    padding: 2px var(--space-12);
+  }
+
+  .retail__actions .action {
+    height: 44px;
+  }
+}
+
+/*
+   The window buttons, made visible again.
+
+   `.action--window` sets its colour near the top of this file, in the frameless
+   chrome block — and the generic `.action` rules come later at equal
+   specificity, so `color: var(--colour-text)` won. The result was three
+   near-black glyphs on a near-black strip: present, sized, clickable and
+   completely invisible. Measured at rgb(22,19,12) on rgb(21,18,14).
+
+   Scoped to the strip, so it outranks the generic rule by specificity rather
+   than by source order — which is what stops it regressing the next time
+   something is appended to this file.
+*/
+.drag-strip .action--window {
+  color: var(--colour-chrome-text-muted);
+}
+
+.drag-strip .action--window:hover:not(:disabled) {
+  background: var(--colour-chrome-hover);
+  color: var(--colour-text-inverse);
+}
+
+.drag-strip .window-controls__close:hover:not(:disabled) {
+  background: var(--colour-chrome-close);
+  color: var(--colour-text-inverse);
 }

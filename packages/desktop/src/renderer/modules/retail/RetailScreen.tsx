@@ -387,7 +387,7 @@ export function RetailScreen({
     setSlips((current) => {
       const nextNo = Math.max(0, ...current.map((slip) => slip.slipNo)) + 1
       setActiveSlipNo(nextNo)
-      return [...current, emptySlip(nextNo, `Slip ${nextNo}`)]
+      return [...current, emptySlip(nextNo, '')]
     })
     setEntry(EMPTY_ENTRY)
     setEditingIndex(null)
@@ -764,7 +764,7 @@ export function RetailScreen({
             >
               <span className="slip-tab__name">Slip {slip.slipNo}</span>
               <span className="slip-tab__label">
-                {slip.slipNo === 1 ? `(${slip.slipLabel})` : slip.slipLabel}
+                {slip.slipLabel ? `(${slip.slipLabel})` : 'Untitled'}
               </span>
               {/* The slip's own total, beneath its label, as the mockup shows. */}
               <span className="slip-tab__total">Rs {computed?.total ?? '0.00'}</span>
@@ -792,7 +792,8 @@ export function RetailScreen({
         ) : null}
       </div>
 
-      {rateMissing ? (
+      <div className="retail__notices">
+        {rateMissing ? (
         <div className="banner">
           No {form.ratePurity.slice(1)}K gold rate is recorded on or before this date. Set
           it in the GOLD RATE card above before saving — every amount here depends on it.
@@ -820,6 +821,7 @@ export function RetailScreen({
           </div>
         </div>
       ) : null}
+      </div>
 
       {/* ── the working area ──────────────────────────────────────────────── */}
       <div className="retail__body">
@@ -1019,11 +1021,22 @@ function ItemColumns({
   return (
     <div className="items-card">
       <div className="items-card__head">
-        ITEMS IN SLIP {slipNo} ({slipLabel.toUpperCase()})
+        <span>
+          ITEMS IN SLIP {slipNo} ({slipLabel.toUpperCase()})
+        </span>
+        {/* In the label stack this cost 44px of a region whose ten label rows
+            are a fixed cost — and it is not one of the ten. */}
+        <Action id="retail.item.add" variant="outline" className="item-labels__add">
+          <Icon name="plus" size={14} />
+          <span>{editing ? 'UPDATE ITEM' : 'ADD ITEM'}</span>
+        </Action>
       </div>
 
       <div className="items-card__body">
         <div className="item-labels">
+          {/* Aligns the stack with the columns, which begin with a numbered
+              header. Without it every label sits against the wrong figure. */}
+          <div className="item-labels__spacer" aria-hidden="true" />
           {ROW_LABELS.map((label) =>
             label === 'Rate (PKR)' ? (
               <div className="item-labels__cell" key={label}>
@@ -1052,10 +1065,6 @@ function ItemColumns({
               </div>
             ),
           )}
-          <Action id="retail.item.add" variant="outline" className="item-labels__add">
-            <Icon name="plus" size={16} />
-            <span>{editing ? 'UPDATE ITEM' : 'ADD ITEM'}</span>
-          </Action>
         </div>
 
         {/* The ONE region on this screen allowed to scroll sideways. */}

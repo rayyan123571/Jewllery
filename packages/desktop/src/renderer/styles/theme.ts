@@ -273,10 +273,16 @@ export const theme = {
     itemLabelWidth: '150px',
     /** One item column. Four fit the card; the fifth scrolls it sideways. */
     itemColumnWidth: '158px',
-    /** A cell in the item matrix. Ten rows have to fit beside DETAILS. */
-    itemCellHeight: '23px',
+    /**
+     * A cell in the item matrix.
+     *
+     * Ten of these are a FIXED cost — the label stack always has ten rows,
+     * whatever the sale — so this is the tightest number that still seats 14px
+     * text comfortably. It is measured against the 830px budget, not chosen.
+     */
+    itemCellHeight: '20px',
     /** A slip tab. Two lines of label plus the slip's own total. */
-    slipTabHeight: '54px',
+    slipTabHeight: '44px',
     /** The right-hand summary column. Narrower than the old 320px rail. */
     railWidth: '300px',
     /** A row in SUMMARY or BILL CALCULATIONS. */
