@@ -295,11 +295,7 @@ export function SettingsScreen() {
  * not need a prop threaded down from the shell for two strings.
  */
 function SystemStatus() {
-  const [status, setStatus] = useState<{
-    connected: boolean
-    backup: string
-    version: string
-  } | null>(null)
+  const [status, setStatus] = useState<{ connected: boolean; backup: string } | null>(null)
 
   useEffect(() => {
     void window.api
@@ -308,7 +304,6 @@ function SystemStatus() {
         setStatus({
           connected: boot.databaseConnected,
           backup: boot.backup.lastBackupDisplay,
-          version: boot.appVersion,
         }),
       )
       .catch(() => setStatus(null))
@@ -329,10 +324,6 @@ function SystemStatus() {
       <div className="summary-line">
         <span>Last backup</span>
         <span className="summary-line__value">{status?.backup ?? '—'}</span>
-      </div>
-      <div className="summary-line">
-        <span>Version</span>
-        <span className="summary-line__value">{status?.version ?? '—'}</span>
       </div>
     </>
   )

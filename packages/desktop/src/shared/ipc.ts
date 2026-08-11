@@ -67,12 +67,6 @@ export interface UserDto {
   readonly mustChangePassword: boolean
 }
 
-export interface ShopDto {
-  readonly name: string
-  readonly ownerName: string
-  readonly address: string
-}
-
 export interface BackupStatusDto {
   readonly lastBackupAt: string | null
   readonly lastBackupDisplay: string
@@ -80,9 +74,21 @@ export interface BackupStatusDto {
   readonly integrityOk: boolean
 }
 
-/** Everything the shell needs to draw itself on startup. */
+/**
+ * Everything the shell needs to draw itself on startup.
+ *
+ * Two fields left with the status bar. `shop` was here to print the company
+ * name in that strip — it is on every printed slip already, and the receipt
+ * builder reads the profile straight from the repository on the main side, so
+ * nothing needed it across this boundary. `appVersion` was there for the same
+ * reason and had no second reader. A DTO field that exists to fill one label is
+ * a field that outlives the label.
+ *
+ * `databaseConnected` and `backup` stay: they moved to the Settings card and the
+ * account popover rather than being deleted, because they are the two facts an
+ * operator actually goes looking for.
+ */
 export interface BootstrapDto {
-  readonly shop: ShopDto | null
   readonly branchId: string
   readonly branchName: string
   /**
@@ -99,7 +105,6 @@ export interface BootstrapDto {
   readonly databaseConnected: boolean
   /** The stored manual choice, or null for "follow the window width". */
   readonly sidebarCollapsed: boolean | null
-  readonly appVersion: string
 }
 
 export interface LoginRequest {

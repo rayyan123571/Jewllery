@@ -47,6 +47,7 @@ function emptyCalculation() {
     otherCharges: money(),
     discount: money(),
     customerGoldValue: money(),
+    invoiceTotal: money(),
     grandTotal: money(),
     amountPaid: money(),
     balance: money(),
@@ -61,7 +62,6 @@ function emptyCalculation() {
 
 const noopApi = {
   bootstrap: vi.fn(async () => ({
-    shop: { name: 'AL-HARAM GOLD JEWELLERS', ownerName: 'Haji Abdul Rehman', address: 'Lahore' },
     branchId: 'branch-1',
     branchName: 'Main Branch',
     user: { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
@@ -80,8 +80,9 @@ const noopApi = {
       { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
     ],
     databaseConnected: true,
-    sidebarCollapsed: false,
-    appVersion: '1.0.0.0',
+    // Widened deliberately: `null` is the real "no manual choice" state, and one
+    // test below overrides this to it to check the module default.
+    sidebarCollapsed: false as boolean | null,
   })),
   login: vi.fn(),
   logout: vi.fn(),
@@ -237,13 +238,13 @@ function allButtons(): HTMLButtonElement[] {
 describe('no dead buttons in the rendered shell', () => {
   it('renders a substantial number of controls to check', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
     expect(allButtons().length).toBeGreaterThan(40)
   })
 
   it('gives every button a data-action attribute', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
 
     const orphans = allButtons()
       .filter((button) => !button.getAttribute('data-action'))
@@ -255,7 +256,7 @@ describe('no dead buttons in the rendered shell', () => {
 
   it('resolves every data-action to a registry entry', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
     const registry = createActionRegistry(stubContext())
 
     const dangling = allButtons()
@@ -267,7 +268,7 @@ describe('no dead buttons in the rendered shell', () => {
 
   it('disables exactly the controls the registry says are not built', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
     const registry = createActionRegistry(stubContext())
 
     const mismatched = allButtons()
@@ -283,7 +284,7 @@ describe('no dead buttons in the rendered shell', () => {
 
   it('gives every disabled control hover text naming its module', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
 
     const missing = allButtons()
       .filter((button) => button.disabled)
@@ -298,7 +299,7 @@ describe('no dead buttons in the rendered shell', () => {
 
   it('leaves no enabled button without a click handler', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
     const registry = createActionRegistry(stubContext())
 
     const inert = allButtons()
@@ -312,7 +313,7 @@ describe('no dead buttons in the rendered shell', () => {
   it('does nothing when a disabled control is clicked', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
 
     // Import from Stock sits on the Whole Sale screen but belongs to Stock
     // Management, which is not built — so it is still off even though every
@@ -322,12 +323,12 @@ describe('no dead buttons in the rendered shell', () => {
     ) as HTMLButtonElement
     expect(disabled.disabled).toBe(true)
     await user.click(disabled).catch(() => undefined)
-    expect(screen.getByText('WHOLE SALE MODULE')).toBeTruthy()
+    expect(screen.getByText('ENTRY DETAILS')).toBeTruthy()
   })
 
   it('has Whole Sale controls live now that the module is built', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
 
     for (const id of ['wholesale.save', 'wholesale.save-and-print', 'wholesale.hold']) {
       const button = document.querySelector(`[data-action="${id}"]`) as HTMLButtonElement
@@ -361,7 +362,7 @@ describe('every module screen obeys the no-dead-buttons rule', () => {
 describe('the shell shows the whole shape of the app', () => {
   it('renders every module in the sidebar, built or not', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
     const sidebar = screen.getByLabelText('Main menu')
 
     for (const module of MODULES) {
@@ -371,7 +372,7 @@ describe('the shell shows the whole shape of the app', () => {
 
   it('keeps navigation live even for unbuilt modules', async () => {
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
     const sidebar = screen.getByLabelText('Main menu')
 
     for (const module of MODULES) {
@@ -383,7 +384,7 @@ describe('the shell shows the whole shape of the app', () => {
   it('navigates to an unbuilt module and explains what is coming', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
 
     const sidebar = screen.getByLabelText('Main menu')
     await user.click(within(sidebar).getByTitle('Reports'))
@@ -397,30 +398,115 @@ describe('the shell shows the whole shape of the app', () => {
 })
 
 describe('the shell chrome matches the mockup', () => {
-  it('shows the gold rate panel with a rate per purity', async () => {
+  /**
+   * The rate is a CARD on the screens that price metal now, not a panel in a
+   * bar across the whole application — so it is asserted where it actually
+   * lives. The figures are the same three; the card drops the "Rs." prefix
+   * because it is a column of per-tola figures under a GOLD RATE header and the
+   * currency is stated once, by the header, rather than four times.
+   */
+  it('shows the gold rate card with a rate per purity', async () => {
     render(<App />)
-    await screen.findByText('Rs. 8,950')
-    expect(screen.getByText('Rs. 8,550')).toBeTruthy()
-    expect(screen.getByText('Rs. 7,300')).toBeTruthy()
+    await screen.findByText('GOLD RATE')
+    expect(screen.getByText('8,950')).toBeTruthy()
+    expect(screen.getByText('8,550')).toBeTruthy()
+    expect(screen.getByText('7,300')).toBeTruthy()
   })
 
-  it('shows the status bar fields', async () => {
+  it('gives every purity its own editable figure and refresh', async () => {
     render(<App />)
-    await screen.findByText('AL-HARAM GOLD JEWELLERS')
-    expect(screen.getByText('Connected')).toBeTruthy()
-    expect(screen.getByText('14-07-2026 09:15 PM')).toBeTruthy()
-    expect(screen.getByText('1.0.0.0')).toBeTruthy()
+    await screen.findByText('GOLD RATE')
+    for (const purity of ['22K', '21K', '18K']) {
+      expect(screen.getByLabelText(`Edit ${purity} rate`)).toBeTruthy()
+      expect(screen.getByLabelText(`Refresh ${purity} rate`)).toBeTruthy()
+    }
   })
 
-  it('no longer shows a financial year', async () => {
-    // It was a hard-coded 1 July to 30 June convention that nothing read, in
-    // the one strip the operator checks for whether the database is connected
-    // and when the last backup ran. Invoice numbers stopped resetting per year
-    // in migration 007, which was the last thing that depended on the idea.
+  /**
+   * The status bar is gone, and with it the four strings this used to assert.
+   * Two of them mattered and moved rather than being dropped: database
+   * connected and last backup are now in the account popover and on the
+   * Settings card. This checks they are still reachable — the fact survived
+   * even though the strip did not.
+   */
+  it('keeps database and backup reachable from the account popover', async () => {
+    const user = userEvent.setup()
     render(<App />)
-    await screen.findByText('AL-HARAM GOLD JEWELLERS')
+    await screen.findByText('ENTRY DETAILS')
+    await user.click(screen.getByLabelText('Account — Admin'))
+    const menu = await screen.findByRole('menu', { name: 'Account' })
+    expect(within(menu).getByText('Connected')).toBeTruthy()
+    expect(within(menu).getByText('14-07-2026 09:15 PM')).toBeTruthy()
+  })
+
+  it('no longer shows a status bar', async () => {
+    render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+    expect(document.querySelector('.status-bar')).toBeNull()
+    // The company name and the version went with it: one is on every printed
+    // slip already and the other had no second reader.
+    expect(screen.queryByText('1.0.0.0')).toBeNull()
     expect(screen.queryByText(/Financial Year/)).toBeNull()
     expect(screen.queryByText(/To 30-06-/)).toBeNull()
+  })
+
+  /**
+   * The drag region. With the top bar gone this strip is the ONLY thing that
+   * can move the window, so its absence is not a cosmetic regression — it is a
+   * window the operator cannot move. Double-click-to-maximise comes from the
+   * same property, which is why the assertion is on the property and not on a
+   * class name.
+   */
+  it('keeps exactly one drag region, and the window buttons opt out of it', async () => {
+    render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+
+    const strip = document.querySelector('.drag-strip') as HTMLElement
+    expect(strip).toBeTruthy()
+
+    for (const id of ['window.minimize', 'window.maximize', 'window.close']) {
+      const button = strip.querySelector(`[data-action="${id}"]`) as HTMLButtonElement
+      expect(button).toBeTruthy()
+      expect(button.disabled).toBe(false)
+    }
+  })
+
+  /**
+   * The module default, which is the WEAKEST of the three inputs.
+   *
+   * So the setup has to remove the other two or it proves nothing: a wide window
+   * (or the width rule collapses everything) and no stored choice (or the
+   * operator's answer wins, which is the behaviour that matters most and is
+   * checked below).
+   */
+  it('opens the retail module with the sidebar collapsed to its icon rail', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 1550, configurable: true })
+    noopApi.bootstrap.mockResolvedValueOnce({
+      ...(await noopApi.bootstrap()),
+      sidebarCollapsed: null,
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+    // Wholesale opens expanded at this width…
+    expect(document.querySelector('.app')?.classList.contains('is-collapsed')).toBe(false)
+
+    await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Sale (Retail)'))
+    // …and retail opens on the rail, with navigation still there.
+    expect(document.querySelector('.app')?.classList.contains('is-collapsed')).toBe(true)
+    expect(within(screen.getByLabelText('Main menu')).getByTitle('Whole Sale')).toBeTruthy()
+  })
+
+  it('lets a stored sidebar choice outrank the retail default', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 1550, configurable: true })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+
+    // The fixture stores `sidebarCollapsed: false` — an operator who has said
+    // "keep it open" keeps it open, on retail as much as anywhere else.
+    await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Sale (Retail)'))
+    expect(document.querySelector('.app')?.classList.contains('is-collapsed')).toBe(false)
   })
 
   it('never renders a signed weight or amount anywhere on the screen', async () => {
@@ -429,7 +515,7 @@ describe('the shell chrome matches the mockup', () => {
     // the whole rendered document rather than one panel, so a new screen that
     // formats a balance itself is caught too.
     render(<App />)
-    await screen.findByText('WHOLE SALE MODULE')
+    await screen.findByText('ENTRY DETAILS')
 
     const text = document.body.textContent ?? ''
     // e.g. "-0.500 g" or "-1,200.00" — a minus immediately before a figure.

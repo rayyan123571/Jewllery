@@ -90,10 +90,6 @@ export function GoldRateScreen({
 
   return (
     <div className="screen">
-      <div className="screen__head">
-        <h1 className="module-title">GOLD RATE</h1>
-      </div>
-
       <div className="workspace__split screen__body">
         <div className="entry-column">
           <div className="panel">

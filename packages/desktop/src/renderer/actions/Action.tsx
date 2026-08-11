@@ -38,7 +38,6 @@ export function useActions(): ActionRegistry {
 
 export type ActionVariant =
   | 'sidebar'
-  | 'topbar'
   | 'tab'
   | 'primary'
   | 'secondary'

@@ -184,7 +184,7 @@ app.whenReady().then(
         ? null
         : container.defaultUser()
 
-    registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
+    registerIpcHandlers(container, session, () => app.quit())
     registerWholesaleHandlers(container, session)
     registerRetailHandlers(container, session)
     registerWindowControls()

@@ -34,7 +34,6 @@ export type { Session } from './session.js'
 export function registerIpcHandlers(
   container: Container,
   session: Session,
-  appVersion: string,
   onQuit: () => void,
 ): void {
   const ratesDto = (): RateDto[] => {
@@ -74,12 +73,8 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IPC.bootstrap, (): BootstrapDto => {
-    const shop = container.repositories.shop.get()
     const branch = container.repositories.branches.findById(container.branchId)
     return {
-      shop: shop
-        ? { name: shop.name, ownerName: shop.ownerName, address: shop.address }
-        : null,
       branchId: container.branchId,
       branchName: branch?.name ?? 'Main Branch',
       user: session.user ? userDto(session.user) : null,
@@ -88,7 +83,6 @@ export function registerIpcHandlers(
       backup: backupDto(),
       databaseConnected: true,
       sidebarCollapsed: container.settings.sidebarCollapsed(),
-      appVersion,
     }
   })
 

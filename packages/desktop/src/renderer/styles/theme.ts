@@ -224,9 +224,20 @@ export const theme = {
     sidebarWidthCollapsed: '64px',
     /** Below this the sidebar collapses itself. See App.tsx. */
     sidebarAutoCollapseBelow: '1280px',
-    titleBarHeight: '32px',
-    topBarHeight: '76px',
-    statusBarHeight: '32px',
+    /**
+     * The drag strip along the top edge of the content area.
+     *
+     * All that is left of the chrome that used to run across the top. The top
+     * bar was 76px and the status bar 32px; together with a 30px module title
+     * and its margins they cost every screen a little over 200px of height to
+     * carry a rate two screens use, a clock, and four facts nobody reads twice.
+     *
+     * 28px is the floor for a frameless window, not a preference: below about
+     * 24px there is nowhere left to grab that is not also a control, and this
+     * strip is the ONLY drag region in the application. The three window
+     * buttons float at its right and opt out with no-drag.
+     */
+    dragStripHeight: '28px',
     /** The 80mm invoice preview column on the right. */
     previewWidth: '320px',
 
@@ -254,10 +265,14 @@ export const theme = {
     radiusLarge: '14px',
     radiusPill: '999px',
 
-    /** The gold rule under a module title. Short and deliberate, not full width. */
-    titleRuleWidth: '72px',
     /** The sidebar crest. */
     crest: '44px',
+
+    // ── the gold rate card ──────────────────────────────────────────────────
+    /** The ink header strip on the rate card. Matches a panel title's weight. */
+    rateCardHead: '24px',
+    /** One purity cell. Four of them, and "237,970" at 15px sets the floor. */
+    rateCardCell: '96px',
 
     /** Scrollbars. 8px, no stepper buttons — see the ::-webkit rules. */
     scrollbar: '8px',

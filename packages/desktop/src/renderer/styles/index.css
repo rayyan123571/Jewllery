@@ -43,14 +43,12 @@ body {
 .numeric,
 .input--numeric,
 .summary-line__value,
-.rate-panel__value,
-.rate-panel__input,
+.rate-card__value,
+.rate-card__input,
 .stat__value,
 .stat-cell__value,
 .calendar__day,
 .party__code,
-.clock__time,
-.clock__date,
 .slip {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
@@ -120,38 +118,66 @@ a {
 /* ── app frame ──────────────────────────────────────────────────────────── */
 
 .app {
-  /* No title-bar row: the window is frameless and the top bar carries the
-     window controls, so there is ONE bar across the top instead of three. */
+  /* Two columns and nothing else. There is no title-bar row, no top-bar row and
+     no status-bar row: the window is frameless, and what is left of the chrome
+     is a 28px drag strip INSIDE the workspace. `auto` for the sidebar so it
+     owns its own width and the collapse animates on `width` rather than on a
+     grid template.
+
+     Roughly 200px of vertical chrome came off the application here: a 76px top
+     bar, a 32px status bar, a 30px module title and the margins around both. */
   display: grid;
-  grid-template-rows: 1fr var(--size-status-bar-height);
+  grid-template-columns: auto 1fr;
   height: 100%;
+  min-height: 0;
 }
 
 /* ── frameless window chrome ────────────────────────────────────────────── */
 
-/* The top bar doubles as the drag region. Everything interactive inside it
-   opts out, or the buttons would move the window instead of being clicked. */
-.top-bar {
+/*
+   The one drag region in the application.
+
+   -webkit-app-region only applies to an element that occupies space, which is
+   why this is a real 28px row rather than a decorative overlay. Windows gives a
+   drag region the same behaviour as a native title bar, so double-click still
+   maximises and restores — that is not something we implement, it is something
+   we must not take away by making the strip too small to hit.
+
+   Anything interactive inside it opts back out, or it would move the window
+   instead of being clicked.
+*/
+.drag-strip {
   -webkit-app-region: drag;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  height: var(--size-drag-strip-height);
+  background: var(--colour-chrome-ink);
+  border-bottom: 1px solid var(--colour-gold-metal);
+  min-width: 0;
+  z-index: 2;
 }
 
-.top-bar button,
-.top-bar input,
-.top-bar select,
-.top-bar a {
+.drag-strip button,
+.drag-strip input,
+.drag-strip select,
+.drag-strip a {
   -webkit-app-region: no-drag;
 }
 
+/* The compact three-button cluster, hard against the top-right corner. */
 .window-controls {
   display: flex;
   align-self: stretch;
-  margin-left: var(--space-4);
+  flex: none;
 }
 
 .action--window {
-  /* Deliberately large. These are the smallest targets on screen and the most
-     annoying to miss, and a shop counter is not a precision pointing device. */
-  width: 48px;
+  /* 44px wide against a 28px strip. The strip took the height these used to
+     have, so the width carries the target: 44x28 is still a comfortably large
+     hit area, and a shop counter is not a precision pointing device. */
+  width: 44px;
+  height: var(--size-drag-strip-height);
   align-self: stretch;
   justify-content: center;
   border-radius: 0;
@@ -176,15 +202,6 @@ a {
 .window-controls__close:active:not(:disabled) {
   background: var(--colour-chrome-close);
   color: var(--colour-text-inverse);
-}
-
-/* `auto`, not a fixed track: the sidebar owns its own width so the transition
-   runs on an ordinary `width` rather than on a grid template, which is both
-   better supported and cheaper to animate. */
-.app__body {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  min-height: 0;
 }
 
 /* ── sidebar ────────────────────────────────────────────────────────────── */
@@ -275,6 +292,26 @@ a {
    this application will open in (the minimum is 700 tall). Measured. */
 .app.is-collapsed .sidebar__items {
   overflow: visible;
+}
+
+/* On the rail the chip is its avatar disc and nothing else — the name and role
+   are hidden by CSS, not removed from the DOM, so a screen reader and the shell
+   test both still reach them. Same rule as the wordmark above. */
+.app.is-collapsed .user-chip__text,
+.app.is-collapsed .user-chip svg {
+  display: none;
+}
+
+.app.is-collapsed .user-chip {
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+/* The rail is 64px; a 232px menu anchored inside it would sit half off-screen.
+   It opens to the RIGHT of the rail instead, still upwards. */
+.app.is-collapsed .popover--up {
+  left: calc(100% + var(--space-4));
+  bottom: 0;
 }
 
 .sidebar__toggle {
@@ -412,193 +449,148 @@ a {
   background: var(--colour-chrome-scroll-thumb);
 }
 
-/* ── top bar ────────────────────────────────────────────────────────────── */
+/* ── the workspace ──────────────────────────────────────────────────────── */
 
 .workspace {
   display: grid;
-  grid-template-rows: var(--size-top-bar-height) 1fr;
+  /* Three explicit rows: the drag strip, whatever the message region is showing
+     (nothing, most of the time), and the content taking everything left. The
+     rows were implicit before and the content ended up in an auto track, which
+     is how a screen could push the page taller than the window. */
+  grid-template-rows: var(--size-drag-strip-height) auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
 
-.top-bar {
-  display: flex;
-  align-items: stretch;
-  /* The rate panel starts here, 24px off the sidebar edge, rather than floating
-     in the middle of 450px of dead space. */
-  padding-left: var(--space-24);
-  /* One step lighter than the sidebar and the status bar, so the three dark
-     surfaces read as layers rather than as one shape with holes in it. */
-  background: var(--colour-chrome-ink-raised);
-  color: var(--colour-chrome-text);
-  border-bottom: 1px solid var(--colour-gold-metal);
-  box-shadow: var(--shadow-sm);
-  min-width: 0;
-  z-index: 1;
-}
-
-.top-bar__drag {
-  flex: 1;
-  min-width: 0;
-}
-
-.top-bar__aside {
-  display: flex;
-  align-items: stretch;
+/* ── the gold rate card ─────────────────────────────────────────────────────
+   The rate used to be a panel in the top bar. It is now a card inside the
+   screens that price metal by it — an ink header over four purity cells, in the
+   existing visual language: dark ink head, brass label, white body, no new
+   colour and no new pattern. */
+.rate-card {
   flex: none;
-}
-
-/* The rate panel is a card sitting in the bar, not a strip of the bar. It is
-   the one figure on this screen that changes the value of everything below it. */
-.rate-panel {
-  align-self: center;
-  display: flex;
-  align-items: stretch;
-  flex: none;
-  padding: var(--space-8) var(--space-12);
-  /* No box. On ink the dividers between purities carry the structure, and a
-     border round the whole panel just draws a rectangle in the dark. */
-  border: 1px solid transparent;
+  align-self: start;
+  border: 1px solid var(--colour-border);
   border-radius: var(--size-radius);
-  background: transparent;
+  background: var(--colour-surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
-.rate-panel__title {
+.rate-card__head {
+  height: var(--size-rate-card-head);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--colour-ink-panel);
+  color: var(--colour-gold-on-dark-bright);
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+}
+
+.rate-card__row {
+  display: flex;
+}
+
+.rate-card__cell {
+  flex: 1 1 var(--size-rate-card-cell);
+  min-width: var(--size-rate-card-cell);
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: var(--space-4) var(--space-8);
+}
+
+/* A hairline between purities, not a box around each — four boxes in a row read
+   as four controls, and this is one reading of four figures. */
+.rate-card__cell + .rate-card__cell {
+  border-left: 1px solid var(--colour-rule);
+}
+
+.rate-card__purity {
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  color: var(--colour-gold-deep);
+}
+
+.rate-card__figure {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding-right: var(--space-12);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--colour-chrome-text-muted);
-  /* Wide enough for "GOLD RATE (PER TOLA)" on two lines. At 92px it broke into
-     four and the panel grew a chin. */
-  max-width: 132px;
-  line-height: var(--line-heading);
 }
 
-.rate-panel__title .action--icon {
-  width: 24px;
-  height: 24px;
-}
-
-/* Label above, figure below. 12px of padding a side puts 24px between two
-   purities with the divider sitting in the middle of it. */
-.rate-panel__row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 0 var(--space-12);
-  line-height: var(--line-heading);
-}
-
-.rate-panel__row + .rate-panel__row {
-  border-left: 1px solid var(--colour-chrome-line);
-}
-
-.rate-panel__row > span:first-child {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--colour-chrome-text-muted);
-}
-
-.rate-panel__value {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: var(--colour-gold-on-dark);
+.rate-card__value {
   padding: 0;
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--colour-text);
+  background: transparent;
   border-radius: var(--size-radius);
-  line-height: var(--line-heading);
-  letter-spacing: -0.01em;
 }
 
-.rate-panel__value:hover:not(:disabled) {
-  background: var(--colour-chrome-hover);
+.rate-card__value:hover:not(:disabled) {
+  color: var(--colour-gold-deep);
 }
 
-.rate-panel__input {
-  width: 110px;
-  height: 28px;
-  padding: 0 var(--space-8);
+.rate-card__input {
+  width: 76px;
+  height: var(--size-input-group-button);
+  padding: 0 var(--space-4);
+  text-align: center;
+  font-size: var(--font-size-md);
+  font-weight: 700;
   border: 1px solid var(--colour-gold-metal);
   border-radius: var(--size-radius);
-  background: var(--colour-chrome-ink);
-  font-size: var(--font-size-lg);
+  background: var(--colour-surface);
+  color: var(--colour-text);
+}
+
+.rate-card__refresh {
+  width: 20px;
+  height: 20px;
+  color: var(--colour-text-muted);
+}
+
+.rate-card__empty {
+  padding: var(--space-8) var(--space-16);
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+}
+
+.rate-card--bad {
+  border-color: var(--colour-negative);
+}
+
+.rate-card__error {
+  padding: 0 var(--space-8) var(--space-4);
+  text-align: center;
+  font-size: var(--font-size-xxs);
   font-weight: 700;
-  text-align: right;
-  color: var(--colour-gold-on-dark-bright);
-}
-
-.rate-panel__empty {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  /* The light-side red is unreadable on ink. */
-  color: var(--colour-chrome-danger);
-}
-
-.rate-panel--bad {
-  border-color: var(--colour-chrome-danger);
-  background: var(--colour-chrome-danger-fill);
-}
-
-.rate-panel__error {
-  align-self: center;
-  margin-left: var(--space-12);
-  padding-left: var(--space-12);
-  border-left: 1px solid var(--colour-chrome-danger);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--colour-chrome-danger);
-  cursor: help;
-}
-
-/* Secondary by design. The clock is orientation, not information — it must
-   recede rather than compete with the rate. */
-.clock {
-  align-self: center;
-  padding: 0 var(--space-16);
-  text-align: right;
-  min-width: 156px;
-  color: var(--colour-chrome-text-muted);
-  line-height: var(--line-heading);
-}
-
-.clock__day {
-  font-size: var(--font-size-xs);
-}
-
-.clock__date {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--colour-chrome-text);
-}
-
-.clock__time {
-  font-size: var(--font-size-xs);
+  color: var(--colour-negative);
 }
 
 /* ── the user chip ──────────────────────────────────────────────────────── */
 
+/* It lives in the sidebar foot now that the top bar is gone, so it is
+   full-width there rather than a pill floating in a bar. */
 .user-chip-wrap {
   position: relative;
   display: flex;
   align-items: center;
+  margin-bottom: var(--space-4);
 }
 
 .user-chip {
-  align-self: center;
+  width: 100%;
   gap: var(--space-12);
-  padding: var(--space-4) var(--space-12);
-  margin: 0 var(--space-8);
+  padding: var(--space-4) var(--space-8);
   border: 1px solid var(--colour-chrome-line);
-  border-radius: var(--size-radius-pill);
+  border-radius: var(--size-radius);
   background: transparent;
   color: var(--colour-chrome-text);
+  justify-content: flex-start;
 }
 
 .user-chip:hover:not(:disabled) {
@@ -664,6 +656,41 @@ a {
 
 .action--menu:hover:not(:disabled) {
   background: var(--colour-surface-muted);
+}
+
+/* Opening UPWARDS, because the chip is at the bottom of the sidebar now. A
+   menu that dropped down from there would open off the bottom of the window. */
+.popover--up {
+  top: auto;
+  bottom: calc(100% + var(--space-4));
+  left: var(--space-8);
+  right: auto;
+  min-width: 232px;
+}
+
+/* The two facts that survived the status bar. Above the menu items and
+   separated by a rule: they are things to READ, not things to press, and a
+   status line that looks like a menu row invites a click that does nothing. */
+.popover__status {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-12);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--colour-rule);
+}
+
+.popover__status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+}
+
+.popover__status-line > span:last-child {
+  font-weight: 600;
+  color: var(--colour-text);
 }
 
 /* ── the message region ─────────────────────────────────────────────────────
@@ -736,10 +763,6 @@ a {
   gap: var(--space-12);
 }
 
-.screen__head .module-title {
-  margin: 0;
-}
-
 .screen__body {
   min-height: 0;
 }
@@ -804,35 +827,6 @@ a {
   flex: 1;
   min-height: 0;
   max-height: none;
-}
-
-/* The largest thing on the screen, in the display serif, with a short gold rule
-   under it. The rule is 64px and not full width on purpose: a full-width line
-   is a divider and reads as structure, a short one is a mark and reads as
-   authorship. */
-.module-title {
-  font-family: var(--font-brand);
-  font-size: var(--font-size-display);
-  font-weight: 600;
-  line-height: var(--line-heading);
-  color: var(--colour-text);
-  letter-spacing: var(--tracking-display);
-  margin: 0 0 var(--space-16);
-  padding-bottom: var(--space-12);
-  position: relative;
-}
-
-/* Brushed brass. One of exactly three places the gradient is allowed, and it is
-   3px tall — at that size the three stops read as light catching a machined
-   edge rather than as a gradient. */
-.module-title::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: var(--size-title-rule-width);
-  height: 3px;
-  background: var(--gradient-brass);
 }
 
 /* ── cards ──────────────────────────────────────────────────────────────── */
@@ -1552,7 +1546,7 @@ a {
 
 /* A control whose module is not built. Visibly, unmistakably off — the whole
    point is that it can never be confused with a working control that failed. */
-.action:disabled:not(.action--sidebar):not(.action--topbar) {
+.action:disabled:not(.action--sidebar) {
   background: var(--colour-disabled-surface) !important;
   color: var(--colour-disabled-text) !important;
   border-color: var(--colour-border) !important;
@@ -1622,31 +1616,6 @@ a {
 
 .action--sidebar:disabled {
   color: var(--colour-chrome-text-muted);
-}
-
-.action--topbar {
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-8) var(--space-12);
-  font-size: var(--font-size-sm);
-  border-radius: 0;
-  color: var(--colour-text);
-  min-width: 72px;
-  justify-content: center;
-}
-
-.action--topbar:hover:not(:disabled) {
-  background: var(--colour-surface-muted);
-}
-
-.action--topbar.is-active {
-  background: var(--colour-gold-tint);
-  color: var(--colour-gold-deep);
-  font-weight: 600;
-}
-
-.action--topbar:disabled {
-  color: var(--colour-disabled-text);
 }
 
 /* A tab is a label with a gold underline, not a coloured chip. The active tab
@@ -2034,45 +2003,6 @@ a {
 
 .slip__total {
   font-weight: 700;
-}
-
-/* ── status bar ─────────────────────────────────────────────────────────── */
-
-.status-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-32);
-  padding: 0 var(--space-24);
-  background: var(--colour-chrome-ink);
-  color: var(--colour-chrome-text);
-  /* The brass thread closing the frame at the bottom of the window. */
-  border-top: 1px solid var(--colour-gold-metal);
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.status-bar strong {
-  font-weight: 600;
-  color: var(--colour-chrome-text-muted);
-}
-
-.status-bar__dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--colour-positive);
-  margin-left: var(--space-8);
-}
-
-.status-bar__dot--off {
-  background: var(--colour-negative);
-}
-
-.status-bar__version {
-  margin-left: auto;
 }
 
 /* The connected/not-connected pip, wherever it is shown. It travelled with the

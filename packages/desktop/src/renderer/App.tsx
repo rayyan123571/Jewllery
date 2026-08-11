@@ -9,7 +9,7 @@ import { RetailScreen } from './modules/retail/RetailScreen.js'
 import { GoldRateScreen } from './modules/rates/GoldRateScreen.js'
 import { SettingsScreen } from './modules/settings/SettingsScreen.js'
 import { MessageRegion, MessagesProvider } from './components/Messages.js'
-import { isoOf, isoToday, toDisplayDate } from './format/dates.js'
+import { isoToday } from './format/dates.js'
 import type { BootstrapDto } from '../shared/ipc.js'
 
 /**
@@ -22,7 +22,6 @@ import type { BootstrapDto } from '../shared/ipc.js'
  */
 
 const EMPTY_BOOTSTRAP: BootstrapDto = {
-  shop: null,
   branchId: '',
   branchName: 'Main Branch',
   user: null,
@@ -31,8 +30,21 @@ const EMPTY_BOOTSTRAP: BootstrapDto = {
   backup: { lastBackupAt: null, lastBackupDisplay: 'Never', daysSince: null, integrityOk: false },
   databaseConnected: false,
   sidebarCollapsed: null,
-  appVersion: '0.0.0',
 }
+
+/**
+ * Modules that open with the sidebar collapsed to its 64px icon rail.
+ *
+ * Retail is the densest screen in the application and the one that has to fit a
+ * whole sale — header, slips, item columns, summary and the action row — into
+ * 830px with no page scrollbar. The 184px the expanded sidebar costs is worth
+ * more to the sale than to the menu, and navigation does not disappear: the rail
+ * keeps every icon, and the toggle (or Ctrl+B) brings the labels straight back.
+ *
+ * It is a DEFAULT, not a lock. A stored manual choice still wins over it —
+ * see `collapsed` below.
+ */
+const COLLAPSE_BY_DEFAULT: ReadonlySet<ModuleId> = new Set<ModuleId>(['sale-retail'])
 
 /**
  * Below this the sidebar collapses itself.
@@ -59,7 +71,6 @@ export function App() {
 function AppShell() {
   const [active, setActive] = useState<ModuleId>('wholesale')
   const [boot, setBoot] = useState<BootstrapDto>(EMPTY_BOOTSTRAP)
-  const [now, setNow] = useState(() => new Date())
   const [busy, setBusy] = useState<string | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   /**
@@ -75,6 +86,14 @@ function AppShell() {
   )
   /** Set when the operator asks to change who is working. */
   const [switching, setSwitching] = useState(false)
+  /**
+   * The active module, readable from a callback that must not be rebuilt when it
+   * changes. `toggleSidebar` is handed to the action registry, which is memoised
+   * — making it depend on `active` would rebuild every action on every
+   * navigation for the sake of one read.
+   */
+  const activeRef = useRef<ModuleId>(active)
+  activeRef.current = active
 
   useEffect(() => {
     void window.api
@@ -102,11 +121,6 @@ function AppShell() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // The mockup shows a live clock in the top bar.
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
 
   const reload = useCallback(async () => {
     const next = await window.api.bootstrap()
@@ -128,11 +142,20 @@ function AppShell() {
     }
   }, [])
 
-  const collapsed = sidebarChoice ?? narrow
+  // Three inputs, in priority order: the operator's stored choice wins over
+  // everything; failing that, a module that asks to open collapsed; failing
+  // that, the window width.
+  const collapsed = sidebarChoice ?? (COLLAPSE_BY_DEFAULT.has(active) || narrow)
 
   const toggleSidebar = useCallback(() => {
     setSidebarChoice((current) => {
-      const next = !(current ?? window.innerWidth < SIDEBAR_AUTO_COLLAPSE_BELOW)
+      // Toggling from "no choice yet" has to flip whatever is CURRENTLY showing,
+      // which is the module default or the width rule — not a fixed assumption.
+      const showing =
+        current ??
+        (COLLAPSE_BY_DEFAULT.has(activeRef.current) ||
+          window.innerWidth < SIDEBAR_AUTO_COLLAPSE_BELOW)
+      const next = !showing
       // Written through, so the answer survives a restart. Nothing waits on it.
       void window.api?.setSidebarCollapsed(next)
       return next
@@ -299,45 +322,70 @@ function AppShell() {
   return (
     <ActionsProvider registry={registry}>
       <div className={`app${collapsed ? ' is-collapsed' : ''}`}>
-        <div className="app__body">
-          <Sidebar active={active} collapsed={collapsed} />
-          <div className="workspace">
-            <TopBar
-              boot={boot}
-              now={now}
-              fullscreen={fullscreen}
-              onRateSaved={() => void reload()}
-            />
-            {/* One region for what just happened, so a confirmation appears in
-                the same place whichever screen raised it. */}
-            <MessageRegion />
-            <main className="content">
-              {busy ? <div className="banner">{busy}</div> : null}
-              {active === 'wholesale' ? (
-                <WholesaleScreen today={today} onPosted={() => void reload()} />
-              ) : active === 'sale-retail' ? (
-                <RetailScreen today={today} onPosted={() => void reload()} />
-              ) : active === 'gold-rate' ? (
-                <GoldRateScreen
-                  rates={boot.rates}
-                  today={today}
-                  onSaved={() => void reload()}
-                />
-              ) : active === 'settings' ? (
-                <SettingsScreen />
-              ) : (
-                <ModulePlaceholder id={active} />
-              )}
-            </main>
+        <Sidebar active={active} collapsed={collapsed} boot={boot} />
+        <div className="workspace">
+          {/*
+            The drag region, and the whole of it.
+
+            The top bar used to be what you grabbed to move a frameless window.
+            With it gone, this 28px strip along the top edge of the content area
+            takes the job — and it is a REAL element, not a CSS afterthought,
+            because -webkit-app-region only applies to something that occupies
+            space. Double-click-to-maximise comes with it: Windows gives that to
+            any drag region, the same way it does to a native title bar.
+
+            The three window buttons float at its right and opt back out with
+            no-drag, or they would move the window instead of being clickable.
+          */}
+          <div className="drag-strip">
+            <WindowControls fullscreen={fullscreen} />
           </div>
+          {/* One region for what just happened, so a confirmation appears in
+              the same place whichever screen raised it. */}
+          <MessageRegion />
+          <main className="content">
+            {busy ? <div className="banner">{busy}</div> : null}
+            {active === 'wholesale' ? (
+              <WholesaleScreen
+                today={today}
+                rates={boot.rates}
+                onRateSaved={() => void reload()}
+                onPosted={() => void reload()}
+              />
+            ) : active === 'sale-retail' ? (
+              <RetailScreen
+                today={today}
+                rates={boot.rates}
+                onRateSaved={() => void reload()}
+                onPosted={() => void reload()}
+              />
+            ) : active === 'gold-rate' ? (
+              <GoldRateScreen
+                rates={boot.rates}
+                today={today}
+                onSaved={() => void reload()}
+              />
+            ) : active === 'settings' ? (
+              <SettingsScreen />
+            ) : (
+              <ModulePlaceholder id={active} />
+            )}
+          </main>
         </div>
-        <StatusBar boot={boot} />
       </div>
     </ActionsProvider>
   )
 }
 
-function Sidebar({ active, collapsed }: { active: ModuleId; collapsed: boolean }) {
+function Sidebar({
+  active,
+  collapsed,
+  boot,
+}: {
+  active: ModuleId
+  collapsed: boolean
+  boot: BootstrapDto
+}) {
   return (
     <nav className="sidebar" aria-label="Main menu">
       <div className="sidebar__brand">
@@ -386,46 +434,17 @@ function Sidebar({ active, collapsed }: { active: ModuleId; collapsed: boolean }
         })}
       </div>
       <div className="sidebar__foot">
+        {/* The user chip came down here when the top bar went. It is the one
+            control that has to be reachable from every screen without taking a
+            band of height off all of them, and the sidebar foot is the only
+            piece of permanent chrome left. */}
+        <UserChip boot={boot} collapsed={collapsed} />
         <Action id="app.exit" variant="sidebar" className="sidebar__exit">
           <Icon name="exit" />
           <span>EXIT</span>
         </Action>
       </div>
     </nav>
-  )
-}
-
-function TopBar({
-  boot,
-  now,
-  fullscreen,
-  onRateSaved,
-}: {
-  boot: BootstrapDto
-  now: Date
-  fullscreen: boolean
-  onRateSaved: () => void
-}) {
-  return (
-    <header className="top-bar">
-      {/* No module buttons here. Every module is already in the sidebar, and
-          listing them twice cost a whole band of screen height for nothing.
-
-          The rate leads, hard against the sidebar edge: it is the figure every
-          amount on the screen below is derived from. It used to float in the
-          middle with 450px of dead bar to its left. The drag region is now the
-          gap between the rate and the clock, so there is still somewhere to
-          grab the window. */}
-      <RatePanel boot={boot} onSaved={onRateSaved} />
-
-      <div className="top-bar__drag" />
-
-      <div className="top-bar__aside">
-        <Clock now={now} />
-        <UserChip boot={boot} />
-        <WindowControls fullscreen={fullscreen} />
-      </div>
-    </header>
   )
 }
 
@@ -492,130 +511,15 @@ function WindowControls({ fullscreen }: { fullscreen: boolean }) {
 }
 
 /**
- * The rate panel, with each figure editable in place.
+ * Who is working, and the two facts the status bar used to carry.
  *
- * Saving goes through the SAME setRate IPC the Gold Rate screen uses, with
- * effectiveFrom = today — there is no second rate store and no shortcut. A rate
- * set here is a new row in gold_rates exactly as if it had been typed on the
- * full screen, so history and the effective-date model are untouched.
+ * Database connected and last backup live here as well as in Settings, and the
+ * duplication is the point: this is the one place they are reachable without
+ * leaving whatever screen you are on, which is what the strip along the bottom
+ * was actually for. What it is NOT is a permanent 32px band across every screen
+ * to say "Connected" on a machine that is connected.
  */
-function RatePanel({ boot, onSaved }: { boot: BootstrapDto; onSaved: () => void }) {
-  const [editing, setEditing] = useState<string | null>(null)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
-  // A refused rate used to vanish silently: the panel closed and showed the old
-  // figure, so a typo that broke the purity ordering looked like it had saved.
-  const [error, setError] = useState<string | null>(null)
-
-  const begin = (purity: string, display: string): void => {
-    setEditing(purity)
-    setError(null)
-    // Seed with digits only — a user editing "Rs. 358,000" wants to retype the
-    // number, not delete the currency and the separators first.
-    setDraft(display.replace(/[^\d.]/g, ''))
-  }
-
-  const commit = async (purityLabel: string): Promise<void> => {
-    if (saving) return
-    setSaving(true)
-    try {
-      // "22K" is the display form; the service wants the stored form, "K22".
-      const purity = `K${purityLabel.replace(/K$/i, '')}`
-      const result = await window.api.setRate({
-        purity,
-        ratePerTolaRupees: draft,
-        effectiveFrom: isoToday(),
-        note: 'edited from the rate panel',
-      })
-      if (result.ok) {
-        setError(null)
-        onSaved()
-      } else {
-        // Refused — most often a purity-ordering conflict (RateService rejects
-        // a lower purity priced above a higher one). Say so rather than closing
-        // the editor as though it had been accepted.
-        setError(result.message)
-      }
-    } finally {
-      setSaving(false)
-      setEditing(null)
-    }
-  }
-
-  return (
-    <div className={`rate-panel${error ? ' rate-panel--bad' : ''}`}>
-      <div className="rate-panel__title">
-        Gold Rate (Per Tola){' '}
-        <Action id="rate.refresh" variant="icon" ariaLabel="Refresh gold rate">
-          <Icon name="refresh" size={12} />
-        </Action>
-      </div>
-      {boot.rates.length === 0 ? (
-        // A missing rate is shown as missing, never as zero. Valuing gold at a
-        // made-up price is invisible; an empty panel is not. See DECISIONS §7.
-        <div className="rate-panel__empty">No rate set</div>
-      ) : (
-        boot.rates.map((rate) => (
-          <div className="rate-panel__row" key={rate.purity}>
-            <span>{rate.purity}</span>
-            {editing === rate.purity ? (
-              <input
-                className="rate-panel__input"
-                value={draft}
-                autoFocus
-                inputMode="decimal"
-                aria-label={`${rate.purity} rate per tola`}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={() => void commit(rate.purity)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void commit(rate.purity)
-                  // Escape abandons the edit without writing a rate row.
-                  if (e.key === 'Escape') setEditing(null)
-                }}
-              />
-            ) : (
-              <Action
-                id="rate.edit"
-                variant="plain"
-                className="rate-panel__value"
-                ariaLabel={`Edit ${rate.purity} rate`}
-                onActivate={() => begin(rate.purity, rate.display)}
-              >
-                {rate.display}
-              </Action>
-            )}
-          </div>
-        ))
-      )}
-      {error ? (
-        // The bar has no room for a sentence, so the panel carries the short
-        // form and the full message is one hover away. The Gold Rate screen
-        // shows the same message in full.
-        <div className="rate-panel__error" role="alert" title={error}>
-          Rate refused
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function Clock({ now }: { now: Date }) {
-  const day = now.toLocaleDateString('en-GB', { weekday: 'long' })
-  // DD-MM-YYYY, the one date format in the application. "10 August 2026" here
-  // while the slip below said 2026-08-10 and the picker said 10/08/2026 gave
-  // the operator three formats to reconcile on one screen.
-  const date = toDisplayDate(isoOf(now))
-  const time = now.toLocaleTimeString('en-GB', { hour12: true })
-  return (
-    <div className="clock">
-      <div className="clock__day">{day}</div>
-      <div className="clock__date">{date}</div>
-      <div className="clock__time">{time}</div>
-    </div>
-  )
-}
-
-function UserChip({ boot }: { boot: BootstrapDto }) {
+function UserChip({ boot, collapsed }: { boot: BootstrapDto; collapsed: boolean }) {
   const [open, setOpen] = useState(false)
   const wrapper = useRef<HTMLDivElement>(null)
 
@@ -638,16 +542,24 @@ function UserChip({ boot }: { boot: BootstrapDto }) {
   const name = boot.user?.name ?? 'Not signed in'
 
   return (
-    <div className="user-chip-wrap" ref={wrapper}>
+    <div
+      className={`user-chip-wrap${collapsed ? ' is-collapsed' : ''}`}
+      ref={wrapper}
+    >
       <Action
         id="app.user-menu"
         variant="plain"
         className="user-chip"
+        // Named for the rail, where the chip renders as an avatar disc alone.
+        ariaLabel={`Account — ${name}`}
         onActivate={() => setOpen((current) => !current)}
       >
         <span className="user-chip__avatar" aria-hidden="true">
           {initialsOf(name)}
         </span>
+        {/* Hidden by CSS at the 64px rail, not removed from the DOM — the
+            avatar stays, and so does everything a test or a screen reader
+            can reach. Same rule as the sidebar wordmark. */}
         <span className="user-chip__text">
           <strong className="user-chip__name">{name}</strong>
           <span className="user-chip__role">{boot.user?.role ?? '—'}</span>
@@ -655,10 +567,26 @@ function UserChip({ boot }: { boot: BootstrapDto }) {
         <Icon name="chevron" size={12} />
       </Action>
       {open ? (
-        <div className="popover" role="menu" aria-label="Account">
-          {/* Both belong to Users & Permissions, whose screen is not drawn.
-              Shown and visibly off rather than omitted: a menu that opens onto
-              nothing is worse than one that says what is coming. */}
+        <div className="popover popover--up" role="menu" aria-label="Account">
+          <div className="popover__status">
+            <span className="popover__status-line">
+              <span>Database</span>
+              <span>
+                {boot.databaseConnected ? 'Connected' : 'Not connected'}
+                <span
+                  className={`status-dot${boot.databaseConnected ? '' : ' status-dot--off'}`}
+                  aria-hidden="true"
+                />
+              </span>
+            </span>
+            <span className="popover__status-line">
+              <span>Last backup</span>
+              <span>{boot.backup.lastBackupDisplay}</span>
+            </span>
+          </div>
+          {/* Switching who is working needs the "Who is working?" card, which
+              exists. Sign out belongs to Users & Permissions, whose screen is
+              not drawn — so it is shown and visibly off rather than omitted. */}
           <Action id="users.switch" variant="menu">
             <Icon name="users" size={16} />
             <span>Switch user</span>
@@ -685,33 +613,6 @@ function initialsOf(name: string): string {
   const first = words[0]?.[0] ?? ''
   const last = words.length > 1 ? (words[words.length - 1]?.[0] ?? '') : ''
   return (first + last).toUpperCase()
-}
-
-function StatusBar({ boot }: { boot: BootstrapDto }) {
-  return (
-    <footer className="status-bar">
-      <span>
-        <strong>Company :</strong> {boot.shop?.name ?? 'Not set'}
-      </span>
-      {/* No financial year. It was a hard-coded 1 July to 30 June convention
-          that nothing read, in the one strip the operator checks for whether
-          the database is connected and when the last backup ran. Invoice
-          numbers stopped resetting per year in migration 007, which was the
-          last thing that depended on the idea. */}
-      <span>
-        <strong>Database :</strong> {boot.databaseConnected ? 'Connected' : 'Not connected'}
-        <span
-          className={`status-bar__dot${boot.databaseConnected ? '' : ' status-bar__dot--off'}`}
-        />
-      </span>
-      <span>
-        <strong>Backup :</strong> {boot.backup.lastBackupDisplay}
-      </span>
-      <span className="status-bar__version">
-        <strong>Version :</strong> {boot.appVersion}
-      </span>
-    </footer>
-  )
 }
 
 /** Re-exported for the shell test, which asserts against the real module list. */

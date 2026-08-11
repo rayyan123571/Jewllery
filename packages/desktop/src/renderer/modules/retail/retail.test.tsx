@@ -156,7 +156,6 @@ const retailSave = vi.fn(async () => ({
 
 const api = {
   bootstrap: vi.fn(async () => ({
-    shop: { name: 'AL-HARAM GOLD JEWELLERS', ownerName: 'Haji Abdul Rehman', address: 'Lahore' },
     branchId: 'branch-1',
     branchName: 'Main Branch',
     user: { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
@@ -167,7 +166,6 @@ const api = {
     ],
     databaseConnected: true,
     sidebarCollapsed: false,
-    appVersion: '1.0.0.0',
   })),
   login: vi.fn(),
   logout: vi.fn(),
@@ -272,7 +270,7 @@ async function openRetail(user: ReturnType<typeof userEvent.setup>): Promise<voi
   render(<App />)
   await screen.findByLabelText('Main menu')
   await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Sale (Retail)'))
-  await screen.findByText('SALE (RETAIL)')
+  await screen.findByText('SAVE (F5)')
 }
 
 /** Types one item into the entry card and adds it to the sale. */

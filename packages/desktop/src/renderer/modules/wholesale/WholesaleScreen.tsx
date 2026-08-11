@@ -4,6 +4,7 @@ import { Icon } from '../../shell/Icon.js'
 import { DateField } from '../../components/DateField.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import { useMessages } from '../../components/Messages.js'
+import { RateCard } from '../../components/RateCard.js'
 import { toDisplayDate } from '../../format/dates.js'
 import { PartySelector } from './PartySelector.js'
 import { SettlementPanel } from './SettlementPanel.js'
@@ -13,6 +14,7 @@ import type {
   PartyBalanceDto,
   PartyDto,
   PreviewDto,
+  RateDto,
 } from '../../../shared/ipc.js'
 
 /**
@@ -60,9 +62,13 @@ type Tab = 'new' | 'ledger' | 'settle' | 'history'
 
 export function WholesaleScreen({
   today,
+  rates,
+  onRateSaved,
   onPosted,
 }: {
   today: string
+  rates: readonly RateDto[]
+  onRateSaved: () => void
   onPosted: () => void
 }) {
   const [tab, setTab] = useState<Tab>('new')
@@ -240,7 +246,10 @@ export function WholesaleScreen({
   return (
     <div className="screen">
       <div className="screen__head">
-        <h1 className="module-title">WHOLE SALE MODULE</h1>
+        {/* Wholesale does not lose its rate control when the top bar goes. It
+            mounts the same card retail does — one component, one setRate IPC,
+            one gold_rates table. */}
+        <RateCard rates={rates} onSaved={onRateSaved} />
 
         {preview?.rateMissing ? (
           <div className="banner">

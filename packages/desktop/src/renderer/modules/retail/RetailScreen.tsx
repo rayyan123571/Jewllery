@@ -11,11 +11,13 @@ import { DateField } from '../../components/DateField.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import { useMessages } from '../../components/Messages.js'
 import { Icon } from '../../shell/Icon.js'
+import { RateCard } from '../../components/RateCard.js'
 import { toDisplayDate } from '../../format/dates.js'
 import { CustomerSelector } from './CustomerSelector.js'
 import type {
   CustomerDto,
   MoneyDto,
+  RateDto,
   RetailCalculationDto,
   RetailDraftDto,
   RetailItemDto,
@@ -141,7 +143,17 @@ function isSignificant(display: string | undefined): boolean {
   return display ? /[1-9]/.test(display) : false
 }
 
-export function RetailScreen({ today, onPosted }: { today: string; onPosted: () => void }) {
+export function RetailScreen({
+  today,
+  rates,
+  onRateSaved,
+  onPosted,
+}: {
+  today: string
+  rates: readonly RateDto[]
+  onRateSaved: () => void
+  onPosted: () => void
+}) {
   const [draftId, setDraftId] = useState(newDraftId)
   const [form, setForm] = useState<RetailForm>(() => ({
     saleDate: today,
@@ -547,7 +559,10 @@ export function RetailScreen({ today, onPosted }: { today: string; onPosted: () 
   return (
     <div className="screen screen--dense">
       <div className="screen__head">
-        <h1 className="module-title">SALE (RETAIL)</h1>
+        {/* The rate, where it belongs: beside the figures it prices, rather than
+            in a bar across every screen in the application. Same setRate IPC,
+            same gold_rates table — see RateCard. */}
+        <RateCard rates={rates} onSaved={onRateSaved} />
 
         {rateMissing ? (
           <div className="banner">
