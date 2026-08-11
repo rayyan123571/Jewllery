@@ -12,3 +12,8 @@ export {
   type ReceiptShop,
   type WholesaleReceiptData,
 } from './thermal/wholesaleReceipt.js'
+export {
+  buildRetailReceiptHtml,
+  type RetailReceiptData,
+  type RetailReceiptLine,
+} from './thermal/retailReceipt.js'

@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the paper, as the customer reads it > matches the approved rendering 1`] = `
+"AL-HARAM GOLD JEWELLERS
+Trust in Purity
+Haji Abdul Rehman 0300-7779999
+Sona Bazaar, Lahore
+کیش میمو
+بل نمبر RS-00001 تاریخ 30-08-2026
+گاہک IMRAN SAHIB وقت 12:48
+ریٹ فی تولہ 22K 237,970 سیلزمین BILAL
+موبائل 03067380000
+آئٹم وزن خالص مزدوری نگ رقم
+GOLD BANGLE 22K 47.239 53.852 4,500 0 1,102,596
+CHAIN 22K 11.664 13.297 2,000 0 273,258
+کل خالص 67.149 g / 5.757 tola
+آئٹم ٹوٹل 1,375,854
+ہال مارک 1,500
+رعایت 854
+کل رقم Rs 1,376,500
+ادا شدہ 1,000,000
+بقایا Rs 376,500 (still due)
+Rupees Thirteen Lakh Seventy Six Thousand Five Hundred Only
+Balance on Eid
+Wastage added to net weight, calculated on net weight
+دستخط گاہک
+دستخط دکاندار
+شکریہ! دوبارہ تشریف لائیں
+30-08-2026 12:48 PM"
+`;
