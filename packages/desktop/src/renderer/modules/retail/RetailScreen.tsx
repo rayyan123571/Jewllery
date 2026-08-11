@@ -8,20 +8,20 @@ import {
 } from 'react'
 import { Action } from '../../actions/Action.js'
 import { DateField } from '../../components/DateField.js'
-import { EmptyState } from '../../components/EmptyState.js'
 import { useMessages } from '../../components/Messages.js'
+import { Modal } from '../../components/Modal.js'
 import { Icon } from '../../shell/Icon.js'
 import { RateCard } from '../../components/RateCard.js'
-import { toDisplayDate } from '../../format/dates.js'
 import { CustomerSelector } from './CustomerSelector.js'
 import type {
   CustomerDto,
-  MoneyDto,
   RateDto,
+  RetailBillCalculationDto,
+  RetailBillDraftDto,
   RetailCalculationDto,
-  RetailDraftDto,
   RetailItemDto,
   RetailLineDto,
+  RetailSlipDto,
   SalesmanDto,
   WeightDto,
   WeightFieldDto,
@@ -32,31 +32,38 @@ import type {
  * The Sale (Retail) screen.
  *
  * ── Nothing here calculates anything ───────────────────────────────────────
- * Not the net weight, not the wastage, not a line amount, not the grand total,
- * not the amount in words. Every figure on this screen is produced by
+ * Not a net weight, not the polish, not a line amount, not the grand total, not
+ * the amount in words. Every figure on this screen is produced by
  * RetailSaleService in the main process and arrives preformatted, because the
- * screen calls `retail:calculate` on every keystroke with the whole draft and
- * the row currently being typed. That call is pure and writes nothing, so it is
- * cheaper to ask than to keep a second implementation of the arithmetic here —
- * and a second implementation is one that will eventually disagree with the one
- * that prices the invoice.
+ * screen calls `retail:bill:calculate` on every keystroke with the whole bill
+ * and the row currently being typed. That call is pure and writes nothing, so
+ * it is cheaper to ask than to keep a second implementation of the arithmetic
+ * here — and a second implementation is one that will eventually disagree with
+ * the one that prices the invoice.
  *
  * The renderer's entire job is: hold what was typed, hand it over, and render
  * the strings that come back.
  *
+ * ── Slips ──────────────────────────────────────────────────────────────────
+ * One customer visit produces several slips, each its own printable document.
+ * What belongs to the VISIT — customer, mobile, salesman, date, time, rate —
+ * lives on the bill and is typed once. What belongs to the DOCUMENT — items,
+ * charges, discount, payment — lives on the slip. Saving posts every draft slip
+ * in one transaction: the whole bill, or none of it.
+ *
  * ── The three states that are easy to get wrong ────────────────────────────
  *
- *   1. **Edit in place.** A row loaded back into the entry form is an unresolved
- *      edit. The row stays in the table, visibly marked, and SAVE is REFUSED
- *      until the operator resolves it. A line silently dropped mid-edit is the
- *      worst bug this screen can have, so it is made impossible rather than
+ *   1. **Edit in place.** A column loaded back into DETAILS is an unresolved
+ *      edit. The column stays visibly marked, ADD ITEM becomes UPDATE ITEM, and
+ *      SAVE is REFUSED until it is resolved. A line silently dropped mid-edit is
+ *      the worst bug this screen can have, so it is made impossible rather than
  *      unlikely.
  *   2. **The Gram ⇄ Tola toggle.** It re-expresses what is displayed and never
- *      re-parses it: each weight carries the exact milligram main computed, so
- *      a toggle cannot walk a stored weight (see WeightFieldDto).
- *   3. **Saving twice.** The draft id is minted once when the sale is started
- *      and sent on every attempt. A retry after a reply that never arrived
- *      finds the sale that already exists instead of writing a second invoice.
+ *      re-parses it: each weight carries the exact milligram main computed, so a
+ *      toggle cannot walk a stored weight (see WeightFieldDto).
+ *   3. **Saving twice.** Each slip carries a draft id minted when it is created
+ *      and sent on every attempt. A retry after a reply that never arrived finds
+ *      the bill that already exists instead of writing a second.
  */
 
 const PURITY_OPTIONS = ['K24', 'K22', 'K21', 'K18'] as const
@@ -82,7 +89,18 @@ const EMPTY_ENTRY: RetailItemDto = {
   stoneCharges: '',
 }
 
-interface RetailForm {
+/** Slip 1's label unless the operator renames it. Matches DEFAULT_SLIP_LABEL. */
+const FIRST_SLIP_LABEL = 'Full Bill'
+
+/**
+ * How many item columns are visible before the card scrolls sideways.
+ *
+ * Four, as the mockup draws. Beyond that the columns scroll HORIZONTALLY inside
+ * the card — never the page, which is the whole no-page-scroll contract.
+ */
+const VISIBLE_COLUMNS = 4
+
+interface BillForm {
   saleDate: string
   saleTime: string
   customerId: string | null
@@ -92,18 +110,10 @@ interface RetailForm {
   ratePurity: string
   ratePerTolaOverride: string
   weightUnit: WeightUnit
-  customerGold: WeightFieldDto
-  customerGoldPurity: string
-  hallmarkCharges: string
-  otherCharges: string
-  discount: string
-  amountPaid: string
-  paymentMethod: string
-  remarks: string
 }
 
 /**
- * The idempotency key, minted once per sale.
+ * The idempotency key, minted once per slip.
  *
  * `crypto.randomUUID` needs a secure context and a sandboxed `file://` renderer
  * is not guaranteed one, so there is a fallback. It does not have to be globally
@@ -122,9 +132,26 @@ function nowHhMm(): string {
   return `${pad(now.getHours())}:${pad(now.getMinutes())}`
 }
 
+function emptySlip(slipNo: number, slipLabel: string): RetailSlipDto {
+  return {
+    slipNo,
+    slipLabel,
+    draftId: newDraftId(),
+    items: [],
+    customerGold: EMPTY_WEIGHT,
+    customerGoldPurity: 'K22',
+    hallmarkCharges: '',
+    otherCharges: '',
+    discount: '',
+    amountPaid: '',
+    paymentMethod: 'cash',
+    remarks: null,
+  }
+}
+
 /** A weight in whichever unit the toggle is showing. Chosen, never converted. */
 function show(weight: WeightDto | undefined, unit: WeightUnit): string {
-  if (!weight) return '—'
+  if (!weight) return '0.000'
   return unit === 'tola' ? weight.tola : weight.gram
 }
 
@@ -138,11 +165,6 @@ function fieldFrom(weight: WeightDto | undefined, unit: WeightUnit): WeightField
   return { text: unit === 'tola' ? weight.tola : weight.gram, exactMg: weight.mg }
 }
 
-/** A figure worth colouring. A nought is not a value. */
-function isSignificant(display: string | undefined): boolean {
-  return display ? /[1-9]/.test(display) : false
-}
-
 export function RetailScreen({
   today,
   rates,
@@ -154,8 +176,7 @@ export function RetailScreen({
   onRateSaved: () => void
   onPosted: () => void
 }) {
-  const [draftId, setDraftId] = useState(newDraftId)
-  const [form, setForm] = useState<RetailForm>(() => ({
+  const [form, setForm] = useState<BillForm>(() => ({
     saleDate: today,
     saleTime: nowHhMm(),
     customerId: null,
@@ -164,26 +185,25 @@ export function RetailScreen({
     salesmanId: '',
     ratePurity: 'K22',
     ratePerTolaOverride: '',
-    weightUnit: 'gram',
-    customerGold: EMPTY_WEIGHT,
-    customerGoldPurity: 'K22',
-    hallmarkCharges: '',
-    otherCharges: '',
-    discount: '',
-    amountPaid: '',
-    paymentMethod: 'cash',
-    remarks: '',
+    weightUnit: 'tola',
   }))
+  const [slips, setSlips] = useState<readonly RetailSlipDto[]>(() => [
+    emptySlip(1, FIRST_SLIP_LABEL),
+  ])
+  const [activeSlipNo, setActiveSlipNo] = useState(1)
   const [customer, setCustomer] = useState<CustomerDto | null>(null)
-  const [items, setItems] = useState<readonly RetailItemDto[]>([])
   const [entry, setEntry] = useState<RetailItemDto>(EMPTY_ENTRY)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
-  const [calc, setCalc] = useState<RetailCalculationDto | null>(null)
+  const [calc, setCalc] = useState<RetailBillCalculationDto | null>(null)
   const [invoiceNo, setInvoiceNo] = useState('—')
   const [salesmen, setSalesmen] = useState<readonly SalesmanDto[]>([])
   const [busy, setBusy] = useState(false)
   const [confirmHighWastage, setConfirmHighWastage] = useState<string | null>(null)
-  const [lastSaleId, setLastSaleId] = useState<string | null>(null)
+  const [confirmDeleteSlip, setConfirmDeleteSlip] = useState<number | null>(null)
+  const [lastBillId, setLastBillId] = useState<string | null>(null)
+  const [lastSlipSaleIds, setLastSlipSaleIds] = useState<ReadonlyMap<number, string>>(
+    new Map(),
+  )
   const { push } = useMessages()
 
   // A ref as well as state: a second click can arrive before React has
@@ -192,12 +212,21 @@ export function RetailScreen({
   const itemNameRef = useRef<HTMLInputElement>(null)
 
   const unit = form.weightUnit
-  const set = <K extends keyof RetailForm>(key: K, value: RetailForm[K]): void =>
+  const set = <K extends keyof BillForm>(key: K, value: BillForm[K]): void =>
     setForm((current) => ({ ...current, [key]: value }))
 
-  const draft = useMemo<RetailDraftDto>(
+  const activeSlip = slips.find((slip) => slip.slipNo === activeSlipNo) ?? slips[0]
+
+  const setActiveSlip = useCallback(
+    (change: (slip: RetailSlipDto) => RetailSlipDto) =>
+      setSlips((current) =>
+        current.map((slip) => (slip.slipNo === activeSlipNo ? change(slip) : slip)),
+      ),
+    [activeSlipNo],
+  )
+
+  const draft = useMemo<RetailBillDraftDto>(
     () => ({
-      draftId,
       saleDate: form.saleDate,
       saleTime: form.saleTime,
       customerId: form.customerId,
@@ -207,17 +236,9 @@ export function RetailScreen({
       ratePurity: form.ratePurity,
       ratePerTolaOverride: form.ratePerTolaOverride,
       weightUnit: form.weightUnit,
-      items,
-      customerGold: form.customerGold,
-      customerGoldPurity: form.customerGoldPurity,
-      hallmarkCharges: form.hallmarkCharges,
-      otherCharges: form.otherCharges,
-      discount: form.discount,
-      amountPaid: form.amountPaid,
-      paymentMethod: form.paymentMethod,
-      remarks: form.remarks.trim() || null,
+      slips,
     }),
-    [draftId, form, items],
+    [form, slips],
   )
 
   useEffect(() => {
@@ -234,10 +255,15 @@ export function RetailScreen({
    */
   useEffect(() => {
     const timer = setTimeout(() => {
-      void window.api.retailCalculate({ draft, entry }).then(setCalc)
+      void window.api
+        .retailBillCalculate({ draft, activeSlipNo, entry })
+        .then(setCalc)
     }, 120)
     return () => clearTimeout(timer)
-  }, [draft, entry])
+  }, [draft, activeSlipNo, entry])
+
+  const active: RetailCalculationDto | null = calc?.active ?? null
+  const lines = active?.lines ?? []
 
   const setEntryWeight = (key: 'grossWeight' | 'stoneWeight' | 'cutPerTola', text: string) =>
     // exactMg is cleared: the operator has typed, so the text is authoritative
@@ -251,7 +277,8 @@ export function RetailScreen({
   }, [])
 
   /**
-   * Adds the typed row as a line, or writes it back over the one being edited.
+   * Adds the typed row to the active slip, or writes it back over the one being
+   * edited.
    *
    * The line that goes into the list is the row AS TYPED, not the computed one:
    * the computed figures are re-derived on the next calculate from the same
@@ -260,41 +287,53 @@ export function RetailScreen({
    */
   const commitEntry = useCallback(() => {
     if (!entry.itemName.trim() && !entry.grossWeight.text.trim()) {
-      push('bad', 'Fill in the item entry above before adding it to the sale.')
+      push('bad', 'Fill in DETAILS (SELECTED ITEM) before adding it to the slip.')
       return
     }
     const line = entry
-    setItems((current) =>
-      editingIndex === null
-        ? [...current, line]
-        : current.map((row, index) => (index === editingIndex ? line : row)),
-    )
+    const index = editingIndex
+    setActiveSlip((slip) => ({
+      ...slip,
+      items:
+        index === null
+          ? [...slip.items, line]
+          : slip.items.map((row, i) => (i === index ? line : row)),
+    }))
     setEntry(EMPTY_ENTRY)
     setEditingIndex(null)
     itemNameRef.current?.focus()
-  }, [entry, editingIndex, push])
+  }, [entry, editingIndex, push, setActiveSlip])
 
   const editLine = useCallback(
     (index: number) => {
-      const row = items[index]
+      const row = activeSlip?.items[index]
       if (!row) return
       setEntry(row)
       setEditingIndex(index)
       itemNameRef.current?.focus()
     },
-    [items],
+    [activeSlip],
   )
 
   const deleteLine = useCallback(
     (index: number) => {
-      setItems((current) => current.filter((_, i) => i !== index))
-      // Deleting the row that is open for editing would leave the entry card
+      setActiveSlip((slip) => ({
+        ...slip,
+        items: slip.items.filter((_, i) => i !== index),
+      }))
+      // Deleting the column that is open for editing would leave DETAILS
       // holding a line that no longer exists anywhere.
       setEditingIndex((current) =>
-        current === null ? null : current === index ? null : current > index ? current - 1 : current,
+        current === null
+          ? null
+          : current === index
+            ? null
+            : current > index
+              ? current - 1
+              : current,
       )
     },
-    [],
+    [setActiveSlip],
   )
 
   /**
@@ -308,44 +347,106 @@ export function RetailScreen({
     const next: WeightUnit = unit === 'gram' ? 'tola' : 'gram'
     const current = calc
     if (current) {
-      setItems((rows) =>
-        rows.map((row, index) => {
-          const line = current.lines[index]
-          if (!line) return row
+      setSlips((rows) =>
+        rows.map((slip) => {
+          const computed = current.slips.find((s) => s.slipNo === slip.slipNo)
+          if (!computed) return slip
           return {
-            ...row,
-            grossWeight: fieldFrom(line.gross, next),
-            stoneWeight: fieldFrom(line.stone, next),
-            cutPerTola: fieldFrom(line.cutPerTola, next),
+            ...slip,
+            items: slip.items.map((row, index) => {
+              const line = computed.calculation.lines[index]
+              if (!line) return row
+              return {
+                ...row,
+                grossWeight: fieldFrom(line.gross, next),
+                stoneWeight: fieldFrom(line.stone, next),
+                cutPerTola: fieldFrom(line.cutPerTola, next),
+              }
+            }),
+            customerGold: fieldFrom(computed.calculation.customerGold, next),
           }
         }),
       )
-      if (current.entry) {
+      if (current.active.entry) {
         setEntry((row) => ({
           ...row,
-          grossWeight: fieldFrom(current.entry?.gross, next),
-          stoneWeight: fieldFrom(current.entry?.stone, next),
-          cutPerTola: fieldFrom(current.entry?.cutPerTola, next),
+          grossWeight: fieldFrom(current.active.entry?.gross, next),
+          stoneWeight: fieldFrom(current.active.entry?.stone, next),
+          cutPerTola: fieldFrom(current.active.entry?.cutPerTola, next),
         }))
       }
-      setForm((f) => ({
-        ...f,
-        weightUnit: next,
-        customerGold: fieldFrom(current.customerGold, next),
-      }))
+      setForm((f) => ({ ...f, weightUnit: next }))
       return
     }
     set('weightUnit', next)
   }, [unit, calc])
 
-  const startNewSale = useCallback(
+  // ── slips ─────────────────────────────────────────────────────────────────
+
+  const addSlip = useCallback(() => {
+    setSlips((current) => {
+      const nextNo = Math.max(0, ...current.map((slip) => slip.slipNo)) + 1
+      setActiveSlipNo(nextNo)
+      return [...current, emptySlip(nextNo, `Slip ${nextNo}`)]
+    })
+    setEntry(EMPTY_ENTRY)
+    setEditingIndex(null)
+  }, [])
+
+  /**
+   * Deletes a DRAFT slip, with confirmation.
+   *
+   * Only a draft. A posted slip is a document the customer is holding, and the
+   * only way to undo one is to void it — which leaves both the slip and the
+   * reason on the record. Nothing on this screen can delete a posted slip,
+   * because nothing on this screen holds one: saving starts a fresh bill.
+   */
+  const deleteSlip = useCallback(
+    (slipNo: number) => {
+      setSlips((current) => {
+        if (current.length <= 1) return current
+        const remaining = current.filter((slip) => slip.slipNo !== slipNo)
+        if (slipNo === activeSlipNo) {
+          setActiveSlipNo(remaining[0]?.slipNo ?? 1)
+          setEntry(EMPTY_ENTRY)
+          setEditingIndex(null)
+        }
+        return remaining
+      })
+      setConfirmDeleteSlip(null)
+    },
+    [activeSlipNo],
+  )
+
+  const selectSlip = useCallback(
+    (slipNo: number) => {
+      if (slipNo === activeSlipNo) return
+      // Moving away with an edit open would leave it unresolvable — the DETAILS
+      // card would be holding a line belonging to a slip that is no longer shown.
+      if (editingIndex !== null) {
+        push(
+          'bad',
+          `Item ${editingIndex + 1} is open for editing on Slip ${activeSlipNo}. ` +
+            `Press UPDATE ITEM to write your changes back, or ABANDON EDIT to leave ` +
+            `that item exactly as it was, before moving to another slip.`,
+        )
+        return
+      }
+      setActiveSlipNo(slipNo)
+      setEntry(EMPTY_ENTRY)
+    },
+    [activeSlipNo, editingIndex, push],
+  )
+
+  const startNewBill = useCallback(
     (keepRateAndSalesman: boolean) => {
-      setDraftId(newDraftId())
-      setItems([])
+      setSlips([emptySlip(1, FIRST_SLIP_LABEL)])
+      setActiveSlipNo(1)
       setEntry(EMPTY_ENTRY)
       setEditingIndex(null)
       setCustomer(null)
-      setLastSaleId(null)
+      setLastBillId(null)
+      setLastSlipSaleIds(new Map())
       setConfirmHighWastage(null)
       setForm((current) => ({
         ...current,
@@ -356,13 +457,6 @@ export function RetailScreen({
         salesmanId: keepRateAndSalesman ? current.salesmanId : '',
         ratePurity: keepRateAndSalesman ? current.ratePurity : 'K22',
         ratePerTolaOverride: keepRateAndSalesman ? current.ratePerTolaOverride : '',
-        customerGold: EMPTY_WEIGHT,
-        hallmarkCharges: '',
-        otherCharges: '',
-        discount: '',
-        amountPaid: '',
-        paymentMethod: 'cash',
-        remarks: '',
       }))
       void window.api.retailNextInvoiceNo().then(setInvoiceNo)
     },
@@ -370,48 +464,66 @@ export function RetailScreen({
   )
 
   /**
-   * Sends the stored document to the printer.
+   * Sends a stored document to the printer.
    *
    * The HTML comes from `@jewellery/printing` over IPC — the same 576-dot
    * document the thermal printer gets — so what prints is the paper, not a
-   * screenshot of the screen. It is read back from the SAVED sale, which is why
+   * screenshot of the screen. It is read back from the SAVED bill, which is why
    * PRINT refuses before a save rather than printing a draft that does not
    * exist in the books.
    */
-  const printSale = useCallback(
-    async (saleId: string): Promise<boolean> => {
-      const html = await window.api.retailReceipt(saleId)
-      if (!html) return false
-      const frame = document.createElement('iframe')
-      frame.setAttribute('aria-hidden', 'true')
-      frame.style.position = 'fixed'
-      frame.style.width = '0'
-      frame.style.height = '0'
-      frame.style.border = '0'
-      frame.srcdoc = html
-      document.body.appendChild(frame)
-      await new Promise<void>((resolve) => {
-        frame.addEventListener('load', () => resolve(), { once: true })
-      })
-      frame.contentWindow?.focus()
-      frame.contentWindow?.print()
-      setTimeout(() => frame.remove(), 2000)
-      return true
+  const printHtml = useCallback(async (html: string | null): Promise<boolean> => {
+    if (!html) return false
+    const frame = document.createElement('iframe')
+    frame.setAttribute('aria-hidden', 'true')
+    frame.style.position = 'fixed'
+    frame.style.width = '0'
+    frame.style.height = '0'
+    frame.style.border = '0'
+    frame.srcdoc = html
+    document.body.appendChild(frame)
+    await new Promise<void>((resolve) => {
+      frame.addEventListener('load', () => resolve(), { once: true })
+    })
+    frame.contentWindow?.focus()
+    frame.contentWindow?.print()
+    setTimeout(() => frame.remove(), 2000)
+    return true
+  }, [])
+
+  const printSlip = useCallback(
+    async (slipNo: number) => {
+      const saleId = lastSlipSaleIds.get(slipNo)
+      if (!saleId) {
+        push('bad', `Slip ${slipNo} has not been saved yet. Save the bill first.`)
+        return
+      }
+      const printed = await printHtml(await window.api.retailReceipt(saleId))
+      if (!printed) push('bad', 'That slip could not be read back for printing.')
     },
-    [],
+    [lastSlipSaleIds, printHtml, push],
   )
 
+  const printBill = useCallback(async () => {
+    if (!lastBillId) {
+      push('bad', 'There is nothing to print yet. Save the bill first.')
+      return
+    }
+    const printed = await printHtml(await window.api.retailBillReceipt(lastBillId))
+    if (!printed) push('bad', 'That bill could not be read back for printing.')
+  }, [lastBillId, printHtml, push])
+
   const commit = useCallback(
-    async (mode: 'save' | 'save-print' | 'hold', confirmed = false) => {
+    async (thenPrint: boolean, confirmed = false) => {
       if (saving.current) return
-      // The refusal that matters most on this screen. A line loaded back into
-      // the entry card is an edit nobody has resolved; saving now would write
-      // the sale WITHOUT the change and nothing on screen would say so.
+      // The refusal that matters most on this screen. A column loaded back into
+      // DETAILS is an edit nobody has resolved; saving now would write the bill
+      // WITHOUT the change and nothing on screen would say so.
       if (editingIndex !== null) {
         push(
           'bad',
-          `Line ${editingIndex + 1} is open for editing. Press UPDATE ITEM to write your ` +
-            `changes back, or CLEAR ENTRY to leave that line exactly as it was. ` +
+          `Item ${editingIndex + 1} is open for editing. Press UPDATE ITEM to write your ` +
+            `changes back, or ABANDON EDIT to leave that item exactly as it was. ` +
             `Saving now would drop what you have typed.`,
         )
         return
@@ -419,13 +531,9 @@ export function RetailScreen({
       saving.current = true
       setBusy(true)
       try {
-        const request = {
+        const result = await window.api.retailBillSave({
           draft: confirmed ? { ...draft, confirmedHighWastage: true } : draft,
-        }
-        const result =
-          mode === 'hold'
-            ? await window.api.retailHold(request)
-            : await window.api.retailSave(request)
+        })
 
         if (!result.ok) {
           if ('needsConfirmation' in result) {
@@ -437,46 +545,32 @@ export function RetailScreen({
         }
 
         setConfirmHighWastage(null)
-        setLastSaleId(result.saleId)
+        setLastBillId(result.billId)
+        setLastSlipSaleIds(new Map(result.slips.map((slip) => [slip.slipNo, slip.saleId])))
 
-        if (mode === 'hold') {
-          push(
-            'ok',
-            `Held as ${result.invoiceNo}. That number is now spent — a held sale is a ` +
-              `real document in the sequence.`,
-          )
-          onPosted()
-          return
-        }
-
-        const printed = mode === 'save-print' ? await printSale(result.saleId) : false
+        const printed = thenPrint
+          ? await printHtml(await window.api.retailBillReceipt(result.billId))
+          : false
         push(
           'ok',
-          `Saved ${result.invoiceNo}. Rs ${result.grandTotal}, ` +
-            `${result.balance === '0.00' ? 'paid in full' : `Rs ${result.balance} outstanding`}.` +
+          `Saved ${result.billNo} — ${result.slips.length} slip` +
+            `${result.slips.length === 1 ? '' : 's'} ` +
+            `(${result.slips.map((slip) => slip.invoiceNo).join(', ')}). ` +
+            `Rs ${result.billTotal}.` +
             (printed ? ' Sent to the printer.' : ''),
         )
-        // A fresh sale, with the rate and the salesman kept: the next customer
+        // A fresh bill, with the rate and the salesman kept: the next customer
         // is served by the same person at the same rate, and retyping both on
         // every sale is how a counter ends up with the wrong one.
-        startNewSale(true)
+        startNewBill(true)
         onPosted()
       } finally {
         saving.current = false
         setBusy(false)
       }
     },
-    [draft, editingIndex, onPosted, printSale, push, startNewSale],
+    [draft, editingIndex, onPosted, printHtml, push, startNewBill],
   )
-
-  const print = useCallback(async () => {
-    if (!lastSaleId) {
-      push('bad', 'There is nothing to print yet. Save the sale first.')
-      return
-    }
-    const printed = await printSale(lastSaleId)
-    if (!printed) push('bad', 'That sale could not be read back for printing.')
-  }, [lastSaleId, printSale, push])
 
   /** The WhatsApp summary. Composed here, sent by main, checked against a host allowlist. */
   const sendOnWhatsApp = useCallback(async () => {
@@ -489,15 +583,16 @@ export function RetailScreen({
     // international form, so the leading zero becomes the country code.
     const international = digits.startsWith('0') ? `92${digits.slice(1)}` : digits
     const summary =
-      `${form.customerName || 'Customer'} — invoice ${invoiceNo}\n` +
-      `Total fine: ${show(calc?.totalFine, unit)} ${unit === 'tola' ? 'tola' : 'g'}\n` +
-      `Grand total: Rs ${calc?.grandTotal.rupees ?? '0.00'}\n` +
-      `Balance: Rs ${calc?.balance.rupees ?? '0.00'}`
+      `${form.customerName || 'Customer'} — ${invoiceNo}\n` +
+      (calc?.slips ?? [])
+        .map((slip) => `${slip.slipLabel}: Rs ${slip.total}`)
+        .join('\n') +
+      `\nTotal: Rs ${calc?.billTotal.rupees ?? '0.00'}`
     const result = await window.api.openExternal(
       `https://wa.me/${international}?text=${encodeURIComponent(summary)}`,
     )
     if (!result.ok) push('bad', result.message)
-  }, [calc, form.customerMobile, form.customerName, invoiceNo, push, unit])
+  }, [calc, form.customerMobile, form.customerName, invoiceNo, push])
 
   // Published so the shell's action registry can drive these controls.
   useEffect(() => {
@@ -506,13 +601,14 @@ export function RetailScreen({
       'retail.item.clear': clearEntry,
       'retail.unit.toggle': toggleUnit,
       'retail.rate.refresh': () => set('ratePerTolaOverride', ''),
-      'retail.save': () => void commit('save'),
-      'retail.save-and-print': () => void commit('save-print'),
-      'retail.print': () => void print(),
-      'retail.hold': () => void commit('hold'),
-      'retail.new': () => startNewSale(true),
-      'retail.cancel': () => startNewSale(false),
-      'retail.wastage.confirm': () => void commit('save', true),
+      'retail.save': () => void commit(false),
+      'retail.save-and-print': () => void commit(true),
+      'retail.print': () => void printBill(),
+      'retail.bill.print': () => void printBill(),
+      'retail.slip.add': addSlip,
+      'retail.new': () => startNewBill(true),
+      'retail.cancel': () => startNewBill(false),
+      'retail.wastage.confirm': () => void commit(false, true),
       'retail.wastage.back': () => setConfirmHighWastage(null),
       'quick.retail-whatsapp': () => void sendOnWhatsApp(),
     }
@@ -521,25 +617,31 @@ export function RetailScreen({
     }
     window.addEventListener('jewellery:action', listener)
     return () => window.removeEventListener('jewellery:action', listener)
-  }, [commit, commitEntry, clearEntry, print, sendOnWhatsApp, startNewSale, toggleUnit])
+  }, [
+    addSlip,
+    commit,
+    commitEntry,
+    clearEntry,
+    printBill,
+    sendOnWhatsApp,
+    startNewBill,
+    toggleUnit,
+  ])
 
   /**
    * The function keys the action bar advertises.
    *
-   * They were labels on buttons and nothing else until now, which is a promise
-   * the application was not keeping. F2 is the one that matters: at a counter a
-   * line is added dozens of times a sale, and reaching for the mouse each time
-   * is the difference between typing a sale and operating a form.
+   * F2 is the one that matters most: at a counter an item is added dozens of
+   * times a sale, and reaching for the mouse each time is the difference between
+   * typing a sale and operating a form.
    */
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent): void => {
       const keys: Record<string, () => void> = {
         F2: commitEntry,
-        F5: () => void commit('save'),
-        F6: () => void commit('save-print'),
-        F7: () => void print(),
-        F8: () => void commit('hold'),
-        F9: () => startNewSale(true),
+        F5: () => void commit(false),
+        F6: () => void printBill(),
+        F9: () => startNewBill(true),
       }
       const handler = keys[event.key]
       if (!handler) return
@@ -550,142 +652,386 @@ export function RetailScreen({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [commit, commitEntry, print, startNewSale])
+  }, [commit, commitEntry, printBill, startNewBill])
 
   const rateMissing = calc?.rateMissing ?? false
-  const balanceOutstanding = (calc?.balance.paisa ?? 0) !== 0
   const editing = editingIndex !== null
 
   return (
-    <div className="screen screen--dense">
-      <div className="screen__head">
-        {/* The rate, where it belongs: beside the figures it prices, rather than
-            in a bar across every screen in the application. Same setRate IPC,
-            same gold_rates table — see RateCard. */}
+    <div className="retail">
+      {/* ── the header strip, replacing the deleted top bar ───────────────── */}
+      <div className="retail__head">
+        <div className="bill-fields">
+          <label className="stack-field">
+            <span className="stack-field__label">Invoice No :</span>
+            <input
+              className="input input--derived"
+              value={invoiceNo}
+              readOnly
+              disabled
+              aria-label="Invoice number"
+            />
+          </label>
+          <DateField
+            value={form.saleDate}
+            onChange={(iso) => set('saleDate', iso)}
+            label="Date :"
+            ariaLabel="Sale date"
+          />
+          <label className="stack-field">
+            <span className="stack-field__label">Time :</span>
+            <span className="input-group">
+              <input
+                className="input input--numeric"
+                value={form.saleTime}
+                onChange={(e) => set('saleTime', e.target.value)}
+                placeholder="HH:MM"
+                inputMode="numeric"
+                aria-label="Sale time"
+              />
+              <span className="input-group__glyph" aria-hidden="true">
+                <Icon name="clock" size={16} />
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {/* Underlined baseline fields, as the mockup draws them: a label and a
+            rule, with no box. They are the visit's facts, shared by every slip. */}
+        <div className="bill-party">
+          <CustomerSelector
+            selected={customer}
+            typedName={form.customerName}
+            onTypedName={(name) => set('customerName', name)}
+            onSelect={(picked) => {
+              setCustomer(picked)
+              setForm((current) => ({
+                ...current,
+                customerId: picked?.id ?? null,
+                customerName: picked?.name ?? current.customerName,
+                // Auto-filled from the customer, and still editable: a walk-in
+                // gives a number that belongs to nobody on file.
+                customerMobile: picked?.mobile ?? current.customerMobile,
+              }))
+            }}
+            variant="baseline"
+          />
+          <label className="baseline-field">
+            <span className="baseline-field__label">Mobile :</span>
+            <input
+              className="baseline-field__input"
+              value={form.customerMobile}
+              onChange={(e) => set('customerMobile', e.target.value)}
+              placeholder="0300-0000000"
+              aria-label="Customer mobile"
+            />
+          </label>
+          <label className="baseline-field">
+            <span className="baseline-field__label">Salesman :</span>
+            <select
+              className="baseline-field__input"
+              value={form.salesmanId}
+              onChange={(e) => set('salesmanId', e.target.value)}
+              aria-label="Salesman"
+            >
+              <option value="">
+                {salesmen.length === 0 ? 'None recorded' : 'Not attributed'}
+              </option>
+              {salesmen.map((salesman) => (
+                <option key={salesman.id} value={salesman.id}>
+                  {salesman.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         <RateCard rates={rates} onSaved={onRateSaved} />
+      </div>
 
-        {rateMissing ? (
-          <div className="banner">
-            No {form.ratePurity.slice(1)}K gold rate is recorded on or before{' '}
-            {toDisplayDate(form.saleDate)}. Set the rate that applied that day in Gold Rate
-            before saving — every amount on this sale depends on it, and using today&apos;s
-            would price the invoice wrongly.
-          </div>
-        ) : null}
-
-        {calc?.warnings.map((warning) => (
-          <div className="banner" key={warning}>
-            {warning}
-          </div>
-        ))}
-
-        {/* High wastage is a QUESTION, not an error. It sits at the top of the
-            screen with a Continue button, because the operator has to be able
-            to act on it rather than only dismiss it (the same shape as the
-            wholesale over-return confirmation). */}
-        {confirmHighWastage ? (
-          <div className="confirm">
-            <p className="confirm__text">{confirmHighWastage}</p>
-            <div className="confirm__actions">
-              <Action id="retail.wastage.back" variant="ghost">
-                Go back and check it
-              </Action>
-              <Action id="retail.wastage.confirm" className="login__submit" busy={busy}>
-                Save this sale anyway
-              </Action>
-            </div>
-          </div>
+      {/* ── slip tabs ─────────────────────────────────────────────────────── */}
+      <div className="slip-tabs" role="tablist" aria-label="Slips in this bill">
+        {(slips ?? []).map((slip) => {
+          const computed = calc?.slips.find((s) => s.slipNo === slip.slipNo)
+          return (
+            <Action
+              key={slip.slipNo}
+              id="retail.slip.select"
+              variant="plain"
+              className={`slip-tab${slip.slipNo === activeSlipNo ? ' is-active' : ''}`}
+              active={slip.slipNo === activeSlipNo}
+              onActivate={() => selectSlip(slip.slipNo)}
+            >
+              <span className="slip-tab__name">Slip {slip.slipNo}</span>
+              <span className="slip-tab__label">
+                {slip.slipNo === 1 ? `(${slip.slipLabel})` : slip.slipLabel}
+              </span>
+              {/* The slip's own total, beneath its label, as the mockup shows. */}
+              <span className="slip-tab__total">Rs {computed?.total ?? '0.00'}</span>
+            </Action>
+          )
+        })}
+        <Action
+          id="retail.slip.add"
+          variant="plain"
+          className="slip-tab slip-tab--add"
+          ariaLabel="Add another slip to this bill"
+        >
+          <Icon name="plus" size={18} />
+        </Action>
+        {slips.length > 1 ? (
+          <Action
+            id="retail.slip.delete"
+            variant="icon"
+            className="slip-tabs__delete is-danger"
+            ariaLabel={`Delete slip ${activeSlipNo}`}
+            onActivate={() => setConfirmDeleteSlip(activeSlipNo)}
+          >
+            <Icon name="trash" size={16} />
+          </Action>
         ) : null}
       </div>
 
-      <div className="workspace__split screen__body">
-        <div className="entry-column">
-          <div className="panel">
-            <div className="panel__title">SALE DETAILS</div>
-            <div className="field-row">
-              <label className="field">
-                <span className="field__label">Invoice No.</span>
-                <input
-                  className="input input--derived"
-                  value={invoiceNo}
-                  readOnly
-                  disabled
-                  aria-label="Invoice number"
-                />
-              </label>
+      {rateMissing ? (
+        <div className="banner">
+          No {form.ratePurity.slice(1)}K gold rate is recorded on or before this date. Set
+          it in the GOLD RATE card above before saving — every amount here depends on it.
+        </div>
+      ) : null}
 
-              <DateField
-                value={form.saleDate}
-                onChange={(iso) => set('saleDate', iso)}
-                label="Date"
-                ariaLabel="Sale date"
-              />
+      {active?.warnings.map((warning) => (
+        <div className="banner" key={warning}>
+          {warning}
+        </div>
+      ))}
 
-              <label className="field">
-                <span className="field__label">Time</span>
-                <input
-                  className="input input--numeric"
-                  value={form.saleTime}
-                  onChange={(e) => set('saleTime', e.target.value)}
-                  placeholder="HH:MM"
-                  inputMode="numeric"
-                  aria-label="Sale time"
-                />
-              </label>
+      {/* High wastage is a QUESTION, not an error, so it carries a Continue
+          button rather than only being dismissable. */}
+      {confirmHighWastage ? (
+        <div className="confirm">
+          <p className="confirm__text">{confirmHighWastage}</p>
+          <div className="confirm__actions">
+            <Action id="retail.wastage.back" variant="ghost">
+              Go back and check it
+            </Action>
+            <Action id="retail.wastage.confirm" className="login__submit" busy={busy}>
+              Save this bill anyway
+            </Action>
+          </div>
+        </div>
+      ) : null}
 
-              <CustomerSelector
-                selected={customer}
-                typedName={form.customerName}
-                onTypedName={(name) => set('customerName', name)}
-                onSelect={(picked) => {
-                  setCustomer(picked)
-                  setForm((current) => ({
-                    ...current,
-                    customerId: picked?.id ?? null,
-                    customerName: picked?.name ?? current.customerName,
-                    // Auto-filled from the customer, and still editable: a
-                    // walk-in gives a number that belongs to nobody on file.
-                    customerMobile: picked?.mobile ?? current.customerMobile,
-                  }))
-                }}
-              />
+      {/* ── the working area ──────────────────────────────────────────────── */}
+      <div className="retail__body">
+        <div className="retail__left">
+          <ItemColumns
+            slipNo={activeSlipNo}
+            slipLabel={activeSlip?.slipLabel ?? FIRST_SLIP_LABEL}
+            lines={lines}
+            unit={unit}
+            editingIndex={editingIndex}
+            onEdit={editLine}
+            onDelete={deleteLine}
+            onPrint={() => void printSlip(activeSlipNo)}
+            editing={editing}
+            rateDisplay={calc?.rateDisplay ?? null}
+            ratePurity={form.ratePurity}
+            onRatePurity={(purity) => set('ratePurity', purity)}
+          />
 
-              <label className="field">
-                <span className="field__label">Mobile</span>
-                <input
-                  className="input"
-                  value={form.customerMobile}
-                  onChange={(e) => set('customerMobile', e.target.value)}
-                  placeholder="0300 0000000"
-                  aria-label="Customer mobile"
-                />
-              </label>
+          <div className="details-row">
+            <DetailsCard
+              entry={entry}
+              computed={active?.entry ?? null}
+              unit={unit}
+              itemNameRef={itemNameRef}
+              onName={(value) => setEntry((c) => ({ ...c, itemName: value }))}
+              onWeight={setEntryWeight}
+              onPercent={(value) => setEntry((c) => ({ ...c, wastagePercent: value }))}
+              onLabour={(value) => setEntry((c) => ({ ...c, labourCharges: value }))}
+              onLabourMode={() =>
+                setEntry((c) => ({
+                  ...c,
+                  labourMode: c.labourMode === 'fixed' ? 'per_tola' : 'fixed',
+                }))
+              }
+              onStoneCharges={(value) => setEntry((c) => ({ ...c, stoneCharges: value }))}
+              onCommit={commitEntry}
+            />
 
-              <label className="field">
-                <span className="field__label">Salesman</span>
+            <div className="details-side">
+              <Action id="retail.unit.toggle" variant="outline" className="unit-toggle">
+                <Icon name="refresh" size={16} />
+                <span>Gram ⇄ Tola</span>
+              </Action>
+              <Action
+                id="retail.save"
+                variant="outline"
+                className="is-save-print"
+                busy={busy}
+              >
+                <Icon name="save" size={18} />
+                <span>SAVE (F5)</span>
+              </Action>
+              <Action id="retail.item.clear" variant="outline">
+                <Icon name="refresh" size={18} />
+                <span>{editing ? 'ABANDON EDIT' : 'REFRESH'}</span>
+              </Action>
+            </div>
+          </div>
+
+          <PaymentBlock
+            slip={activeSlip}
+            balance={active?.balance.rupees ?? '0.00'}
+            outstanding={(active?.balance.paisa ?? 0) !== 0}
+            onChange={(patch) => setActiveSlip((slip) => ({ ...slip, ...patch }))}
+          />
+        </div>
+
+        <aside className="retail__rail">
+          <SummaryCard
+            calc={active}
+            slip={activeSlip}
+            unit={unit}
+            onChange={(patch) => setActiveSlip((slip) => ({ ...slip, ...patch }))}
+          />
+          <BillCalculationsCard
+            calc={active}
+            slip={activeSlip}
+            onChange={(patch) => setActiveSlip((slip) => ({ ...slip, ...patch }))}
+          />
+        </aside>
+      </div>
+
+      {/* ── the action bar ────────────────────────────────────────────────── */}
+      <div className="retail__actions">
+        <Action id="retail.print" variant="outline" className="is-print">
+          <Icon name="print" size={18} />
+          <span>PRINT (F6)</span>
+        </Action>
+        <Action id="quick.retail-whatsapp" variant="outline" className="is-whatsapp">
+          <Icon name="whatsapp" size={18} />
+          {/* Marked as leaving the app, in the label itself rather than only in
+              a note somebody has to find. */}
+          <span>WHATSAPP ↗</span>
+        </Action>
+        <Action id="retail.save" variant="primary" className="is-save" busy={busy}>
+          <Icon name="save" size={18} />
+          <span>SAVE (F5)</span>
+        </Action>
+        <Action id="retail.new" variant="outline" className="is-cancel">
+          <Icon name="cross" size={18} />
+          <span>NEW SALE</span>
+        </Action>
+      </div>
+
+      {confirmDeleteSlip !== null ? (
+        <Modal
+          label={`Delete slip ${confirmDeleteSlip}?`}
+          onClose={() => setConfirmDeleteSlip(null)}
+        >
+          <h2 className="modal__title">Delete slip {confirmDeleteSlip}?</h2>
+          <p className="hint">
+            This slip is still a draft, so deleting it removes it and its items from this
+            bill. Nothing has been posted and no invoice number has been spent. A slip that
+            has already been saved cannot be deleted — it is voided, which leaves it and
+            the reason on the record.
+          </p>
+          <div className="confirm__actions">
+            <Action
+              id="retail.slip.delete"
+              variant="ghost"
+              onActivate={() => setConfirmDeleteSlip(null)}
+            >
+              Keep it
+            </Action>
+            <Action
+              id="retail.slip.delete"
+              variant="primary"
+              className="is-cancel"
+              onActivate={() => deleteSlip(confirmDeleteSlip)}
+            >
+              Delete this slip
+            </Action>
+          </div>
+        </Modal>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Items as COLUMNS, not rows.
+ *
+ * The left-most column is a fixed label stack on ink; each item is a column
+ * beside it. That is what the mockup draws, and it suits the shape of the data:
+ * a retail line has ten attributes and a sale usually has two or three items, so
+ * a table would be three rows of ten columns — mostly heading, mostly empty.
+ *
+ * More than four items scroll the COLUMNS sideways inside this card. The page
+ * itself never scrolls; that is the contract in Section 5.
+ */
+const ROW_LABELS = [
+  'Item Name',
+  'Weight',
+  'Stone',
+  'Purity Deduction',
+  'Net Weight',
+  'Polish %',
+  'Polish',
+  'Rate (PKR)',
+  'Amount (PKR)',
+  'Action',
+] as const
+
+function ItemColumns({
+  slipNo,
+  slipLabel,
+  lines,
+  unit,
+  editingIndex,
+  onEdit,
+  onDelete,
+  onPrint,
+  editing,
+  rateDisplay,
+  ratePurity,
+  onRatePurity,
+}: {
+  slipNo: number
+  slipLabel: string
+  lines: readonly RetailLineDto[]
+  unit: WeightUnit
+  editingIndex: number | null
+  onEdit: (index: number) => void
+  onDelete: (index: number) => void
+  onPrint: () => void
+  editing: boolean
+  rateDisplay: string | null
+  ratePurity: string
+  onRatePurity: (purity: string) => void
+}) {
+  const unitWord = unit === 'tola' ? 'Tola' : 'Gram'
+  // Always at least the mockup's four column slots, so an empty slip still reads
+  // as a place items go rather than as a blank card.
+  const slots = Math.max(VISIBLE_COLUMNS, lines.length)
+
+  return (
+    <div className="items-card">
+      <div className="items-card__head">
+        ITEMS IN SLIP {slipNo} ({slipLabel.toUpperCase()})
+      </div>
+
+      <div className="items-card__body">
+        <div className="item-labels">
+          {ROW_LABELS.map((label) =>
+            label === 'Rate (PKR)' ? (
+              <div className="item-labels__cell" key={label}>
+                <span>Rate (PKR)</span>
                 <select
-                  className="select"
-                  value={form.salesmanId}
-                  onChange={(e) => set('salesmanId', e.target.value)}
-                  aria-label="Salesman"
-                >
-                  <option value="">
-                    {salesmen.length === 0 ? 'None recorded' : 'Not attributed'}
-                  </option>
-                  {salesmen.map((salesman) => (
-                    <option key={salesman.id} value={salesman.id}>
-                      {salesman.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span className="field__label">Gold Rate purity</span>
-                <select
-                  className="select"
-                  value={form.ratePurity}
-                  onChange={(e) => set('ratePurity', e.target.value)}
+                  className="item-labels__purity"
+                  value={ratePurity}
+                  onChange={(e) => onRatePurity(e.target.value)}
                   aria-label="Gold rate purity"
                 >
                   {PURITY_OPTIONS.map((purity) => (
@@ -694,750 +1040,562 @@ export function RetailScreen({
                     </option>
                   ))}
                 </select>
-              </label>
-
-              <label className="field">
-                <span className="field__label">Rate (per tola)</span>
-                <span className="input-group">
-                  <input
-                    className={`input input--numeric${rateMissing ? ' input--bad' : ''}`}
-                    value={form.ratePerTolaOverride}
-                    onChange={(e) => set('ratePerTolaOverride', e.target.value)}
-                    placeholder={
-                      rateMissing
-                        ? `No ${form.ratePurity.slice(1)}K rate for this date`
-                        : (calc?.rateDisplay ?? '—')
-                    }
-                    inputMode="decimal"
-                    aria-label="Gold rate per tola"
-                  />
-                  <Action
-                    id="retail.rate.refresh"
-                    variant="segment"
-                    ariaLabel="Use the recorded rate"
-                  >
-                    <Icon name="refresh" size={16} />
-                  </Action>
-                </span>
-              </label>
-            </div>
-
-            {/* Inside the details card, exactly as the wholesale bar is. Below
-                the item table it would be off the bottom of an 830px window on
-                a long sale, which is when it is most needed. */}
-            <RetailActionBar busy={busy} />
-          </div>
-
-          <div className="panel">
-            <div className="panel__title">
-              <span>ITEM ENTRY</span>
-              <span className="toolbar__end">
-                <Action id="retail.unit.toggle" variant="toolbar">
-                  <Icon name="scale" size={16} />
-                  {unit === 'gram' ? 'Showing GRAM' : 'Showing TOLA'}
-                </Action>
-              </span>
-            </div>
-
-            <div className="entry-grid">
-              <label className="field">
-                <span className="field__label">Item Name</span>
-                <input
-                  ref={itemNameRef}
-                  className="input"
-                  value={entry.itemName}
-                  onChange={(e) => setEntry((c) => ({ ...c, itemName: e.target.value }))}
-                  placeholder="GOLD BANGLE"
-                  aria-label="Item name"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Purity</span>
-                <select
-                  className="select"
-                  value={entry.purity}
-                  onChange={(e) => setEntry((c) => ({ ...c, purity: e.target.value }))}
-                  aria-label="Item purity"
-                >
-                  {PURITY_OPTIONS.map((purity) => (
-                    <option key={purity} value={purity}>
-                      {purity.slice(1)}K
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span className="field__label">Weight ({unit})</span>
-                <input
-                  className="input input--numeric"
-                  value={entry.grossWeight.text}
-                  onChange={(e) => setEntryWeight('grossWeight', e.target.value)}
-                  placeholder="0.000"
-                  inputMode="decimal"
-                  aria-label="Gross weight"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Stone ({unit})</span>
-                <input
-                  className="input input--numeric"
-                  value={entry.stoneWeight.text}
-                  onChange={(e) => setEntryWeight('stoneWeight', e.target.value)}
-                  placeholder="0.000"
-                  inputMode="decimal"
-                  aria-label="Stone weight"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Net Weight ({unit})</span>
-                <input
-                  className="input input--computed"
-                  value={show(calc?.entry?.net, unit)}
-                  readOnly
-                  aria-label="Net weight"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Wastage %</span>
-                <input
-                  className="input input--numeric"
-                  value={entry.wastagePercent}
-                  onChange={(e) => setEntry((c) => ({ ...c, wastagePercent: e.target.value }))}
-                  placeholder="0.00"
-                  inputMode="decimal"
-                  aria-label="Wastage percent"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Wastage ({unit})</span>
-                <input
-                  className="input input--computed"
-                  value={show(calc?.entry?.wastage, unit)}
-                  readOnly
-                  aria-label="Wastage weight"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Fine Weight ({unit})</span>
-                <input
-                  className="input input--computed is-emphasis"
-                  value={show(calc?.entry?.fine, unit)}
-                  readOnly
-                  aria-label="Fine weight"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Cut / Kaat (per tola)</span>
-                <input
-                  className="input input--numeric"
-                  value={entry.cutPerTola.text}
-                  onChange={(e) => setEntryWeight('cutPerTola', e.target.value)}
-                  placeholder="0.000"
-                  inputMode="decimal"
-                  aria-label="Cut per tola"
-                />
-                <span className="field__hint">Normally 0 on a retail sale.</span>
-              </label>
-            </div>
-
-            <div className="entry-grid entry-grid--charges">
-              <label className="field">
-                <span className="field__label">Labour Charges</span>
-                <span className="input-group">
-                  <input
-                    className="input input--numeric"
-                    value={entry.labourCharges}
-                    onChange={(e) => setEntry((c) => ({ ...c, labourCharges: e.target.value }))}
-                    placeholder="0.00"
-                    inputMode="decimal"
-                    aria-label="Labour charges"
-                  />
-                  {/* Per-tola labour is charged on the FINE weight — the metal
-                      the customer is billed for. The mode is part of the same
-                      control because the number means nothing without it. */}
-                  <Action
-                    id="retail.labour.mode"
-                    variant="mode"
-                    className={entry.labourMode === 'per_tola' ? 'is-active' : ''}
-                    ariaLabel="Labour charge mode"
-                    onActivate={() =>
-                      setEntry((c) => ({
-                        ...c,
-                        labourMode: c.labourMode === 'fixed' ? 'per_tola' : 'fixed',
-                      }))
-                    }
-                  >
-                    {entry.labourMode === 'per_tola' ? '/tola' : 'fixed'}
-                  </Action>
-                </span>
-              </label>
-
-              <label className="field">
-                <span className="field__label">Stone Charges</span>
-                <input
-                  className="input input--numeric"
-                  value={entry.stoneCharges}
-                  onChange={(e) => setEntry((c) => ({ ...c, stoneCharges: e.target.value }))}
-                  onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-                    // Enter in the last entry field does what F2 does.
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      commitEntry()
-                    }
-                  }}
-                  placeholder="0.00"
-                  inputMode="decimal"
-                  aria-label="Stone charges"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__label">Line Amount</span>
-                <input
-                  className="input input--computed"
-                  value={calc?.entry?.amount.rupees ?? '0.00'}
-                  readOnly
-                  aria-label="Line amount"
-                />
-              </label>
-            </div>
-
-            {calc?.entry?.error ? <p className="hint hint--bad">{calc.entry.error}</p> : null}
-
-            <div className="action-bar action-bar--entry">
-              <Action id="retail.item.add" variant="outline" className="is-save-print">
-                <Icon name="plus" size={18} />
-                <span>{editing ? `UPDATE ITEM (F2)` : 'ADD ITEM (F2)'}</span>
-              </Action>
-              <Action id="retail.item.clear" variant="outline">
-                <Icon name="cross" size={18} />
-                <span>{editing ? 'ABANDON EDIT' : 'CLEAR ENTRY'}</span>
-              </Action>
-            </div>
-          </div>
-
-          <ItemsTable
-            lines={calc?.lines ?? []}
-            unit={unit}
-            editingIndex={editingIndex}
-            onEdit={editLine}
-            onDelete={deleteLine}
-            totalFine={calc?.totalFine}
-            totalLabour={calc?.totalLabour}
-            totalStone={calc?.totalStone}
-            itemsTotal={calc?.itemsTotal}
-          />
+              </div>
+            ) : (
+              <div className="item-labels__cell" key={label}>
+                {label === 'Weight' ||
+                label === 'Stone' ||
+                label === 'Net Weight' ||
+                label === 'Polish'
+                  ? `${label} (${unitWord})`
+                  : label}
+              </div>
+            ),
+          )}
+          <Action id="retail.item.add" variant="outline" className="item-labels__add">
+            <Icon name="plus" size={16} />
+            <span>{editing ? 'UPDATE ITEM' : 'ADD ITEM'}</span>
+          </Action>
         </div>
 
-        <aside className="rail">
-          <CalculationsPanel
-            calc={calc}
-            form={form}
-            unit={unit}
-            onChange={set}
-          />
-
-          <div className="panel">
-            <div className="panel__title">PAYMENT</div>
-            <div className="panel__body">
-              <div className="calc-line">
-                <span className="calc-line__label">Payment Amount</span>
-                <input
-                  className="input input--numeric"
-                  value={form.amountPaid}
-                  onChange={(e) => set('amountPaid', e.target.value)}
-                  placeholder="0.00"
-                  inputMode="decimal"
-                  aria-label="Payment amount"
-                />
-              </div>
-              <div className="calc-line">
-                <span className="calc-line__label">Payment Method</span>
-                <select
-                  className="select"
-                  value={form.paymentMethod}
-                  onChange={(e) => set('paymentMethod', e.target.value)}
-                  aria-label="Payment method"
-                >
-                  {PAYMENT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="calc-total">
-                <span className="calc-total__label">Remaining Balance</span>
-              </div>
-              <span
-                className={`balance-figure${balanceOutstanding ? ' is-outstanding' : ''}`}
+        {/* The ONE region on this screen allowed to scroll sideways. */}
+        <div className="item-columns">
+          {Array.from({ length: slots }, (_, index) => {
+            const line = lines[index]
+            const isEditing = editingIndex === index
+            return (
+              <div
+                className={`item-column${isEditing ? ' is-editing' : ''}${
+                  line ? '' : ' is-empty'
+                }`}
+                key={index}
               >
-                Rs {calc?.balance.rupees ?? '0.00'}
-              </span>
-            </div>
-          </div>
-
-          {/* Quick Actions BEFORE the preview.
-           *
-           * The rail wants more height than an 830px window has, so something
-           * in it is below the fold — and it must not be a control. The
-           * invoice preview is a facsimile of paper: losing its last few lines
-           * costs nothing, while a button nobody can reach is a button that
-           * does not exist. Order is by what has to be operable. */}
-          <div className="panel">
-            <div className="panel__title">QUICK ACTIONS</div>
-            <div className="panel__body">
-              <div className="quick-actions">
-                <Action id="quick.retail-whatsapp" variant="quick">
-                  Send on WhatsApp ↗
-                </Action>
-                <Action id="quick.print-last-invoice" variant="quick">
-                  Print Last Invoice
-                </Action>
-                <p className="quick-actions__note">
-                  WhatsApp opens outside this application, in your browser. Nothing is sent
-                  from here and no data leaves the shop&apos;s PC until you press send there.
-                </p>
+                <div className="item-column__head">
+                  {index + 1}. {line?.itemName?.trim() || 'Item'}
+                  {isEditing ? <span className="row-badge">editing</span> : null}
+                </div>
+                <div className="item-column__cell">{line?.itemName || '-'}</div>
+                <div className="item-column__cell numeric">{show(line?.gross, unit)}</div>
+                <div className="item-column__cell numeric">{show(line?.stone, unit)}</div>
+                {/*
+                  The COMPUTED deduction, not the per-tola figure that was typed.
+                  The cut is quoted per tola of gross, so on a 2.000-tola piece a
+                  0.090 cut removes 0.180 — and this row has to be the number the
+                  Net Weight beneath it was actually reduced by, or the column
+                  does not add up in the operator's hand.
+                */}
+                <div className="item-column__cell numeric">
+                  {line ? show(deductionOf(line), unit) : '0.000'}
+                </div>
+                <div className="item-column__cell numeric is-emphasis">
+                  {show(line?.net, unit)}
+                </div>
+                <div className="item-column__cell numeric">
+                  {line?.wastagePercent ?? '0.00'}
+                </div>
+                <div className="item-column__cell numeric">{show(line?.wastage, unit)}</div>
+                <div className="item-column__cell numeric">
+                  {line ? rateDisplay ?? '—' : '0'}
+                </div>
+                <div className="item-column__cell numeric is-amount">
+                  {line?.amount.rupees ?? '0.00'}
+                </div>
+                <div className="item-column__cell item-column__actions">
+                  {line ? (
+                    <>
+                      <Action
+                        id="retail.item.print"
+                        variant="icon"
+                        ariaLabel={`Print item ${index + 1}`}
+                        onActivate={onPrint}
+                      >
+                        <Icon name="print" size={16} />
+                      </Action>
+                      <Action
+                        id="retail.item.edit"
+                        variant="icon"
+                        ariaLabel={`Edit item ${index + 1}`}
+                        onActivate={() => onEdit(index)}
+                      >
+                        <Icon name="pencil" size={16} />
+                      </Action>
+                      <Action
+                        id="retail.item.delete"
+                        variant="icon"
+                        className="is-danger"
+                        ariaLabel={`Delete item ${index + 1}`}
+                        onActivate={() => onDelete(index)}
+                      >
+                        <Icon name="trash" size={16} />
+                      </Action>
+                    </>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </div>
-
-          <InvoicePreview
-            invoiceNo={invoiceNo}
-            form={form}
-            calc={calc}
-            customerName={form.customerName}
-          />
-        </aside>
-      </div>
-
-      {/* Outside the scrolling column on purpose.
-       *
-       * Measured: this screen's left column wants 1108 CSS pixels and has 611
-       * at a 1550×830 window, so it is the region that gives way — and inside
-       * it, these three figures sit below the item table, which is exactly
-       * where they are least useful. They are the figures the whole sale exists
-       * to produce, so they are pinned to the foot of the screen and are always
-       * on screen while the numbers that produce them are being typed. The page
-       * itself still never scrolls. */}
-      <div className="stat-strip">
-        <div className="stat-cell">
-          <span className="stat-cell__label">Total Fine (tola)</span>
-          <span
-            className={`stat-cell__value${
-              isSignificant(calc?.totalFine.tola) ? ' positive' : ''
-            }`}
-          >
-            {calc?.totalFine.tola ?? '0.000'}
-          </span>
-        </div>
-        <div className="stat-cell">
-          <span className="stat-cell__label">Grand Total</span>
-          <span className="stat-cell__value">Rs {calc?.grandTotal.rupees ?? '0.00'}</span>
-        </div>
-        <div className="stat-cell">
-          <span className="stat-cell__label">Balance</span>
-          <span className={`stat-cell__value${balanceOutstanding ? ' negative' : ''}`}>
-            Rs {calc?.balance.rupees ?? '0.00'}
-          </span>
+            )
+          })}
         </div>
       </div>
     </div>
   )
 }
 
-/** SAVE · SAVE &amp; PRINT · PRINT · HOLD · NEW SALE · CANCEL. */
-function RetailActionBar({ busy }: { busy: boolean }) {
-  return (
-    <div className="action-bar action-bar--six">
-      <Action id="retail.save" variant="primary" className="is-save" busy={busy}>
-        <Icon name="save" size={18} />
-        <span>SAVE (F5)</span>
-      </Action>
-      <Action id="retail.save-and-print" variant="outline" className="is-save-print" busy={busy}>
-        <Icon name="print" size={18} />
-        <span>SAVE &amp; PRINT (F6)</span>
-      </Action>
-      <Action id="retail.print" variant="outline" className="is-print">
-        <Icon name="print" size={18} />
-        <span>PRINT (F7)</span>
-      </Action>
-      <Action id="retail.hold" variant="outline" className="is-hold" busy={busy}>
-        <Icon name="pause" size={18} />
-        <span>HOLD (F8)</span>
-      </Action>
-      <Action id="retail.new" variant="outline">
-        <Icon name="plus" size={18} />
-        <span>NEW SALE (F9)</span>
-      </Action>
-      <Action id="retail.cancel" variant="outline" className="is-cancel">
-        <Icon name="cross" size={18} />
-        <span>CANCEL</span>
-      </Action>
-    </div>
-  )
+/**
+ * The deduction actually taken off this line, as a weight.
+ *
+ * gross − stone − net, which is exactly what `computeRetailLine` subtracted.
+ * Derived from figures main computed rather than recomputed here: the renderer
+ * does no arithmetic, and this is a subtraction of two integers it was handed.
+ */
+function deductionOf(line: RetailLineDto): WeightDto {
+  const mg = line.gross.mg - line.stone.mg - line.net.mg
+  // Formatting is the one thing the renderer may do with a milligram, and it
+  // borrows the strings main already produced for the two units.
+  return {
+    mg,
+    gram: formatMg(mg, 1000),
+    tola: formatMg(mg, 11_664),
+  }
 }
 
-function ItemsTable({
-  lines,
+/** Three decimals of a unit, from an exact milligram. Display only. */
+function formatMg(mg: number, per: number): string {
+  const sign = mg < 0 ? '-' : ''
+  const magnitude = Math.abs(mg)
+  const thousandths = Math.round((magnitude * 1000) / per)
+  const whole = Math.trunc(thousandths / 1000)
+  const fraction = (thousandths % 1000).toString().padStart(3, '0')
+  return `${sign}${whole.toLocaleString('en-US')}.${fraction}`
+}
+
+/** The eight numbered fields, in two columns of four, as the mockup numbers them. */
+function DetailsCard({
+  entry,
+  computed,
   unit,
-  editingIndex,
-  onEdit,
-  onDelete,
-  totalFine,
-  totalLabour,
-  totalStone,
-  itemsTotal,
+  itemNameRef,
+  onName,
+  onWeight,
+  onPercent,
+  onLabour,
+  onLabourMode,
+  onStoneCharges,
+  onCommit,
 }: {
-  lines: readonly RetailLineDto[]
+  entry: RetailItemDto
+  computed: RetailLineDto | null
   unit: WeightUnit
-  editingIndex: number | null
-  onEdit: (index: number) => void
-  onDelete: (index: number) => void
-  totalFine: WeightDto | undefined
-  totalLabour: MoneyDto | undefined
-  totalStone: MoneyDto | undefined
-  itemsTotal: MoneyDto | undefined
+  itemNameRef: React.RefObject<HTMLInputElement | null>
+  onName: (value: string) => void
+  onWeight: (key: 'grossWeight' | 'stoneWeight' | 'cutPerTola', text: string) => void
+  onPercent: (value: string) => void
+  onLabour: (value: string) => void
+  onLabourMode: () => void
+  onStoneCharges: (value: string) => void
+  onCommit: () => void
+}) {
+  const unitWord = unit === 'tola' ? 'Tola' : 'Gram'
+  return (
+    <div className="details-card">
+      <div className="details-card__head">DETAILS (SELECTED ITEM)</div>
+      <div className="details-grid">
+        <NumberedField n={1} label="Item Name">
+          <input
+            ref={itemNameRef}
+            className="input"
+            value={entry.itemName}
+            onChange={(e) => onName(e.target.value)}
+            placeholder="Ring"
+            aria-label="Item name"
+          />
+        </NumberedField>
+        <NumberedField n={5} label={`Net Weight (${unitWord})`}>
+          <input
+            className="input input--computed numeric"
+            value={show(computed?.net, unit)}
+            readOnly
+            tabIndex={-1}
+            aria-label="Net weight"
+          />
+        </NumberedField>
+
+        <NumberedField n={2} label={`Weight (${unitWord})`}>
+          <input
+            className="input input--numeric"
+            value={entry.grossWeight.text}
+            onChange={(e) => onWeight('grossWeight', e.target.value)}
+            placeholder="0.000"
+            inputMode="decimal"
+            aria-label="Gross weight"
+          />
+        </NumberedField>
+        <NumberedField n={6} label="Polish %">
+          <input
+            className="input input--numeric"
+            value={entry.wastagePercent}
+            onChange={(e) => onPercent(e.target.value)}
+            placeholder="0.00"
+            inputMode="decimal"
+            aria-label="Polish percent"
+          />
+        </NumberedField>
+
+        <NumberedField n={3} label={`Stone (${unitWord})`}>
+          <input
+            className="input input--numeric"
+            value={entry.stoneWeight.text}
+            onChange={(e) => onWeight('stoneWeight', e.target.value)}
+            placeholder="0.000"
+            inputMode="decimal"
+            aria-label="Stone weight"
+          />
+        </NumberedField>
+        <NumberedField n={7} label={`Polish (${unitWord})`}>
+          <input
+            className="input input--computed numeric"
+            value={show(computed?.wastage, unit)}
+            readOnly
+            tabIndex={-1}
+            aria-label="Polish weight"
+          />
+        </NumberedField>
+
+        <NumberedField n={4} label="Purity Deduction">
+          <input
+            className="input input--numeric"
+            value={entry.cutPerTola.text}
+            onChange={(e) => onWeight('cutPerTola', e.target.value)}
+            placeholder="0.000"
+            inputMode="decimal"
+            aria-label="Purity deduction"
+          />
+        </NumberedField>
+        <NumberedField n={8} label="Total Gold (After Polish)">
+          <input
+            className="input input--computed numeric is-emphasis"
+            value={show(computed?.fine, unit)}
+            readOnly
+            tabIndex={-1}
+            aria-label="Total gold after polish"
+          />
+        </NumberedField>
+
+        {/* Labour and stone charges are not in the mockup's eight, and a line
+            cannot be priced without them — so they sit beneath the numbered
+            grid rather than being dropped or renumbered into it. */}
+        <NumberedField label="Labour Charges">
+          <span className="input-group">
+            <input
+              className="input input--numeric"
+              value={entry.labourCharges}
+              onChange={(e) => onLabour(e.target.value)}
+              placeholder="0.00"
+              inputMode="decimal"
+              aria-label="Labour charges"
+            />
+            <Action
+              id="retail.labour.mode"
+              variant="mode"
+              className={entry.labourMode === 'per_tola' ? 'is-active' : ''}
+              ariaLabel="Labour charge mode"
+              onActivate={onLabourMode}
+            >
+              {entry.labourMode === 'per_tola' ? '/tola' : 'fixed'}
+            </Action>
+          </span>
+        </NumberedField>
+        <NumberedField label="Stone Charges">
+          <input
+            className="input input--numeric"
+            value={entry.stoneCharges}
+            onChange={(e) => onStoneCharges(e.target.value)}
+            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+              // Enter in the last field does what F2 does.
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                onCommit()
+              }
+            }}
+            placeholder="0.00"
+            inputMode="decimal"
+            aria-label="Stone charges"
+          />
+        </NumberedField>
+      </div>
+      {computed?.error ? <p className="hint hint--bad">{computed.error}</p> : null}
+    </div>
+  )
+}
+
+function NumberedField({
+  n,
+  label,
+  children,
+}: {
+  n?: number
+  label: string
+  children: React.ReactNode
 }) {
   return (
-    <div className="panel panel--fill">
-      <div className="panel__title">
-        <span>ITEMS IN THIS SALE</span>
-        <span className="toolbar__end">{lines.length} line{lines.length === 1 ? '' : 's'}</span>
-      </div>
-      <div className="panel__body panel__body--flush">
-        {lines.length === 0 ? (
-          <EmptyState
-            title="No items yet"
-            line="Fill in the ITEM ENTRY card above and press ADD ITEM (F2). Each line you add appears here with its fine weight and amount."
-          />
-        ) : (
-          <div className="table-scroll table-scroll--retail">
-            <table className="grid grid--retail">
-              <colgroup>
-                <col className="col--index" />
-                <col />
-                <col className="col--purity" />
-                <col className="col--weight" />
-                <col className="col--weight" />
-                <col className="col--weight" />
-                <col className="col--fine" />
-                <col className="col--charge" />
-                <col className="col--charge" />
-                <col className="col--retail-amount" />
-                <col className="col--action" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th className="grid__index">#</th>
-                  <th>Item</th>
-                  <th>Purity</th>
-                  <th className="numeric">Gross</th>
-                  <th className="numeric">Net</th>
-                  <th className="numeric">Wastage</th>
-                  <th className="numeric">Fine</th>
-                  <th className="numeric">Labour</th>
-                  <th className="numeric">Stone</th>
-                  <th className="numeric">Amount</th>
-                  <th className="grid__action">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line, index) => (
-                  <tr
-                    key={index}
-                    className={
-                      line.error
-                        ? 'row--error'
-                        : editingIndex === index
-                          ? 'row--editing'
-                          : undefined
-                    }
-                  >
-                    <td className="grid__index">{index + 1}</td>
-                    <td title={line.itemName}>
-                      {line.itemName || '—'}
-                      {editingIndex === index ? (
-                        <span className="row-badge">editing</span>
-                      ) : null}
-                    </td>
-                    <td>{line.purity}</td>
-                    <td className="numeric">{show(line.gross, unit)}</td>
-                    <td className="numeric">{show(line.net, unit)}</td>
-                    <td className="numeric">{show(line.wastage, unit)}</td>
-                    <td className="numeric is-fine">{show(line.fine, unit)}</td>
-                    <td className="numeric">{line.labour.rupees}</td>
-                    <td className="numeric">{line.stoneCharges.rupees}</td>
-                    <td className="numeric">{line.amount.rupees}</td>
-                    <td className="grid__action">
-                      {/* No whitespace text node between the two buttons: at
-                          this column width it is the difference between one row
-                          of controls and two. */}
-                      <span className="row-actions">
-                        <Action
-                          id="retail.item.edit"
-                          variant="icon"
-                          ariaLabel={`Edit line ${index + 1}`}
-                          onActivate={() => onEdit(index)}
-                        >
-                          <Icon name="pencil" size={16} />
-                        </Action>
-                        <Action
-                          id="retail.item.delete"
-                          variant="icon"
-                          className="is-danger"
-                          ariaLabel={`Delete line ${index + 1}`}
-                          onActivate={() => onDelete(index)}
-                        >
-                          <Icon name="trash" size={16} />
-                        </Action>
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td className="grid__index" />
-                  <td>Total</td>
-                  <td />
-                  <td />
-                  <td />
-                  <td />
-                  <td className="numeric">{show(totalFine, unit)}</td>
-                  <td className="numeric">{totalLabour?.rupees ?? '0.00'}</td>
-                  <td className="numeric">{totalStone?.rupees ?? '0.00'}</td>
-                  <td className="numeric">{itemsTotal?.rupees ?? '0.00'}</td>
-                  <td className="grid__action" />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+    <label className="numbered-field">
+      <span className="numbered-field__label">
+        {n === undefined ? label : `${n}. ${label}`}
+      </span>
+      {children}
+    </label>
   )
 }
 
-function CalculationsPanel({
+/** SUMMARY: the weights, then what the customer brings, then payable gold. */
+function SummaryCard({
   calc,
-  form,
+  slip,
   unit,
   onChange,
 }: {
   calc: RetailCalculationDto | null
-  form: RetailForm
+  slip: RetailSlipDto | undefined
   unit: WeightUnit
-  onChange: <K extends keyof RetailForm>(key: K, value: RetailForm[K]) => void
+  onChange: (patch: Partial<RetailSlipDto>) => void
 }) {
-  // A derived figure still renders as an input, so the rail reads as one column
-  // of controls rather than a column of controls with text dropped between them.
-  // The parchment fill and the missing tab stop are what say "not typed here".
-  const derived = (value: string) => (
-    <input className="input input--computed" value={value} readOnly tabIndex={-1} />
+  const lines = calc?.lines ?? []
+  // Totals of the two columns the summary shows per item. Both are figures main
+  // already computed; adding integers it was handed is not a calculation the
+  // renderer is doing on the operator's behalf.
+  const totalGross = lines.reduce((sum, line) => sum + line.gross.mg, 0)
+  const totalStone = lines.reduce((sum, line) => sum + line.stone.mg, 0)
+  const totalDeduction = lines.reduce(
+    (sum, line) => sum + (line.gross.mg - line.stone.mg - line.net.mg),
+    0,
   )
+  const totalNet = lines.reduce((sum, line) => sum + line.net.mg, 0)
+  const totalPolish = lines.reduce((sum, line) => sum + line.wastage.mg, 0)
+  const per = unit === 'tola' ? 11_664 : 1000
 
   return (
-    <div className="panel">
-      <div className="panel__title">CALCULATIONS</div>
+    <div className="panel panel--summary">
+      <div className="panel__title">SUMMARY</div>
       <div className="panel__body">
-        {/* The gold group. Kept apart from the money group by a brass rule,
-            because they are two different quantities and netting them in the
-            eye is the mistake the sign convention exists to prevent. */}
-        <div className="calc-line">
-          <span className="calc-line__label">Total Fine ({unit})</span>
-          {derived(show(calc?.totalFine, unit))}
+        {lines.map((line, index) => (
+          <div className="sum-line" key={index}>
+            <span className="sum-line__label">{line.itemName || `Item ${index + 1}`}</span>
+            <span className="sum-line__value">{show(line.gross, unit)}</span>
+          </div>
+        ))}
+
+        <div className="calc-rule" />
+
+        <div className="sum-line">
+          <span className="sum-line__label">Total Weight</span>
+          <span className="sum-line__value">{formatMg(totalGross, per)}</span>
         </div>
-        <div className="calc-line">
-          <span className="calc-line__label">Customer Gold ({unit})</span>
-          <span className="calc-line__pair">
-            <select
-              className="select"
-              value={form.customerGoldPurity}
-              onChange={(e) => onChange('customerGoldPurity', e.target.value)}
-              aria-label="Customer gold purity"
-            >
-              {PURITY_OPTIONS.map((purity) => (
-                <option key={purity} value={purity}>
-                  {purity.slice(1)}K
-                </option>
-              ))}
-            </select>
-            <input
-              className="input input--numeric"
-              value={form.customerGold.text}
-              onChange={(e) => onChange('customerGold', { text: e.target.value, exactMg: null })}
-              placeholder="0.000"
-              inputMode="decimal"
-              aria-label="Customer gold"
-            />
-          </span>
+        <Deduction label="Stone" value={formatMg(totalStone, per)} />
+        <Deduction label="Purity Deduction" value={formatMg(totalDeduction, per)} />
+        <div className="sum-line">
+          <span className="sum-line__label">Net Weight (Before Polish)</span>
+          <span className="sum-line__value positive">{formatMg(totalNet, per)}</span>
         </div>
-        <div className="calc-line">
-          <span className="calc-line__label">Remaining Gold ({unit})</span>
-          {derived(show(calc?.remainingGold, unit))}
+        {/* Polish is ADDED under the locked rule, so it carries no minus. */}
+        <div className="sum-line">
+          <span className="sum-line__label">Polish</span>
+          <span className="sum-line__value">{formatMg(totalPolish, per)}</span>
+        </div>
+        <div className="sum-line sum-line--highlight">
+          <span className="sum-line__label">Total Weight After Polish</span>
+          <span className="sum-line__value">{show(calc?.totalFine, unit)}</span>
         </div>
 
         <div className="calc-rule" />
 
-        <div className="calc-line">
-          <span className="calc-line__label">Gold Value</span>
-          {derived(calc?.goldValue.rupees ?? '0.00')}
-        </div>
-        <div className="calc-line">
-          <span className="calc-line__label">Labour</span>
-          {derived(calc?.totalLabour.rupees ?? '0.00')}
-        </div>
-        <div className="calc-line">
-          <span className="calc-line__label">Stone</span>
-          {derived(calc?.totalStone.rupees ?? '0.00')}
-        </div>
-        <div className="calc-line">
-          <span className="calc-line__label">Hallmark</span>
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Rupees (Customer Amount)</span>
           <input
             className="input input--numeric"
-            value={form.hallmarkCharges}
-            onChange={(e) => onChange('hallmarkCharges', e.target.value)}
-            placeholder="0.00"
+            value={slip?.amountPaid ?? ''}
+            onChange={(e) => onChange({ amountPaid: e.target.value })}
+            placeholder="0"
             inputMode="decimal"
-            aria-label="Hallmark charges"
+            aria-label="Customer amount"
           />
+          <span className="minus-marker" aria-hidden="true">
+            −
+          </span>
         </div>
-        <div className="calc-line">
-          <span className="calc-line__label">Other Charges</span>
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Advance Gold (Customer Gold)</span>
           <input
             className="input input--numeric"
-            value={form.otherCharges}
-            onChange={(e) => onChange('otherCharges', e.target.value)}
-            placeholder="0.00"
+            value={slip?.customerGold.text ?? ''}
+            onChange={(e) => onChange({ customerGold: { text: e.target.value, exactMg: null } })}
+            placeholder="0.000"
             inputMode="decimal"
-            aria-label="Other charges"
+            aria-label="Advance gold"
           />
+          <span className="minus-marker" aria-hidden="true">
+            −
+          </span>
         </div>
-        <div className="calc-line">
-          <span className="calc-line__label">Discount</span>
-          <input
-            className="input input--numeric"
-            value={form.discount}
-            onChange={(e) => onChange('discount', e.target.value)}
-            placeholder="0.00"
-            inputMode="decimal"
-            aria-label="Discount"
-          />
-        </div>
-        {calc && calc.customerGoldValue.paisa !== 0 ? (
-          <div className="calc-line">
-            <span className="calc-line__label">Less old gold</span>
-            {derived(calc.customerGoldValue.rupees)}
-          </div>
-        ) : null}
 
-        <div className="calc-total">
-          <span className="calc-total__label">Grand Total</span>
-          <span className="calc-total__value">Rs {calc?.grandTotal.rupees ?? '0.00'}</span>
+        <div className="sum-total">
+          <span className="sum-total__label">TOTAL (PAYABLE GOLD)</span>
+          <span className="sum-total__value">{show(calc?.remainingGold, unit)}</span>
         </div>
-        {/* Live, and the same string that will be stored on the row and printed
-            on the paper — rendered once, by the application layer. */}
-        <p className="calc-words">{calc?.amountInWords ?? 'Rupees Zero Only'}</p>
       </div>
     </div>
   )
 }
 
-/** The 80mm paper artefact, showing what will actually print. */
-function InvoicePreview({
-  invoiceNo,
-  form,
-  calc,
-  customerName,
-}: {
-  invoiceNo: string
-  form: RetailForm
-  calc: RetailCalculationDto | null
-  customerName: string
-}) {
-  const lines = (calc?.lines ?? []).filter((line) => !line.error)
+/** A row whose figure is taken away. The marker is muted, and never on a plus. */
+function Deduction({ label, value }: { label: string; value: string }) {
   return (
-    <div className="panel">
-      <div className="panel__title">INVOICE PREVIEW (80MM)</div>
-      <div className="panel__body slip">
-        <div className="slip__brand">
-          AL-HARAM
-          <br />
-          GOLD JEWELLERS
+    <div className="sum-line">
+      <span className="sum-line__label">{label}</span>
+      <span className="sum-line__value">{value}</span>
+      <span className="minus-marker" aria-hidden="true">
+        −
+      </span>
+    </div>
+  )
+}
+
+function BillCalculationsCard({
+  calc,
+  slip,
+  onChange,
+}: {
+  calc: RetailCalculationDto | null
+  slip: RetailSlipDto | undefined
+  onChange: (patch: Partial<RetailSlipDto>) => void
+}) {
+  const outstanding = (calc?.balance.paisa ?? 0) !== 0
+  const derived = (value: string) => (
+    <input className="input input--computed numeric" value={value} readOnly tabIndex={-1} />
+  )
+
+  return (
+    <div className="panel panel--bill">
+      <div className="panel__title">BILL CALCULATIONS</div>
+      <div className="panel__body">
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Gold Value</span>
+          {derived(calc?.goldValue.rupees ?? '0.00')}
         </div>
-        <div className="slip__tagline">Trust in Purity</div>
-        <div className="slip__rule" />
-        <div className="slip__row">
-          <span>Invoice No.</span>
-          <span>{invoiceNo}</span>
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Labour Charges</span>
+          {derived(calc?.totalLabour.rupees ?? '0.00')}
         </div>
-        <div className="slip__row">
-          <span>Date</span>
-          <span>
-            {toDisplayDate(form.saleDate)} {form.saleTime}
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Stone Charges</span>
+          {derived(calc?.totalStone.rupees ?? '0.00')}
+        </div>
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Hallmark Charges</span>
+          <input
+            className="input input--numeric"
+            value={slip?.hallmarkCharges ?? ''}
+            onChange={(e) => onChange({ hallmarkCharges: e.target.value })}
+            placeholder="0"
+            inputMode="decimal"
+            aria-label="Hallmark charges"
+          />
+        </div>
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Other Charges</span>
+          <input
+            className="input input--numeric"
+            value={slip?.otherCharges ?? ''}
+            onChange={(e) => onChange({ otherCharges: e.target.value })}
+            placeholder="0"
+            inputMode="decimal"
+            aria-label="Other charges"
+          />
+        </div>
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Discount</span>
+          <input
+            className="input input--numeric"
+            value={slip?.discount ?? ''}
+            onChange={(e) => onChange({ discount: e.target.value })}
+            placeholder="0"
+            inputMode="decimal"
+            aria-label="Discount"
+          />
+          <span className="minus-marker" aria-hidden="true">
+            −
           </span>
         </div>
-        <div className="slip__row">
-          <span>Customer</span>
-          <span>{customerName || '—'}</span>
+
+        <div className="grand-total">
+          <span className="grand-total__label">GRAND TOTAL AMOUNT</span>
+          <span className="grand-total__value">{calc?.invoiceTotal.rupees ?? '0.00'}</span>
         </div>
-        <div className="slip__row">
-          <span>Rate</span>
-          <span>{calc?.rateDisplay ? `${calc.rateDisplay}/tola` : '—'}</span>
+
+        <div className="sum-line sum-line--input">
+          <span className="sum-line__label">Customer Amount Paid</span>
+          {derived(calc?.amountPaid.rupees ?? '0.00')}
+          <span className="minus-marker" aria-hidden="true">
+            −
+          </span>
         </div>
-        {lines.length > 0 ? (
-          <>
-            <div className="slip__rule" />
-            <div className="slip__row slip__head">
-              <span>ITEM</span>
-              <span>WT</span>
-              <span>FINE</span>
-              <span>AMOUNT</span>
-            </div>
-            {lines.map((line, index) => (
-              <div className="slip__row slip__item" key={index}>
-                <span>{line.itemName}</span>
-                <span>{line.gross.gram}</span>
-                <span>{line.fine.gram}</span>
-                <span>{line.amount.whole}</span>
-              </div>
+
+        <div className="balance-row">
+          <span className="balance-row__label">Remaining Balance (PKR)</span>
+          <span className={`balance-row__value${outstanding ? ' is-outstanding' : ''}`}>
+            {calc?.balance.rupees ?? '0.00'}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PaymentBlock({
+  slip,
+  balance,
+  outstanding,
+  onChange,
+}: {
+  slip: RetailSlipDto | undefined
+  balance: string
+  outstanding: boolean
+  onChange: (patch: Partial<RetailSlipDto>) => void
+}) {
+  return (
+    <div className="payment-block">
+      <div className="payment-block__title">PAYMENT</div>
+      <div className="payment-block__grid">
+        <label className="payment-field">
+          <span className="payment-field__label">Payment Amount (PKR)</span>
+          <input
+            className="input input--numeric"
+            value={slip?.amountPaid ?? ''}
+            onChange={(e) => onChange({ amountPaid: e.target.value })}
+            placeholder="0.00"
+            inputMode="decimal"
+            aria-label="Payment amount"
+          />
+        </label>
+        <label className="payment-field">
+          <span className="payment-field__label">Payment Method</span>
+          <select
+            className="select"
+            value={slip?.paymentMethod ?? 'cash'}
+            onChange={(e) => onChange({ paymentMethod: e.target.value })}
+            aria-label="Payment method"
+          >
+            {PAYMENT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
-            <div className="slip__rule" />
-            <div className="slip__row">
-              <span>Total Fine</span>
-              <span>{calc?.totalFine.gram ?? '0.000'} g</span>
-            </div>
-          </>
-        ) : null}
-        <div className="slip__rule" />
-        <div className="slip__row">
-          <span>Items</span>
-          <span>{calc?.itemsTotal.whole ?? '0'}</span>
+          </select>
+        </label>
+        <div className="payment-balance">
+          <span className="payment-field__label">Remaining Balance (PKR)</span>
+          <span className={`payment-balance__value${outstanding ? ' is-outstanding' : ''}`}>
+            {balance}
+          </span>
         </div>
-        <div className="slip__row slip__total">
-          <span>Grand Total</span>
-          <span>Rs {calc?.grandTotal.whole ?? '0'}</span>
-        </div>
-        <div className="slip__row">
-          <span>Paid</span>
-          <span>{calc?.amountPaid.whole ?? '0'}</span>
-        </div>
-        <div className="slip__row slip__total">
-          <span>Balance</span>
-          <span>Rs {calc?.balance.whole ?? '0'}</span>
-        </div>
-        <div className="slip__words">{calc?.amountInWords ?? 'Rupees Zero Only'}</div>
-        <div className="slip__rule" />
-        <div className="slip__centre">Thank You! Visit Again</div>
       </div>
     </div>
   )

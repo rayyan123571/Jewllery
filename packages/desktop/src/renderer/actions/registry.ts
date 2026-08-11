@@ -97,6 +97,14 @@ export type ActionId =
   | 'retail.labour.mode'
   | 'retail.item.edit'
   | 'retail.item.delete'
+  | 'retail.item.print'
+  // ── slips: one visit, several printable documents ─────────────────────────
+  // Rendered once per tab, each supplying its own onActivate — the registry
+  // holds the control, the tab knows which slip it is.
+  | 'retail.slip.select'
+  | 'retail.slip.add'
+  | 'retail.slip.delete'
+  | 'retail.bill.print'
   | 'retail.save'
   | 'retail.save-and-print'
   | 'retail.print'
@@ -350,6 +358,11 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'retail.labour.mode': screen('Charge labour as a fixed amount or per tola', 'retail.labour.mode'),
     'retail.item.edit': screen('Edit this line', 'retail.item.edit'),
     'retail.item.delete': screen('Remove this line', 'retail.item.delete'),
+    'retail.item.print': screen('Print this item', 'retail.item.print'),
+    'retail.slip.select': screen('Open this slip', 'retail.slip.select'),
+    'retail.slip.add': screen('Add another slip to this bill', 'retail.slip.add'),
+    'retail.slip.delete': screen('Delete this draft slip', 'retail.slip.delete'),
+    'retail.bill.print': screen('Print every slip in this bill', 'retail.bill.print'),
     'retail.save': screen('SAVE', 'retail.save', 'F5'),
     'retail.save-and-print': screen('SAVE & PRINT', 'retail.save-and-print', 'F6'),
     'retail.print': screen('PRINT', 'retail.print', 'F7'),

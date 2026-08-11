@@ -31,11 +31,20 @@ export function CustomerSelector({
   typedName,
   onTypedName,
   onSelect,
+  /**
+   * `baseline` draws it as a label and a rule with no box, which is how the
+   * retail header strip shows the visit's facts. It is a skin: the prefix
+   * autocomplete, the debounce, the walk-in fallback and the Add Customer
+   * dialog are all unchanged, because a second implementation of a type-ahead
+   * is a second one to keep correct.
+   */
+  variant = 'field',
 }: {
   selected: CustomerDto | null
   typedName: string
   onTypedName: (name: string) => void
   onSelect: (customer: CustomerDto | null) => void
+  variant?: 'field' | 'baseline'
 }) {
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -52,9 +61,12 @@ export function CustomerSelector({
     [onSelect, onTypedName],
   )
 
+  const baseline = variant === 'baseline'
   return (
-    <div className="field customer">
-      <span className="field__label">Customer</span>
+    <div className={`customer ${baseline ? 'baseline-field' : 'field'}`}>
+      <span className={baseline ? 'baseline-field__label' : 'field__label'}>
+        {baseline ? 'Customer :' : 'Customer'}
+      </span>
       <span className="input-group">
         <GhostInput
           value={typedName}
@@ -70,8 +82,8 @@ export function CustomerSelector({
             if (found) pick(found)
           }}
           suggestions={matches.map((m) => m.name)}
-          className="input"
-          placeholder="Name, code or mobile — or type a walk-in name"
+          className={baseline ? 'baseline-field__input' : 'input'}
+          placeholder={baseline ? 'Walk In Customer' : 'Name, code or mobile — or type a walk-in name'}
           inputRef={nameRef}
           ariaLabel="Customer"
           onKeyDown={(event) => {

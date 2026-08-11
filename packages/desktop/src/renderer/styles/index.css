@@ -2992,3 +2992,703 @@ a {
   min-height: calc(var(--size-row-height) * 6);
   max-height: calc(var(--size-row-height) * 13);
 }
+
+/* ══ Sale (Retail) ════════════════════════════════════════════════════════════
+   Drawn to the reference mockup's STRUCTURE, in the application's own visual
+   language. The mockup's maroon, white and blue are not copied; its regions,
+   their positions and their proportions are.
+
+   The whole screen is one grid with five rows — head, tabs, banners, body,
+   actions — and the body is the only one that flexes. Nothing here scrolls
+   except the item columns (sideways) and the summary rail (down), which is the
+   no-page-scroll contract in Section 5. */
+
+.retail {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: var(--space-8);
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── the header strip ─────────────────────────────────────────────────────── */
+
+.retail__head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-16);
+  align-items: start;
+}
+
+.bill-fields {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+/* Label to the left of its control, not above it: three of these stacked with
+   the label on top would cost 60px the item columns need. */
+.stack-field {
+  display: grid;
+  grid-template-columns: 78px 168px;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.stack-field__label {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+}
+
+.stack-field .input,
+.stack-field .input-group {
+  height: var(--size-input-group-button);
+}
+
+/* The DateField renders its own wrapper; it is given the same two-column shape
+   so the three rows line up on one axis. */
+.retail__head .field.date-field {
+  display: grid;
+  grid-template-columns: 78px 168px;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.retail__head .field.date-field > .field__label {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+  margin: 0;
+}
+
+/* ── the party fields ─────────────────────────────────────────────────────── */
+
+/* A label and a rule, with no box. These are the VISIT's facts — typed once and
+   shared by every slip — and the mockup draws them as writing on a form rather
+   than as controls in a panel. */
+.bill-party {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  min-width: 0;
+}
+
+.baseline-field {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-8);
+  position: relative;
+}
+
+.baseline-field__label {
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+}
+
+.baseline-field__input {
+  width: 100%;
+  height: var(--size-input-group-button);
+  padding: 0 var(--space-4);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+  color: var(--colour-text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--colour-border-strong);
+  border-radius: 0;
+}
+
+.baseline-field__input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--colour-gold-metal);
+  box-shadow: 0 1px 0 0 var(--colour-gold-metal);
+}
+
+.baseline-field .input-group {
+  border: 0;
+  background: transparent;
+}
+
+/* ── slip tabs ────────────────────────────────────────────────────────────── */
+
+.slip-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-4);
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.slip-tab {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+  min-width: 148px;
+  height: var(--size-slip-tab-height);
+  padding: 0 var(--space-12);
+  border: 1px solid var(--colour-border);
+  border-bottom: 0;
+  border-radius: var(--size-radius) var(--size-radius) 0 0;
+  background: var(--colour-parchment);
+  color: var(--colour-text-muted);
+}
+
+.slip-tab:hover:not(:disabled) {
+  background: var(--colour-parchment-deep);
+}
+
+/* The active tab is ink with a brass label — the same pairing the item card's
+   header and the sidebar's active item use. */
+.slip-tab.is-active {
+  background: var(--colour-ink-panel);
+  border-color: var(--colour-gold-metal);
+  color: var(--colour-gold-on-dark-bright);
+}
+
+.slip-tab__name {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.slip-tab__label {
+  font-size: var(--font-size-xs);
+}
+
+.slip-tab__total {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.slip-tab.is-active .slip-tab__total {
+  color: var(--colour-gold-on-dark);
+}
+
+.slip-tab--add {
+  min-width: 52px;
+  color: var(--colour-gold-deep);
+}
+
+.slip-tabs__delete {
+  align-self: center;
+  margin-left: var(--space-4);
+}
+
+/* ── the working area ─────────────────────────────────────────────────────── */
+
+.retail__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--size-rail-width);
+  gap: var(--space-12);
+  min-height: 0;
+}
+
+.retail__left {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: var(--space-8);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The rail is the ONE region allowed to scroll downwards, and only if it must. */
+.retail__rail {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: var(--space-8);
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── items, as columns ────────────────────────────────────────────────────── */
+
+.items-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.items-card__head {
+  display: flex;
+  align-items: center;
+  height: var(--size-rate-card-head);
+  padding: 0 var(--space-12);
+  background: var(--colour-ink-panel);
+  color: var(--colour-gold-on-dark-bright);
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+}
+
+.items-card__body {
+  display: grid;
+  grid-template-columns: var(--size-item-label-width) minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The fixed label stack. Ink cells with brass labels, as the mockup draws. */
+.item-labels {
+  display: grid;
+  grid-auto-rows: var(--size-item-cell-height);
+  align-content: start;
+  gap: 1px;
+  padding: var(--space-4);
+  background: var(--colour-surface);
+  border-right: 1px solid var(--colour-rule);
+}
+
+.item-labels__cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 var(--space-8);
+  border-radius: var(--size-radius);
+  background: var(--colour-ink-panel);
+  color: var(--colour-gold-on-dark);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* The mockup labels this row "Rate (PKR) (24K)". That parenthesis IS the purity
+   choice, so it is a control rather than a printed constant — otherwise nothing
+   on the screen says which purity prices the sale. */
+.item-labels__purity {
+  height: 18px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--colour-chrome-line);
+  border-radius: var(--size-radius);
+  background: transparent;
+  color: var(--colour-gold-on-dark-bright);
+  font-family: inherit;
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+}
+
+.item-labels__purity option {
+  color: var(--colour-text);
+}
+
+.item-labels__add {
+  height: var(--size-input-group-button);
+  margin-top: var(--space-8);
+  font-size: var(--font-size-xs);
+}
+
+/* The ONE region on this screen that scrolls sideways. Four columns fit; a
+   fifth scrolls this container and nothing else — never the page. */
+.item-columns {
+  display: flex;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  align-items: start;
+}
+
+.item-column {
+  display: grid;
+  grid-auto-rows: var(--size-item-cell-height);
+  gap: 1px;
+  flex: 0 0 var(--size-item-column-width);
+  width: var(--size-item-column-width);
+}
+
+.item-column__head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-8);
+  border-radius: var(--size-radius);
+  background: var(--colour-ink-panel);
+  color: var(--colour-gold-on-dark-bright);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.item-column__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-8);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.item-column__cell.numeric {
+  justify-content: flex-end;
+}
+
+.item-column__cell.is-emphasis {
+  font-weight: 700;
+  color: var(--colour-gold-deep);
+}
+
+.item-column__cell.is-amount {
+  font-weight: 700;
+  color: var(--colour-negative);
+}
+
+.item-column__actions {
+  gap: var(--space-4);
+  border: 0;
+  background: transparent;
+}
+
+/* An empty slot reads as a place an item goes, not as a broken column. */
+.item-column.is-empty .item-column__head,
+.item-column.is-empty .item-column__cell {
+  opacity: 0.45;
+}
+
+/* An unresolved edit is visible on the column itself, not only in DETAILS. */
+.item-column.is-editing .item-column__head {
+  background: var(--colour-gold);
+  color: var(--colour-text-inverse);
+}
+
+.item-column.is-editing .item-column__cell {
+  border-color: var(--colour-gold-metal);
+  background: var(--colour-parchment);
+}
+
+/* ── DETAILS (SELECTED ITEM) ──────────────────────────────────────────────── */
+
+.details-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.details-card {
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.details-card__head {
+  display: flex;
+  align-items: center;
+  height: var(--size-rate-card-head);
+  padding: 0 var(--space-12);
+  background: var(--colour-ink-panel);
+  color: var(--colour-gold-on-dark-bright);
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+}
+
+/* Two columns of four, numbered as the mockup numbers them: 1-4 down the left,
+   5-8 down the right. */
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4) var(--space-12);
+  padding: var(--space-8);
+}
+
+.numbered-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.numbered-field__label {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.numbered-field .input,
+.numbered-field .input-group,
+.numbered-field .select {
+  height: var(--size-input-group-button);
+  font-size: var(--font-size-sm);
+}
+
+.numbered-field .input.numeric {
+  text-align: right;
+}
+
+/* Stacked to the right of DETAILS, as the mockup draws: the unit toggle, SAVE
+   and REFRESH, in that order. */
+.details-side {
+  display: grid;
+  grid-auto-rows: var(--size-button-height);
+  gap: var(--space-8);
+  align-content: start;
+}
+
+.unit-toggle {
+  font-size: var(--font-size-sm);
+}
+
+/* ── PAYMENT ──────────────────────────────────────────────────────────────── */
+
+.payment-block {
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-8) var(--space-12);
+}
+
+.payment-block__title {
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  color: var(--colour-gold-deep);
+  margin-bottom: var(--space-4);
+}
+
+.payment-block__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-8) var(--space-16);
+  align-items: center;
+}
+
+.payment-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.payment-field__label {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+}
+
+.payment-field .input,
+.payment-field .select {
+  height: var(--size-input-group-button);
+}
+
+.payment-balance {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+.payment-balance__value {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--colour-gold-deep);
+}
+
+/* Brass at zero, the negative token when something is genuinely outstanding. */
+.payment-balance__value.is-outstanding {
+  color: var(--colour-negative);
+}
+
+/* ── SUMMARY and BILL CALCULATIONS ────────────────────────────────────────── */
+
+.panel--summary .panel__body,
+.panel--bill .panel__body {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-8) var(--space-12);
+}
+
+.sum-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 12px;
+  align-items: center;
+  gap: var(--space-8);
+  min-height: var(--size-sum-row-height);
+}
+
+.sum-line__label {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sum-line__value {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+  font-size: var(--font-size-sm);
+  text-align: right;
+}
+
+.sum-line__value.positive {
+  color: var(--colour-positive);
+  font-weight: 600;
+}
+
+/* A muted marker, never a minus sign fused to the figure — a bare minus on a
+   weight is misread at a counter (DECISIONS section 4). Positives never carry one. */
+.minus-marker {
+  font-size: var(--font-size-sm);
+  color: var(--colour-negative);
+  opacity: 0.6;
+  text-align: center;
+}
+
+.sum-line--input {
+  grid-template-columns: minmax(0, 1fr) 96px 12px;
+}
+
+.sum-line--input .input {
+  height: var(--size-sum-row-height);
+  padding: 0 var(--space-8);
+  font-size: var(--font-size-sm);
+  text-align: right;
+}
+
+.sum-line--highlight {
+  background: var(--colour-parchment);
+  border: 1px solid var(--colour-parchment-line);
+  border-radius: var(--size-radius);
+  padding: 0 var(--space-8);
+  margin: var(--space-4) 0;
+}
+
+.sum-line--highlight .sum-line__label,
+.sum-line--highlight .sum-line__value {
+  font-weight: 700;
+}
+
+/* The tinted row. A wash of the positive token, not a block of it. */
+.sum-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  min-height: 30px;
+  margin-top: var(--space-4);
+  padding: 0 var(--space-8);
+  border: 1px solid var(--colour-positive-soft);
+  border-radius: var(--size-radius);
+  background: var(--colour-positive-soft);
+}
+
+.sum-total__label {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--colour-positive);
+}
+
+.sum-total__value {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--colour-positive);
+}
+
+.grand-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin: var(--space-4) 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--colour-rule);
+}
+
+.grand-total__label {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.grand-total__value {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--colour-gold-deep);
+}
+
+.balance-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--colour-rule);
+}
+
+.balance-row__label {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+}
+
+.balance-row__value {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-numeric-features);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--colour-gold-deep);
+}
+
+.balance-row__value.is-outstanding {
+  color: var(--colour-negative);
+}
+
+/* ── the action bar ───────────────────────────────────────────────────────── */
+
+.retail__actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-8);
+}
+
+.retail__actions .action {
+  height: var(--size-action-bar-height);
+  font-size: var(--font-size-base);
+}
+
+/* WhatsApp leaves the application, and the arrow in its label says so. It keeps
+   the outline treatment rather than a brand colour: no new hex enters here. */
+.is-whatsapp {
+  color: var(--colour-positive);
+  border-color: var(--colour-positive);
+}

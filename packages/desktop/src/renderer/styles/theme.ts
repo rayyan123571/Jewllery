@@ -268,6 +268,24 @@ export const theme = {
     /** The sidebar crest. */
     crest: '44px',
 
+    // ── the retail screen ───────────────────────────────────────────────────
+    /** The fixed label stack down the left of the item matrix. */
+    itemLabelWidth: '150px',
+    /** One item column. Four fit the card; the fifth scrolls it sideways. */
+    itemColumnWidth: '158px',
+    /** A cell in the item matrix. Ten rows have to fit beside DETAILS. */
+    itemCellHeight: '23px',
+    /** A slip tab. Two lines of label plus the slip's own total. */
+    slipTabHeight: '54px',
+    /** The right-hand summary column. Narrower than the old 320px rail. */
+    railWidth: '300px',
+    /** A row in SUMMARY or BILL CALCULATIONS. */
+    sumRowHeight: '22px',
+    /** The header strip: invoice fields, party fields and the rate card. */
+    headStripHeight: '92px',
+    /** The bottom action bar. */
+    actionBarHeight: '52px',
+
     // ── the gold rate card ──────────────────────────────────────────────────
     /** The ink header strip on the rate card. Matches a panel title's weight. */
     rateCardHead: '24px',
