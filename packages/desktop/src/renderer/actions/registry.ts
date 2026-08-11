@@ -42,9 +42,6 @@ export type ActionId =
   | 'app.exit'
   | 'app.user-menu'
   | 'message.dismiss'
-  // ── sign-in ───────────────────────────────────────────────────────────────
-  | 'auth.sign-in'
-  | 'auth.change-password'
   // ── frameless window chrome ───────────────────────────────────────────────
   | 'window.minimize'
   | 'window.maximize'
@@ -203,11 +200,6 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
 
     'app.exit': { kind: 'ready', label: 'EXIT', run: () => context.exit() },
 
-    // The sign-in screen. Its buttons were the last hand-written ones in the
-    // renderer; they are registry controls like everything else now, each
-    // supplying its own onActivate because the form owns the credentials.
-    'auth.sign-in': screen('Sign in', 'auth.sign-in'),
-    'auth.change-password': screen('Set password and continue', 'auth.change-password'),
 
     // The window buttons go through the registry like everything else, so the
     // rendered-DOM test covers them too — chrome is not an exception.

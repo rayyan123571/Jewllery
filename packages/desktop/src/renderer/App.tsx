@@ -6,10 +6,9 @@ import { MODULES, isModuleBuilt, moduleById, type ModuleId } from './shell/modul
 import { ModulePlaceholder } from './shell/ModulePlaceholder.js'
 import { WholesaleScreen } from './modules/wholesale/WholesaleScreen.js'
 import { GoldRateScreen } from './modules/rates/GoldRateScreen.js'
-import { LoginScreen } from './modules/auth/LoginScreen.js'
 import { MessageRegion, MessagesProvider } from './components/Messages.js'
 import { isoOf, isoToday, toDisplayDate } from './format/dates.js'
-import type { BootstrapDto, UserDto } from '../shared/ipc.js'
+import type { BootstrapDto } from '../shared/ipc.js'
 
 /**
  * The application shell.
@@ -121,20 +120,31 @@ function AppShell() {
     [refreshRates, runBackup],
   )
 
-  // The shell is not drawn until someone is signed in. Every IPC handler that
-  // writes anything refuses without a session anyway; this is so the header
-  // never shows "Not signed in" over a working screen.
+  // There is no sign-in screen: the main process establishes the session at
+  // startup and the counter opens straight into the shell. The shell still
+  // waits for bootstrap to answer, because drawing a header that says
+  // "Not signed in" over a working screen is worse than drawing nothing.
+  //
+  // The empty state below is not a login prompt — it is what shows if the main
+  // process could not name a user at all, which means it could not attribute an
+  // entry either. That is a fault, and it says so.
   if (!boot.user) {
-    // Inside the provider: the sign-in buttons are registry controls like every
-    // other control in the application, and <Action> needs the registry.
     return (
       <ActionsProvider registry={registry}>
-        <LoginScreen
-          onSignedIn={(user: UserDto) => {
-            setBoot((current) => ({ ...current, user }))
-            void reload()
-          }}
-        />
+        <div className="login">
+          <div className="login__card">
+            <div className="login__brand">
+              <span className="sidebar__crest">AH</span>
+              <span className="sidebar__name">
+                AL-HARAM
+                <br />
+                GOLD JEWELLERS
+              </span>
+              <span className="login__tagline">Trust in Purity</span>
+            </div>
+            <p className="login__note">Starting up…</p>
+          </div>
+        </div>
       </ActionsProvider>
     )
   }

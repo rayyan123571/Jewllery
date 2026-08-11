@@ -81,6 +81,34 @@ app.whenReady().then(
     // network share (docs/DECISIONS.md §5).
     container = createContainer({ dataDirectory: app.getPath('userData') })
 
+    /**
+     * The counter opens straight into the shell — there is no sign-in screen.
+     *
+     * The shop asked for the login page to go, and on a single-PC shop counter
+     * that is a reasonable call: the machine is behind the counter, the person
+     * using it is the person who unlocked the building, and a password typed
+     * forty times a day becomes a sticky note on the monitor.
+     *
+     * What is deliberately NOT removed is the session itself. Every write in
+     * this application records who made it — `created_by` is NOT NULL and a
+     * foreign key to `users` on both wholesale entries and retail sales, and
+     * the audit log keys on the same id. Tearing the session out would mean
+     * either dropping that attribution or inventing a fake user to satisfy it,
+     * and an audit trail that names nobody is not an audit trail.
+     *
+     * So the session is established here instead of being typed: the shop's
+     * administrator is signed in automatically at startup. The permission model
+     * still runs, the audit still names a real row, and every IPC handler keeps
+     * its `requireUser()` guard — which now also means the app fails loudly if
+     * this ever silently stops working, rather than writing rows with no owner.
+     *
+     * The trade is real and worth stating plainly: with no sign-in there is no
+     * per-user attribution between staff, and role permissions no longer
+     * separate a salesman from an administrator. Everyone at the counter is the
+     * administrator. See the note in the final report.
+     */
+    session.user = container.defaultUser()
+
     registerIpcHandlers(container, session, app.getVersion(), () => app.quit())
     registerWholesaleHandlers(container, session)
     registerWindowControls()

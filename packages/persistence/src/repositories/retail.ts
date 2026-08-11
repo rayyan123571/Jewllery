@@ -328,13 +328,13 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
    * burned — a gap is auditable, a reused number is a second document claiming
    * to be the first.
    */
-  post(sale: NewRetailSale, prefix: string, financialYear: string): RetailSaleWithItems {
+  post(sale: NewRetailSale, prefix: string): RetailSaleWithItems {
     const db = this.conn.get()
     const id = randomUUID()
     const createdAt = toIsoTimestamp(this.clock.now())
 
     const run = db.transaction(() => {
-      const invoiceNo = this.allocateInvoiceNo(prefix, financialYear)
+      const invoiceNo = this.allocateInvoiceNo(prefix)
 
       db.prepare(
         `INSERT INTO retail_sales
@@ -420,55 +420,36 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
   }
 
   /**
-   * The year token inside an invoice number, e.g. "2026-2027" -> "26".
-   *
-   * The number MUST carry it. `invoice_sequences` is keyed per financial year,
-   * so every year restarts at 1 — and `retail_sales.invoice_no` is globally
-   * UNIQUE. Without the token the first sale of each new year collides with the
-   * first sale of the last one, and the shop cannot trade on 1 July. Caught by
-   * "keeps separate sequences per financial year".
-   */
-  private static yearToken(financialYear: string): string {
-    const digits = /(\d{4})/.exec(financialYear)
-    return digits ? (digits[1] as string).slice(2) : '00'
-  }
-
-  /**
    * Takes the next number and bumps the row. Callers must already be in a
    * transaction — `post` is the only one, deliberately.
    */
-  private allocateInvoiceNo(prefix: string, financialYear: string): string {
+  private allocateInvoiceNo(prefix: string): string {
     const db = this.conn.get()
-    const key = `retail:${financialYear}`
+    const key = 'retail'
     const row = db
       .prepare('SELECT next_number FROM invoice_sequences WHERE key = ?')
       .get(key) as { next_number: number } | undefined
 
-    const year = SqliteRetailSaleRepository.yearToken(financialYear)
-
     if (!row) {
       const START = 1
       db.prepare(
-        `INSERT INTO invoice_sequences (key, prefix, next_number, financial_year)
-         VALUES (?,?,?,?)`,
-      ).run(key, prefix, START + 1, financialYear)
-      return `${prefix}${year}-${START.toString().padStart(5, '0')}`
+        'INSERT INTO invoice_sequences (key, prefix, next_number) VALUES (?,?,?)',
+      ).run(key, prefix, START + 1)
+      return `${prefix}${START.toString().padStart(5, '0')}`
     }
 
     db.prepare('UPDATE invoice_sequences SET next_number = next_number + 1 WHERE key = ?').run(
       key,
     )
-    return `${prefix}${year}-${row.next_number.toString().padStart(5, '0')}`
+    return `${prefix}${row.next_number.toString().padStart(5, '0')}`
   }
 
-  peekNextInvoiceNo(prefix: string, financialYear: string): string {
+  peekNextInvoiceNo(prefix: string): string {
     const row = this.conn
       .get()
-      .prepare('SELECT next_number FROM invoice_sequences WHERE key = ?')
-      .get(`retail:${financialYear}`) as { next_number: number } | undefined
-    const next = row?.next_number ?? 1
-    const year = SqliteRetailSaleRepository.yearToken(financialYear)
-    return `${prefix}${year}-${next.toString().padStart(5, '0')}`
+      .prepare("SELECT next_number FROM invoice_sequences WHERE key = 'retail'")
+      .get() as { next_number: number } | undefined
+    return `${prefix}${(row?.next_number ?? 1).toString().padStart(5, '0')}`
   }
 
   findById(id: string): RetailSaleWithItems | null {

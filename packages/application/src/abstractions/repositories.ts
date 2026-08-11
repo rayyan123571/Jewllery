@@ -358,16 +358,17 @@ export interface RetailSaleRepository {
    * The invoice number is allocated INSIDE that transaction, never reserved by
    * the UI beforehand: two counters saving at the same moment must not be able
    * to take the same number, and a sale that is abandoned must not leave a hole
-   * that a later sale silently fills.
+   * that a later sale silently fills. ONE continuous sequence — it never resets,
+   * so an invoice number is unique on its own terms.
    */
-  post(sale: NewRetailSale, prefix: string, financialYear: string): RetailSaleWithItems
+  post(sale: NewRetailSale, prefix: string): RetailSaleWithItems
 
   findById(id: string): RetailSaleWithItems | null
   findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null
   list(filter: RetailSaleFilter): RetailSale[]
 
   /** A PREVIEW of the next number. Reserves nothing — see `post`. */
-  peekNextInvoiceNo(prefix: string, financialYear: string): string
+  peekNextInvoiceNo(prefix: string): string
 
   /** Marks a posted sale void. Never deletes; the number stays burned. */
   markVoid(id: string, reason: string, voidedAt: IsoTimestamp): void

@@ -25,7 +25,6 @@ import { createRepositories } from './index.js'
 
 const clock = fixedClock('2026-08-30T09:00:00.000Z')
 const BRANCH = 'branch-1'
-const FY = '2026-2027'
 const RATE = Money.fromRupees(237_970)
 
 let db: SqliteDatabase
@@ -129,9 +128,9 @@ beforeEach(() => {
 
 describe('a sale is written atomically', () => {
   it('stores the sale and its items together', () => {
-    const written = repos.retailSales.post(saleOf(), 'RS-', FY)
+    const written = repos.retailSales.post(saleOf(), 'RS-')
     expect(written.items).toHaveLength(1)
-    expect(written.sale.invoiceNo).toBe('RS-26-00001')
+    expect(written.sale.invoiceNo).toBe('RS-00001')
   })
 
   it('leaves NO partial sale when an item fails mid-insert', () => {
@@ -148,7 +147,7 @@ describe('a sale is written atomically', () => {
       ],
     }
 
-    expect(() => repos.retailSales.post(broken, 'RS-', FY)).toThrow()
+    expect(() => repos.retailSales.post(broken, 'RS-')).toThrow()
 
     const rows = db.prepare('SELECT COUNT(*) AS n FROM retail_sales').get() as { n: number }
     const items = db.prepare('SELECT COUNT(*) AS n FROM retail_sale_items').get() as { n: number }
@@ -162,12 +161,12 @@ describe('a sale is written atomically', () => {
       ...sale,
       items: [{ ...(sale.items[0] as (typeof sale.items)[number]), grossWeight: Weight.ZERO }],
     }
-    expect(() => repos.retailSales.post(broken, 'RS-', FY)).toThrow()
+    expect(() => repos.retailSales.post(broken, 'RS-')).toThrow()
 
     // The next real sale still gets the first number: a failed attempt is not
     // a document, so it must not consume one.
-    const good = repos.retailSales.post(saleOf(), 'RS-', FY)
-    expect(good.sale.invoiceNo).toBe('RS-26-00001')
+    const good = repos.retailSales.post(saleOf(), 'RS-')
+    expect(good.sale.invoiceNo).toBe('RS-00001')
   })
 })
 
@@ -175,31 +174,31 @@ describe('the invoice sequence', () => {
   it('never issues the same number twice', () => {
     const numbers = Array.from(
       { length: 25 },
-      () => repos.retailSales.post(saleOf(), 'RS-', FY).sale.invoiceNo,
+      () => repos.retailSales.post(saleOf(), 'RS-').sale.invoiceNo,
     )
     expect(new Set(numbers).size).toBe(25)
-    expect(numbers[0]).toBe('RS-26-00001')
-    expect(numbers[24]).toBe('RS-26-00025')
+    expect(numbers[0]).toBe('RS-00001')
+    expect(numbers[24]).toBe('RS-00025')
   })
 
   it('burns the number of a voided sale — it is never reused', () => {
-    const first = repos.retailSales.post(saleOf(), 'RS-', FY)
+    const first = repos.retailSales.post(saleOf(), 'RS-')
     repos.retailSales.markVoid(
       first.sale.id,
       'entered twice',
       toIsoTimestamp(clock.now()),
     )
 
-    const second = repos.retailSales.post(saleOf(), 'RS-', FY)
+    const second = repos.retailSales.post(saleOf(), 'RS-')
     // A gap is auditable. A reused number is a second document claiming to be
     // the first, and the void row keeps its own number forever.
-    expect(second.sale.invoiceNo).toBe('RS-26-00002')
-    expect(repos.retailSales.findById(first.sale.id)?.sale.invoiceNo).toBe('RS-26-00001')
+    expect(second.sale.invoiceNo).toBe('RS-00002')
+    expect(repos.retailSales.findById(first.sale.id)?.sale.invoiceNo).toBe('RS-00001')
     expect(repos.retailSales.findById(first.sale.id)?.sale.status).toBe('void')
   })
 
   it('refuses a duplicate invoice number at the database level', () => {
-    repos.retailSales.post(saleOf(), 'RS-', FY)
+    repos.retailSales.post(saleOf(), 'RS-')
     // Belt and braces: even if the sequence were bypassed, UNIQUE stops it.
     expect(() =>
       db
@@ -209,31 +208,34 @@ describe('the invoice sequence', () => {
               customer_name_snapshot, rate_purity, rate_per_tola_paisa,
               gold_value_paisa, grand_total_paisa, payment_method,
               amount_in_words, status, created_by, created_at)
-           VALUES ('dup','RS-26-00001',?, '2026-08-30','14:05','X','K22',1,1,1,'cash','x','posted',?, '2026-08-30')`,
+           VALUES ('dup','RS-00001',?, '2026-08-30','14:05','X','K22',1,1,1,'cash','x','posted',?, '2026-08-30')`,
         )
         .run(BRANCH, userId),
     ).toThrow(/UNIQUE/i)
   })
 
   it('previews the next number without reserving it', () => {
-    expect(repos.retailSales.peekNextInvoiceNo('RS-', FY)).toBe('RS-26-00001')
-    expect(repos.retailSales.peekNextInvoiceNo('RS-', FY)).toBe('RS-26-00001')
+    expect(repos.retailSales.peekNextInvoiceNo('RS-')).toBe('RS-00001')
+    expect(repos.retailSales.peekNextInvoiceNo('RS-')).toBe('RS-00001')
     // Peeking twice changed nothing; the first real save still takes 00001.
-    expect(repos.retailSales.post(saleOf(), 'RS-', FY).sale.invoiceNo).toBe('RS-26-00001')
+    expect(repos.retailSales.post(saleOf(), 'RS-').sale.invoiceNo).toBe('RS-00001')
   })
 
-  it('keeps separate sequences per financial year', () => {
-    repos.retailSales.post(saleOf(), 'RS-', FY)
-    const nextYear = repos.retailSales.post(saleOf(), 'RS-', '2027-2028')
-    // Restarts at 1, but carries its own year, so it cannot collide with the
-    // first sale of the previous year under the UNIQUE constraint.
-    expect(nextYear.sale.invoiceNo).toBe('RS-27-00001')
+  it('never resets, so a number is unique on its own terms', () => {
+    // The financial year is gone from the sequence entirely. One continuous
+    // counter for the life of the shop means there is no reset, and therefore
+    // no year boundary at which two sales could claim the same number — the
+    // collision this test previously existed to catch cannot occur at all.
+    const first = repos.retailSales.post(saleOf(), 'RS-')
+    const second = repos.retailSales.post(saleOf(), 'RS-')
+    expect(first.sale.invoiceNo).toBe('RS-00001')
+    expect(second.sale.invoiceNo).toBe('RS-00002')
   })
 })
 
 describe('what a sale stores', () => {
   it('round-trips every figure as an exact integer', () => {
-    const written = repos.retailSales.post(saleOf(), 'RS-', FY)
+    const written = repos.retailSales.post(saleOf(), 'RS-')
     const read = repos.retailSales.findById(written.sale.id)
     expect(read?.sale.grandTotal.paisa).toBe(written.sale.grandTotal.paisa)
     expect(read?.items[0]?.fineWeight.milligrams).toBe(written.items[0]?.fineWeight.milligrams)
@@ -244,7 +246,6 @@ describe('what a sale stores', () => {
     const written = repos.retailSales.post(
       saleOf({ wastageDirection: 'subtract', wastageBasis: 'gross' }),
       'RS-',
-      FY,
     )
     const read = db
       .prepare('SELECT wastage_direction, wastage_basis FROM retail_sales WHERE id = ?')
@@ -258,7 +259,6 @@ describe('what a sale stores', () => {
     const written = repos.retailSales.post(
       saleOf({ customerId: customer.id, customerNameSnapshot: 'Ahmed Ali' }),
       'RS-',
-      FY,
     )
     db.prepare('UPDATE customers SET name = ? WHERE id = ?').run('Someone Else', customer.id)
 
@@ -269,13 +269,13 @@ describe('what a sale stores', () => {
   })
 
   it('finds a sale by its invoice number', () => {
-    const written = repos.retailSales.post(saleOf(), 'RS-', FY)
-    expect(repos.retailSales.findByInvoiceNo('RS-26-00001')?.sale.id).toBe(written.sale.id)
+    const written = repos.retailSales.post(saleOf(), 'RS-')
+    expect(repos.retailSales.findByInvoiceNo('RS-00001')?.sale.id).toBe(written.sale.id)
   })
 
   it('lists by date, customer and status', () => {
-    repos.retailSales.post(saleOf(), 'RS-', FY)
-    repos.retailSales.post(saleOf({ status: 'held' }), 'RS-', FY)
+    repos.retailSales.post(saleOf(), 'RS-')
+    repos.retailSales.post(saleOf({ status: 'held' }), 'RS-')
     expect(repos.retailSales.list({ branchId: BRANCH, limit: 50 })).toHaveLength(2)
     expect(
       repos.retailSales.list({ branchId: BRANCH, status: 'held', limit: 50 }),

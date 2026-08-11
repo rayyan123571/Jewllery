@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { systemClock, type Clock } from '@jewellery/domain'
+import { systemClock, toPublicUser, type Clock, type PublicUser } from '@jewellery/domain'
 import {
   AuthService,
   BackupService,
@@ -16,7 +16,7 @@ import {
   SqliteBackupStore,
   createRepositories,
 } from '@jewellery/persistence'
-import { seedFirstRun } from './seed.js'
+import { DEFAULT_ADMIN_USERNAME, seedFirstRun } from './seed.js'
 
 /**
  * The composition root.
@@ -44,6 +44,17 @@ export interface Container {
   readonly branchId: string
   /** True while the seeded admin password has not been changed. */
   readonly usingDefaultPassword: boolean
+  /**
+   * The user the counter runs as.
+   *
+   * There is no sign-in screen, but every write still records an owner —
+   * `created_by` is NOT NULL and a foreign key to `users` on both wholesale
+   * entries and retail sales. This resolves the shop's administrator so the
+   * session can be established at startup rather than typed. It throws rather
+   * than returning null: an application that cannot name the person making an
+   * entry must not make entries.
+   */
+  defaultUser(): PublicUser
   dispose(): void
 }
 
@@ -117,6 +128,16 @@ export function createContainer(options: ContainerOptions): Container {
     clock,
     branchId: seed.branchId,
     usingDefaultPassword: seed.usingDefaultPassword,
+    defaultUser: () => {
+      const admin = repositories.users.findByUsername(DEFAULT_ADMIN_USERNAME)
+      if (!admin) {
+        throw new Error(
+          'No administrator exists to attribute entries to. The first-run seed ' +
+            'should have created one; the database may be from a failed restore.',
+        )
+      }
+      return toPublicUser(admin)
+    },
     dispose: () => handle.close(),
   }
 }
