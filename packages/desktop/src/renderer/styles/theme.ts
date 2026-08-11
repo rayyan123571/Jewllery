@@ -129,6 +129,40 @@ export const theme = {
      */
     rule: '#EDEBE5',
 
+    /**
+     * ── The working area has three levels ───────────────────────────────────
+     *
+     * White cards, a warm parchment mid-layer, and ink. Everything used to sit
+     * at the same white value, so the card, the table, the row and the page
+     * behind them were one undifferentiated sheet and the eye had nothing to
+     * rest on. Layering fixes that; saturation would not, which is why no green,
+     * blue or purple comes back with it.
+     *
+     * Measured, not eyeballed:
+     *   goldDeep on parchment    5.5 : 1
+     *   goldOnDark on inkPanel   8.5 : 1
+     *   text on rowAlt          17.6 : 1
+     */
+    /** Headers, totals, tabs, secondary buttons, paper artefacts. */
+    parchment: '#F5F0E3',
+    /** A header on parchment, and the pressed state of a parchment button. */
+    parchmentDeep: '#EDE5D2',
+    parchmentLine: '#DFD4B8',
+    /** A tab hover: parchment at half strength. */
+    parchmentSoft: 'rgba(245, 240, 227, 0.5)',
+    /** Zebra striping. Two steps off white, no more. */
+    rowAlt: '#FBF9F4',
+    rowHover: 'rgba(217, 180, 81, 0.1)',
+    rowFocus: 'rgba(217, 180, 81, 0.16)',
+    /**
+     * Table headers and the summary strip. One step LIGHTER than chromeInk, so
+     * it reads as content carrying the chrome's language rather than as a piece
+     * of chrome that has wandered into the page.
+     */
+    inkPanel: '#211C15',
+    /** A positive figure on inkPanel. The light-side green is unreadable there. */
+    positiveOnDark: '#5FBF7F',
+
     // ── text ────────────────────────────────────────────────────────────────
     /** Near-black with a brown undertone, which is what the serif titles want. */
     text: '#16130C',
@@ -162,6 +196,14 @@ export const theme = {
     actionCancel: '#D23232',
     /** EXIT, in the sidebar foot. The one control that closes the application. */
     actionExit: '#B3261E',
+
+    // The secondary slip actions. Tinted, never saturated: each is a wash of
+    // its own meaning over parchment, so the row reads as one family with one
+    // brass primary in it rather than as five competing signals.
+    actionSavePrintFill: '#F5EAD0',
+    actionCancelFill: '#FBEEEA',
+    actionCancelBorder: '#E8C4BC',
+    actionCancelHover: '#F0E0D8',
 
     /** A control that exists but whose module is not built yet. */
     disabledSurface: '#F2F1ED',
@@ -268,6 +310,8 @@ export const theme = {
     lg: '0 2px 4px rgba(40, 34, 20, 0.07), 0 20px 48px rgba(40, 34, 20, 0.16)',
     /** The one focus ring, on every interactive element. Brass, not mustard. */
     focus: '0 0 0 3px rgba(166, 124, 0, 0.38)',
+    /** A pressed button. The surface dents; nothing moves. */
+    pressed: 'inset 0 1px 3px rgba(40, 34, 20, 0.18)',
   },
 
   /**

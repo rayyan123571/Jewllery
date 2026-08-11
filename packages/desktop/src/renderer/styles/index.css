@@ -753,12 +753,16 @@ a {
   gap: var(--space-8);
   min-height: 32px;
   padding: var(--space-16) var(--space-24) var(--space-4);
-  background: transparent;
+  /* Its own surface. With every header transparent, a card was one sheet of
+     white from its title to its last row and nothing told the eye where a
+     section began. */
+  background: var(--colour-parchment);
+  border-bottom: 1px solid var(--colour-parchment-line);
   font-size: var(--font-size-xxs);
   font-weight: 600;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--colour-text-muted);
+  color: var(--colour-gold-deep);
 }
 
 .panel__body {
@@ -1099,14 +1103,16 @@ a {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--colour-surface);
-  border-bottom: 1px solid var(--colour-border);
+  /* Ink with brass labels. It echoes the chrome and gives the table a spine —
+     without it the header floated at the same value as the rows under it. */
+  background: var(--colour-ink-panel);
+  border-bottom: none;
   padding: var(--space-8) var(--space-12);
   font-size: var(--font-size-xxs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--colour-text-muted);
+  color: var(--colour-gold-on-dark);
   text-align: left;
   white-space: nowrap;
 }
@@ -1119,16 +1125,24 @@ a {
   height: var(--size-row-height);
 }
 
-/* No zebra striping. With a rule this quiet the alternating fill was the loudest
-   thing in the table, and it fought the hover state for the same signal. */
-.grid tbody tr:hover td {
-  background: var(--colour-surface-muted);
+/* Zebra again, but two steps off white rather than a tinted band, so it guides
+   the eye along a row without competing with the hover. */
+.grid tbody tr:nth-child(even) td {
+  background: var(--colour-row-alt);
 }
 
-/* The row being typed into. A 2px gold edge, not a fill: the operator needs to
-   see where they are without losing the reading of the figures. */
+.grid tbody tr:hover td {
+  background: var(--colour-row-hover);
+}
+
+/* The row being typed into: a brass edge AND a wash, so it is findable at a
+   glance in a table of twelve near-identical rows. */
+.grid tbody tr:focus-within td {
+  background: var(--colour-row-focus);
+}
+
 .grid tbody tr:focus-within td:first-child {
-  box-shadow: inset 2px 0 0 var(--colour-gold-metal);
+  box-shadow: inset 3px 0 0 var(--colour-gold-metal);
 }
 
 .grid td.numeric,
@@ -1139,12 +1153,19 @@ a {
 /* The totals row is one of gold's four jobs. A 2px gold rule above it and no
    fill: the figures are the emphasis, the line just says where they start. */
 .grid tfoot td {
-  background: transparent;
+  /* The conclusion of the table: its own surface, a brass rule above it, and
+     the figures in brass so the eye finishes here. */
+  background: var(--colour-parchment);
   border-top: 2px solid var(--colour-gold-metal);
   border-bottom: none;
   padding-top: var(--space-12);
   font-weight: 600;
   color: var(--colour-text);
+}
+
+.grid tfoot td.numeric {
+  color: var(--colour-gold-deep);
+  font-weight: 600;
 }
 
 .grid__index {
@@ -1270,7 +1291,10 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: stretch;
   min-height: var(--size-stat-strip-height);
-  background: var(--colour-surface);
+  /* Ink. With the top bar, sidebar and status bar already dark, this anchors
+     the bottom of the composition and closes the frame round the work. */
+  background: var(--colour-ink-panel);
+  border-top: 1px solid var(--colour-gold-metal);
   border-radius: var(--size-radius-large);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
@@ -1288,7 +1312,7 @@ a {
 /* The one line worth keeping inside the strip: three figures in a row need to
    be told apart, and space alone cannot do it at this width. Barely there. */
 .stat-cell + .stat-cell {
-  border-left: 1px solid var(--colour-rule);
+  border-left: 1px solid var(--colour-chrome-line);
 }
 
 .stat-cell__label {
@@ -1296,7 +1320,7 @@ a {
   font-weight: 600;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--colour-text-muted);
+  color: var(--colour-chrome-text-muted);
   white-space: nowrap;
 }
 
@@ -1310,6 +1334,17 @@ a {
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--colour-gold-on-dark);
+}
+
+/* A signed figure still carries its meaning, in the on-ink variants — the
+   light-side green and red are both unreadable on this ground. */
+.stat-cell__value.positive {
+  color: var(--colour-positive-on-dark);
+}
+
+.stat-cell__value.negative {
+  color: var(--colour-chrome-danger);
 }
 
 /* ── empty states ───────────────────────────────────────────────────────────
@@ -1529,11 +1564,12 @@ a {
 
 .action--tab:hover:not(:disabled) {
   color: var(--colour-text);
+  background: var(--colour-parchment-soft);
   border-bottom-color: var(--colour-border-strong);
 }
 
 .action--tab.is-active {
-  background: var(--colour-surface);
+  background: var(--colour-parchment);
   color: var(--colour-gold-deep);
   border-bottom-color: var(--colour-gold-metal);
 }
@@ -1579,36 +1615,51 @@ a {
   justify-content: center;
   font-weight: 600;
   font-size: var(--font-size-base);
-  background: var(--colour-surface);
-  border-color: var(--colour-border-strong);
+  background: var(--colour-parchment);
+  border-color: var(--colour-parchment-line);
   color: var(--colour-text);
 }
 
 .action--outline:hover:not(:disabled) {
-  background: var(--colour-surface-muted);
+  background: var(--colour-parchment-deep);
   border-color: var(--colour-gold-metal);
 }
 
-/* Second in the hierarchy: brass edge and gold label, so it sits visibly below
-   the ink primary and visibly above the plain ones. */
+.action--outline:active:not(:disabled),
+.action--primary:active:not(:disabled) {
+  /* The surface dents. Nothing moves — a control that jumps under the pointer
+     is a control you have to aim at twice. */
+  box-shadow: var(--shadow-pressed);
+}
+
+/* Second in the hierarchy: a wash of brass, a brass edge and a gold label, so
+   it sits visibly below the solid-brass primary and above the plain ones. */
 .action--outline.is-save-print {
+  background: var(--colour-action-save-print-fill);
   border-color: var(--colour-gold-metal);
   color: var(--colour-gold-deep);
 }
 
-/* Third: no colour at all. Blue and purple are gone from this screen. */
+/* Third: parchment and no colour at all. Blue and purple stay gone. */
 .action--outline.is-print,
 .action--outline.is-hold {
-  border-color: var(--colour-border-strong);
+  background: var(--colour-parchment);
+  border-color: var(--colour-parchment-line);
   color: var(--colour-text);
 }
 
-/* Cancel keeps its meaning in the label alone. A red fill on a control that
-   only clears a form was the loudest promise on the screen for the smallest
-   consequence. */
+/* Cancel keeps its meaning in a WASH and a label, never a fill. A solid red on
+   a control that only clears a form was the loudest promise on the screen for
+   the smallest consequence. */
 .action--outline.is-cancel {
-  border-color: var(--colour-border);
+  background: var(--colour-action-cancel-fill);
+  border-color: var(--colour-action-cancel-border);
   color: var(--colour-negative);
+}
+
+.action--outline.is-cancel:hover:not(:disabled) {
+  background: var(--colour-action-cancel-hover);
+  border-color: var(--colour-negative);
 }
 
 /* Everything that is not THE save. Outline rather than a fifth solid block. */
@@ -1630,16 +1681,17 @@ a {
 .action--toolbar {
   height: var(--size-button-height);
   padding: 0 var(--space-16);
-  border: 1px solid var(--colour-border);
-  background: var(--colour-surface);
+  border: 1px solid var(--colour-parchment-line);
+  background: var(--colour-parchment);
+  color: var(--colour-gold-deep);
   font-size: var(--font-size-base);
   font-weight: 600;
   box-shadow: var(--shadow-sm);
 }
 
 .action--toolbar:hover:not(:disabled) {
-  background: var(--colour-surface-muted);
-  border-color: var(--colour-border-strong);
+  background: var(--colour-parchment-deep);
+  border-color: var(--colour-gold-metal);
 }
 
 /* A borderless button for cancel-shaped choices, so a dialog never shows two
@@ -1660,8 +1712,9 @@ a {
 .action--quick {
   min-height: var(--size-button-height);
   padding: var(--space-8) var(--space-12);
-  border: 1px solid var(--colour-border);
-  background: var(--colour-surface-muted);
+  border: 1px solid var(--colour-parchment-line);
+  background: var(--colour-parchment);
+  color: var(--colour-gold-deep);
   font-size: var(--font-size-sm);
   font-weight: 600;
   justify-content: center;
@@ -1670,8 +1723,8 @@ a {
 }
 
 .action--quick:hover:not(:disabled) {
-  background: var(--colour-surface-muted);
-  border-color: var(--colour-border-strong);
+  background: var(--colour-parchment-deep);
+  border-color: var(--colour-gold-metal);
 }
 
 .action--icon {
@@ -1774,7 +1827,9 @@ a {
   line-height: 1.45;
   border: 1px solid var(--colour-gold-metal);
   border-radius: var(--size-radius);
-  background: var(--colour-surface-muted);
+  /* Parchment, not white. It is a facsimile of paper sitting on a desk, and on
+     a white card it read as just another region of the interface. */
+  background: var(--colour-parchment);
 }
 
 .panel__body.slip {
@@ -1794,7 +1849,7 @@ a {
 }
 
 .slip__rule {
-  border-top: 1px dashed var(--colour-border-strong);
+  border-top: 1px dashed var(--colour-parchment-line);
   margin: var(--space-8) 0;
 }
 
