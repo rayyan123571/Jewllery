@@ -1,0 +1,114 @@
+file: C:\Users\rayya\AppData\Roaming\@jewellery\desktop\shop.sqlite
+schema version: 11
+
+== retail_bills ==============================================================
+  id                         8bc651b1-5d39-4e25-8db7-e7d9eba4d59c
+  bill_no                    RB-00002
+  branch_id                  ac21b404-f440-4401-856e-b2c45c1b3177
+  bill_date                  2026-08-11
+  bill_time                  23:22
+  customer_id                NULL
+  customer_name_snapshot     IMRAN SAHIB
+  customer_mobile_snapshot   03001234567
+  salesman_id                NULL
+  salesman_name_snapshot     NULL
+  status                     posted
+  created_by                 fcea135f-fcb0-4350-99fa-f121ab3fb541
+  created_at                 2026-08-11T18:22:39.383Z
+  posted_at                  2026-08-11T18:22:39.383Z
+
+== retail_sales  (the slips of RB-00002) =====================================
+  ---- slip 1  RS-00003 ----
+    id                         0f076cd6-c95b-439f-bceb-057a1d3654d8
+    invoice_no                 RS-00003
+    bill_id                    8bc651b1-5d39-4e25-8db7-e7d9eba4d59c
+    slip_no                    1
+    slip_label                 Full Bill
+    sale_date                  2026-08-11
+    sale_time                  23:22
+    customer_name_snapshot     IMRAN SAHIB
+    customer_mobile_snapshot   03001234567
+    rate_purity                K22
+    rate_per_tola_paisa        50000000
+    gold_value_paisa           217738340
+    hallmark_charges_paisa     0
+    other_charges_paisa        0
+    discount_paisa             0
+    grand_total_paisa          218738340
+    amount_paid_paisa          218738340
+    balance_paisa              0
+    payment_method             cash
+    status                     posted
+    wastage_direction          add
+    wastage_basis              net
+    draft_id                   15be454b-9c46-4f59-adb6-7877656d2191
+    amount_in_words            Rupees Twenty One Lakh Eighty Seven Thousand Three Hundred Eighty Three Only
+  ---- slip 2  RS-00004 ----
+    id                         809c14a8-b92f-401a-98d4-a4d2bd91f026
+    invoice_no                 RS-00004
+    bill_id                    8bc651b1-5d39-4e25-8db7-e7d9eba4d59c
+    slip_no                    2
+    slip_label                 Slip 2
+    sale_date                  2026-08-11
+    sale_time                  23:22
+    customer_name_snapshot     IMRAN SAHIB
+    customer_mobile_snapshot   03001234567
+    rate_purity                K22
+    rate_per_tola_paisa        50000000
+    gold_value_paisa           267901235
+    hallmark_charges_paisa     0
+    other_charges_paisa        0
+    discount_paisa             0
+    grand_total_paisa          268901235
+    amount_paid_paisa          268901235
+    balance_paisa              0
+    payment_method             cash
+    status                     posted
+    wastage_direction          add
+    wastage_basis              net
+    draft_id                   af28b613-c96f-4410-a8bb-8e65bcbbc63f
+    amount_in_words            Rupees Twenty Six Lakh Eighty Nine Thousand Twelve Only
+
+== retail_sale_items =========================================================
+  slip line item_name    purity gross_mg stone_mg purity_ded net_mg  wast_bp wastage_mg fine_mg  labour_paisa mode  stone_paisa line_amount_paisa
+  1    1    Ring         K22    23328    0        1050       22278   1400    3119       25397    500000       fixed 0           109369170
+  1    2    Baliyoon     K22    23328    0        1050       22278   1400    3119       25397    500000       fixed 0           109369170
+  2    1    Gold Chain   K22    40824    0        0          40824   1400    5715       46539    500000       fixed 0           199998457
+  2    2    Gold Tops    K22    14580    0        583        13997   1400    1960       15957    500000       fixed 0           68902778
+
+== DECLARED column types  (no REAL / FLOAT / DOUBLE anywhere) ================
+  retail_bills: 14 columns, 0 REAL/FLOAT/DOUBLE
+  retail_sales: 36 columns, 0 REAL/FLOAT/DOUBLE
+      rate_per_tola_paisa          INTEGER
+      gold_value_paisa             INTEGER
+      customer_gold_mg             INTEGER
+      customer_gold_value_paisa    INTEGER
+      hallmark_charges_paisa       INTEGER
+      other_charges_paisa          INTEGER
+      discount_paisa               INTEGER
+      grand_total_paisa            INTEGER
+      amount_paid_paisa            INTEGER
+      balance_paisa                INTEGER
+  retail_sale_items: 17 columns, 0 REAL/FLOAT/DOUBLE
+      gross_weight_mg              INTEGER
+      stone_weight_mg              INTEGER
+      cut_per_tola_mg              INTEGER
+      net_weight_mg                INTEGER
+      wastage_bp                   INTEGER
+      wastage_mg                   INTEGER
+      fine_weight_mg               INTEGER
+      labour_charges_paisa         INTEGER
+      stone_charges_paisa          INTEGER
+      line_amount_paisa            INTEGER
+      purity_deduction_mg          INTEGER
+
+== STORED value types  (SQLite is dynamically typed — this is what is in the cells) 
+  slip 1 line 1 Ring         gross=integer(23328) deduction=integer(1050) net=integer fine=integer amount=integer(109369170)
+  slip 1 line 2 Baliyoon     gross=integer(23328) deduction=integer(1050) net=integer fine=integer amount=integer(109369170)
+  slip 2 line 1 Gold Chain   gross=integer(40824) deduction=integer(0) net=integer fine=integer amount=integer(199998457)
+  slip 2 line 2 Gold Tops    gross=integer(14580) deduction=integer(583) net=integer fine=integer amount=integer(68902778)
+
+  rows holding a REAL in any money/weight column: 0
+
+== retail_draft_bills  (the in-progress bill — cleared when the bill posted) =
+  drafts on disk: 1, draft slips: 1, draft items: 2
