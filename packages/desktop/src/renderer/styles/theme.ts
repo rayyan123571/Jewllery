@@ -287,7 +287,16 @@ export const theme = {
      * whatever the sale — so this is the tightest number that still seats 14px
      * text comfortably. It is measured against the 830px budget, not chosen.
      */
-    itemCellHeight: '34px',
+    /**
+     * 30px, measured rather than chosen.
+     *
+     * At 34px the twelve rows overflowed their container by 42px at 1550x830
+     * even with the DETAILS card gone — the page did not scroll, but the last
+     * rows were clipped, which is the same loss with less warning. Twelve rows
+     * four pixels shorter recovers 48px. The fonts are untouched: 15px labels
+     * and 16px figures are the floor and this is the dimension that gave way.
+     */
+    itemCellHeight: '30px',
     /**
      * The floor under the items card, so DETAILS cannot grow into it.
      *
@@ -296,7 +305,7 @@ export const theme = {
      * the Amount row and the Action row start disappearing under the card
      * beneath, which is Defect B.
      */
-    itemsCardMin: '404px',
+    itemsCardMin: '356px',
     /** A slip tab. Two lines of label plus the slip's own total. */
     slipTabHeight: '44px',
     /** The right-hand summary column. Narrower than the old 320px rail. */

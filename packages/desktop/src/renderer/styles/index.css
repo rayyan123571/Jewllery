@@ -3049,14 +3049,39 @@ a {
 }
 
 .retail {
-  display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  /*
+   * FLEX, not a grid of positional tracks — and that is a bug fix, not a taste.
+   *
+   * The record-state strip only renders when a STORED invoice is on screen, so
+   * the number of children changes. With fixed tracks the `1fr` was positional:
+   * on a new bill everything shifted up one and the flexible track landed on
+   * the ACTION BAR, which took all the slack while the body sat at its natural
+   * height — collapsing SAVE, PRINT and CANCEL to zero pixels and clipping
+   * them off the screen entirely. Measured: retail__actions clientHeight 0
+   * against a scrollHeight of 44.
+   *
+   * A column flex box cannot make that mistake: the body is the only thing that
+   * grows, whatever else is or is not present.
+   */
+  display: flex;
+  flex-direction: column;
   gap: 2px;
-  /* toolbar · head · record state · notices · body · actions. The slip-tab row
-     is gone with the tabs. The notices row is always present even when empty,
-     so the body and the action bar cannot slide onto each other's tracks. */
   flex: 1;
   min-height: 0;
+}
+
+/* The one part that takes the slack. Everything else is its natural height. */
+.retail > .retail__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.retail > .retail__toolbar,
+.retail > .retail__head,
+.retail > .record-state,
+.retail > .retail__notices,
+.retail > .retail__actions {
+  flex: 0 0 auto;
 }
 
 /* ── the toolbar ──────────────────────────────────────────────────────────────

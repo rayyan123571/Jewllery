@@ -27,6 +27,9 @@ import boundaries from 'eslint-plugin-boundaries'
 export default tseslint.config(
   {
     ignores: [
+      // Evidence tooling: a CDP driver used to measure and screenshot the
+      // running app. Plain CommonJS, run by hand, and it ships with nothing.
+      '.shots/**',
       '**/dist/**',
       '**/dist-types/**',
       '**/dist-electron/**',
