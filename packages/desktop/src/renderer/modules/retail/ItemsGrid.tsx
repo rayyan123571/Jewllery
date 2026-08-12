@@ -218,12 +218,24 @@ export function ItemsGrid({
         focus(row, column - 1)
         return
       }
-      // Tab off the last editable cell of the last column makes a new column.
-      // The alternative is the operator reaching for ADD ITEM with a mouse
-      // between every item, which is the thing this grid exists to avoid.
-      if (column >= columns - 1 && row === LAST_EDITABLE) {
+      /*
+       * Tab off the LAST editable cell starts the NEXT ITEM, at its name.
+       *
+       * Not the same row of the next column, which is what Tab does everywhere
+       * else here. Finishing Rate means finishing the item, and a ledger is
+       * filled in column by column — sending the caret to the next column's
+       * Rate would leave the operator typing a rate into an item with no name.
+       *
+       * Found by entering an invoice with the keyboard alone: because a blank
+       * trailing column always exists, `column >= columns - 1` never fired on a
+       * real column, so Tab from Rate landed on the BLANK column's Rate and the
+       * next two items were typed into cells nobody was looking at. The amounts
+       * came out 0.00 and the grid looked like it had simply ignored them.
+       */
+      if (row === LAST_EDITABLE) {
         event.preventDefault()
-        onAddItem()
+        if (column >= columns - 1) onAddItem()
+        else focus(FIRST_EDITABLE, column + 1)
         return
       }
       if (column >= columns - 1) return

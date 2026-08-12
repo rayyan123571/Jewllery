@@ -671,9 +671,13 @@ export function retailLoadAsDraft(
       labourCharges: item.labourCharges.format(),
       labourMode: item.labourMode,
       stoneCharges: item.stoneCharges.format(),
-      // The rate this line was PRICED at, so reopening it shows what was
-      // charged rather than what today's board says.
-      ratePerTola: found.sale.ratePerTola.format(),
+      // The rate THIS LINE was priced at — not the sale's header rate, which
+      // is a different number the moment the operator prices one item keenly.
+      // Zero means the row predates migration 014 and never recorded one, so
+      // the header rate is the only honest answer for it.
+      ratePerTola: item.ratePerTola.isZero
+        ? found.sale.ratePerTola.format()
+        : item.ratePerTola.format(),
     }))
 
     const draft: RetailBillDraftDto = {

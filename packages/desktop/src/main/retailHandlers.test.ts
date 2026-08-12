@@ -743,7 +743,39 @@ describe('the bill boundary', () => {
       expect(moneyTextOf(line.labourCharges)).toBe(90_000)
     })
 
-    it('pins the rate the invoice was priced at, so it cannot reprice itself', () => {
+    it('gives each line back the rate IT was priced at, not the header rate', () => {
+    /*
+     * Found by reopening a real invoice after a cold restart, not by a test.
+     * Line 1 was posted at 341,500/tola for Rs 292,996.58 and came back on
+     * screen at the header's 500,000 showing Rs 428,218.93 — a figure the
+     * customer was never charged, on a document already printed.
+     *
+     * The round-trip test above did not catch it because every line in that
+     * fixture is priced at the SAME rate, so the header rate and the line rate
+     * are the same number and substituting one for the other is invisible.
+     * This one prices two lines differently, which is the only shape in which
+     * the bug exists.
+     */
+    const invoiceNumber = postOne([
+      item({ itemName: 'AT BOARD RATE' }),
+      item({ itemName: 'QUOTED KEENLY', ratePerTola: '200000' }),
+    ])
+
+    const loaded = retailLoadAsDraft(deps, invoiceNumber)!
+    const lines = loaded.draft.slips[0]!.items
+    expect(moneyTextOf(lines[1]!.ratePerTola)).toBe(20_000_000)
+    expect(moneyTextOf(lines[1]!.ratePerTola)).not.toBe(
+      moneyTextOf(lines[0]!.ratePerTola),
+    )
+
+    // And it still recalculates to what was posted, line by line.
+    const stored = deps.retail.findByInvoiceNumber(invoiceNumber)!
+    const again = retailBillCalculate(deps, { draft: loaded.draft, activeSlipNo: 1 })
+    expect(again.active.lines[1]?.amount.paisa).toBe(stored.items[1]!.lineAmount.paisa)
+    expect(again.active.grandTotal.paisa).toBe(stored.sale.grandTotal.paisa)
+  })
+
+  it('pins the rate the invoice was priced at, so it cannot reprice itself', () => {
       const invoiceNumber = postOne([item()])
       const stored = deps.retail.findByInvoiceNumber(invoiceNumber)!
       const loaded = retailLoadAsDraft(deps, invoiceNumber)!

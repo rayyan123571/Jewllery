@@ -302,6 +302,8 @@ export interface NewRetailSaleItem {
   readonly labourCharges: Money
   readonly labourMode: LabourMode
   readonly stoneCharges: Money
+  /** What this line was priced at. Zero means not recorded — migration 014. */
+  readonly ratePerTola: Money
   readonly lineAmount: Money
 }
 

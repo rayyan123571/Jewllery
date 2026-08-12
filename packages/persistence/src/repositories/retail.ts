@@ -105,6 +105,7 @@ interface ItemRow {
   labour_charges_paisa: number
   labour_mode: string
   stone_charges_paisa: number
+  rate_per_tola_paisa: number
   line_amount_paisa: number
 }
 
@@ -195,6 +196,7 @@ function toItem(row: ItemRow): RetailSaleItem {
     labourCharges: Money.fromPaisa(row.labour_charges_paisa),
     labourMode: row.labour_mode as LabourMode,
     stoneCharges: Money.fromPaisa(row.stone_charges_paisa),
+    ratePerTola: Money.fromPaisa(row.rate_per_tola_paisa),
     lineAmount: Money.fromPaisa(row.line_amount_paisa),
   }
 }
@@ -355,8 +357,8 @@ const INSERT_ITEM = `
     (id, sale_id, line_no, item_name, purity, gross_weight_mg,
      stone_weight_mg, purity_deduction_mg, net_weight_mg, wastage_bp,
      wastage_mg, fine_weight_mg, labour_charges_paisa, labour_mode,
-     stone_charges_paisa, line_amount_paisa)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+     stone_charges_paisa, rate_per_tola_paisa, line_amount_paisa)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
 /**
  * The integer and the text are written from ONE argument, here, and there is no
@@ -429,6 +431,7 @@ function itemParams(item: NewRetailSaleItem, saleId: string): unknown[] {
     item.labourCharges.paisa,
     item.labourMode,
     item.stoneCharges.paisa,
+    item.ratePerTola.paisa,
     item.lineAmount.paisa,
   ]
 }

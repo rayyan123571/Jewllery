@@ -97,6 +97,7 @@ function saleOf(overrides: Partial<NewRetailSale> = {}): NewRetailSale {
       labourCharges: line.labourCharges,
       labourMode: line.labourMode,
       stoneCharges: line.stoneCharges,
+      ratePerTola: line.ratePerTola,
       lineAmount: line.lineAmount,
     })),
     ...overrides,
@@ -164,6 +165,7 @@ function itemOf(name: string, grossTola: string, deductionTola: string, lineNo =
     labourCharges: computed.labourCharges,
     labourMode: computed.labourMode,
     stoneCharges: computed.stoneCharges,
+    ratePerTola: computed.ratePerTola,
     lineAmount: computed.lineAmount,
   }
 }

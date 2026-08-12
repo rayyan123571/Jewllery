@@ -402,6 +402,7 @@ export class RetailSaleService {
           labourCharges: line.labourCharges,
           labourMode: line.labourMode,
           stoneCharges: line.stoneCharges,
+          ratePerTola: line.ratePerTola,
           lineAmount: line.lineAmount,
         })),
       },
@@ -746,6 +747,7 @@ export class RetailSaleService {
         labourCharges: line.labourCharges,
         labourMode: line.labourMode,
         stoneCharges: line.stoneCharges,
+        ratePerTola: line.ratePerTola,
         lineAmount: line.lineAmount,
       })),
     }

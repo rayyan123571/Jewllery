@@ -77,6 +77,15 @@ export interface RetailSaleItem {
   readonly labourCharges: Money
   readonly labourMode: LabourMode
   readonly stoneCharges: Money
+  /**
+   * The rate this LINE was priced at. Zero means "not recorded" — see
+   * migration 014 — and a reader falls back to the sale's header rate.
+   *
+   * Stored per line because the Rate cell is per item: a bill can hold a piece
+   * at the board rate and another quoted keenly, and without this a reopened
+   * invoice reprices itself at the header rate and stops matching the paper.
+   */
+  readonly ratePerTola: Money
   readonly lineAmount: Money
 }
 
