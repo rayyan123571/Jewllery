@@ -287,7 +287,7 @@ describe('the ten rules that refuse a sale', () => {
 describe('posting', () => {
   it('writes the sale, its items and an audit entry', () => {
     const posted = service.post(actor, paidInFull())
-    expect(posted.sale.invoiceNo).toBe('RS-00001')
+    expect(posted.sale.invoiceNumber).toBe(1)
     expect(posted.items).toHaveLength(1)
     expect(audit.entries.at(-1)?.action).toBe('TRANSACTION_POSTED')
   })
@@ -353,7 +353,7 @@ describe('voiding', () => {
     const first = service.post(actor, paidInFull({ draftId: 'a' }))
     service.void(actor, first.sale.id, 'entered twice')
     const second = service.post(actor, paidInFull({ draftId: 'b' }))
-    expect(second.sale.invoiceNo).toBe('RS-00002')
+    expect(second.sale.invoiceNumber).toBe(2)
   })
 })
 
@@ -421,11 +421,7 @@ describe('a bill posts atomically, or not at all', () => {
     expect(posted.slips).toHaveLength(3)
     expect(posted.bill.billNo).toBe('RB-00001')
     // Distinct documents, from the same continuous retail sequence.
-    expect(posted.slips.map((s) => s.sale.invoiceNo)).toEqual([
-      'RS-00001',
-      'RS-00002',
-      'RS-00003',
-    ])
+    expect(posted.slips.map((s) => s.sale.invoiceNumber)).toEqual([1, 2, 3])
     expect(posted.slips.map((s) => s.slipNo)).toEqual([1, 2, 3])
     expect(posted.slips.map((s) => s.slipLabel)).toEqual([
       'Full Bill',
@@ -469,7 +465,7 @@ describe('a bill posts atomically, or not at all', () => {
     // stayed spent would leave a gap the database never actually produced.
     bills.failOnSlipNo = null
     const posted = service.post(actor, paidInFull({ draftId: 'after-failure' }))
-    expect(posted.sale.invoiceNo).toBe('RS-00001')
+    expect(posted.sale.invoiceNumber).toBe(1)
   })
 
   it('refuses the whole bill when ONE slip breaks a rule, and names that slip', () => {
@@ -491,8 +487,8 @@ describe('a bill posts atomically, or not at all', () => {
     service.postBill(actor, bill([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]))
     const entry = audit.entries.find((e) => e.entity === 'retail_bills')
     expect(entry?.action).toBe('TRANSACTION_POSTED')
-    expect(entry?.detail).toContain('RS-00001')
-    expect(entry?.detail).toContain('RS-00002')
+    expect(entry?.detail).toContain('"1"')
+    expect(entry?.detail).toContain('"2"')
   })
 })
 

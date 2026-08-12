@@ -127,6 +127,7 @@ export {
   type SaleStatus,
   type Salesman,
 } from './retail/RetailSale.js'
+export { formatInvoiceNo, parseInvoiceNumber } from './retail/invoiceNumber.js'
 export {
   BASIS_POINTS,
   computeRetailInvoice,

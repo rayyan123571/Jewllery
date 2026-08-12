@@ -82,6 +82,25 @@ export interface RetailSaleItem {
 
 export interface RetailSale {
   readonly id: string
+  /**
+   * The number, as a bare integer. NEVER reset, NEVER reused.
+   *
+   * This is the identifier for a piece of paper that has already left the shop,
+   * so a second document claiming the same number is not a bug that can be
+   * fixed later — it is two customers holding the same invoice. The counter is
+   * continuous for the life of the database and a voided number stays burned.
+   *
+   * Integer rather than the text below because a report has to ORDER BY it:
+   * '10' sorts before '9' as text, which would put the tenth sale above the
+   * ninth and send the operator to the wrong bill.
+   */
+  readonly invoiceNumber: number
+  /**
+   * The same value as text, which is what the UNIQUE constraint has always
+   * been enforced on. Written in the same statement as `invoiceNumber` and
+   * never separately, so the two cannot drift. Not for display — see
+   * `formatInvoiceNo`, which is where the shop's prefix is applied.
+   */
   readonly invoiceNo: string
   readonly branchId: string
   readonly saleDate: IsoDate

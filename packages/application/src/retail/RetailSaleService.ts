@@ -3,6 +3,8 @@ import {
   Money,
   computeRetailInvoice,
   computeRetailLine,
+  formatInvoiceNo,
+  parseInvoiceNumber,
   totalsOfRetail,
   toIsoTimestamp,
   type Clock,
@@ -392,7 +394,6 @@ export class RetailSaleService {
           lineAmount: line.lineAmount,
         })),
       },
-      this.deps.settings.retailInvoicePrefix(),
     )
 
     this.deps.audit.append({
@@ -627,7 +628,6 @@ export class RetailSaleService {
         })),
       },
       this.deps.settings.retailBillPrefix(),
-      this.deps.settings.retailInvoicePrefix(),
     )
 
     // The draft has become a real document, so it stops being a draft. Only
@@ -789,8 +789,18 @@ export class RetailSaleService {
     return this.deps.retailSales.findById(id)
   }
 
+  /**
+   * Finds a sale by whatever the operator typed into a search box.
+   *
+   * Tolerant on purpose. The number is a bare integer now, but the paper in the
+   * customer's hand may say "RS-00007" from before the change, and the shop may
+   * have set a display prefix since — so "7", "RS-7" and "RS-00007" all have to
+   * reach invoice 7. `parseInvoiceNumber` takes the trailing digits, which is
+   * the same rule migration 012 used to convert the stored values.
+   */
   findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null {
-    return this.deps.retailSales.findByInvoiceNo(invoiceNo)
+    const number = parseInvoiceNumber(invoiceNo)
+    return number === null ? null : this.deps.retailSales.findByInvoiceNumber(number)
   }
 
   /** Sales matching a date range, a customer and a status. Read-only. */
@@ -803,8 +813,17 @@ export class RetailSaleService {
     return this.deps.salesmen.list(true)
   }
 
+  /** A preview of the next number, already carrying the shop's display prefix. */
   peekNextInvoiceNo(): string {
-    return this.deps.retailSales.peekNextInvoiceNo(this.deps.settings.retailInvoicePrefix())
+    return formatInvoiceNo(
+      this.deps.retailSales.peekNextInvoiceNumber(),
+      this.deps.settings.invoiceDisplayPrefix(),
+    )
+  }
+
+  /** The prefix every screen and document puts in front of a number. */
+  invoiceDisplayPrefix(): string {
+    return this.deps.settings.invoiceDisplayPrefix()
   }
 
   /**

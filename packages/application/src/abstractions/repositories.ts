@@ -368,17 +368,21 @@ export interface RetailSaleRepository {
    * to take the same number, and a sale that is abandoned must not leave a hole
    * that a later sale silently fills. ONE continuous sequence — it never resets,
    * so an invoice number is unique on its own terms.
+   *
+   * Takes no prefix. The number IS an integer; the shop's prefix is a display
+   * setting applied by `formatInvoiceNo` at the moment of showing or printing,
+   * so nothing on this path can bake one into a stored row.
    */
-  post(sale: NewRetailSale, prefix: string): RetailSaleWithItems
+  post(sale: NewRetailSale): RetailSaleWithItems
 
   findById(id: string): RetailSaleWithItems | null
-  findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null
+  findByInvoiceNumber(invoiceNumber: number): RetailSaleWithItems | null
   /** The already-posted sale for a draft, if one exists. Idempotency. */
   findByDraftId(draftId: string): RetailSaleWithItems | null
   list(filter: RetailSaleFilter): RetailSale[]
 
   /** A PREVIEW of the next number. Reserves nothing — see `post`. */
-  peekNextInvoiceNo(prefix: string): string
+  peekNextInvoiceNumber(): number
 
   /** Marks a posted sale void. Never deletes; the number stays burned. */
   markVoid(id: string, reason: string, voidedAt: IsoTimestamp): void
@@ -422,7 +426,7 @@ export interface RetailBillRepository {
    * bill takes a number of its own from a separate sequence. If any slip fails
    * a constraint, every allocation in this call rolls back with it.
    */
-  postBill(bill: NewRetailBill, billPrefix: string, invoicePrefix: string): RetailBillWithSlips
+  postBill(bill: NewRetailBill, billPrefix: string): RetailBillWithSlips
 
   findById(id: string): RetailBillWithSlips | null
   findByBillNo(billNo: string): RetailBillWithSlips | null

@@ -193,7 +193,7 @@ const retailBillSave = vi.fn(async (_request: { draft: RetailBillDraftDto }) => 
   billId: 'bill-1',
   billNo: 'RB-00001',
   slips: [
-    { slipNo: 1, slipLabel: 'Full Bill', saleId: 'sale-1', invoiceNo: 'RS-00001' },
+    { slipNo: 1, slipLabel: 'Full Bill', saleId: 'sale-1', invoiceNo: '1' },
   ],
   billTotal: '1,102,596.13',
 }))
@@ -258,7 +258,7 @@ const api = {
   retailLoad: vi.fn(async () => null),
   retailList: vi.fn(async () => []),
   retailVoid: vi.fn(),
-  retailNextInvoiceNo: vi.fn(async () => 'RS-00001'),
+  retailNextInvoiceNo: vi.fn(async () => '1'),
   retailReceipt: vi.fn(async () => null),
   searchCustomers: vi.fn(async () => []),
   createCustomer: vi.fn(),

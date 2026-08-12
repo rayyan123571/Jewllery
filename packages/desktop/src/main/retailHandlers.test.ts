@@ -413,7 +413,9 @@ describe('calculate is tolerant, because it runs on every keystroke', () => {
 describe('reading sales back', () => {
   it('previews the next invoice number without reserving it', () => {
     const first = retailNextInvoiceNo(deps)
-    expect(first).toBe('RS-00001')
+    // Bare, because `invoice.display.prefix` ships empty. A shop that sets it
+    // sees the prefix here too — this is the same formatter every screen uses.
+    expect(first).toBe('1')
     expect(retailNextInvoiceNo(deps)).toBe(first)
   })
 
@@ -629,7 +631,7 @@ describe('the bill boundary', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.billNo).toBe('RB-00001')
-    expect(result.slips.map((s) => s.invoiceNo)).toEqual(['RS-00001', 'RS-00002'])
+    expect(result.slips.map((s) => s.invoiceNo)).toEqual(['1', '2'])
     expect(result.slips.map((s) => s.slipLabel)).toEqual(['Full Bill', 'Gold Bangles'])
   })
 
@@ -687,8 +689,8 @@ describe('the bill boundary', () => {
     const html = retailBillReceipt(deps, posted.billId)
     expect(html).toBeTruthy()
     // Both invoice numbers on one page, with a break between them.
-    expect(html).toContain('RS-00001')
-    expect(html).toContain('RS-00002')
+    expect(html).toContain('>1<')
+    expect(html).toContain('>2<')
     expect(html).toContain('page-break-before')
     // One document, not two concatenated shells.
     expect((html?.match(/<html/gi) ?? []).length).toBe(1)

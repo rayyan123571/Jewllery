@@ -490,8 +490,8 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
    */
   idCount = 0
 
-  post(sale: NewRetailSale, prefix: string): RetailSaleWithItems {
-    const written = this.build(sale, prefix)
+  post(sale: NewRetailSale): RetailSaleWithItems {
+    const written = this.build(sale)
     this.rows.push(written)
     return written
   }
@@ -502,16 +502,20 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
    * Split out of `post` for the bill fake, which must build every slip before
    * committing any of them — see FakeRetailBillRepository.
    */
-  build(sale: NewRetailSale, prefix: string): RetailSaleWithItems {
+  build(sale: NewRetailSale): RetailSaleWithItems {
     if (sale.draftId && this.rows.some((row) => row.sale.draftId === sale.draftId)) {
       throw new Error('UNIQUE constraint failed: retail_sales.draft_id')
     }
-    const invoiceNo = `${prefix}${(this.next++).toString().padStart(5, '0')}`
+    // Integer and text from ONE value, exactly as saleParams does in the real
+    // repository. A fake that could produce a pair which disagrees would hide
+    // the very drift the single-argument insert exists to prevent.
+    const invoiceNumber = this.next++
     const id = `sale-${++this.idCount}`
     return {
       sale: {
         id,
-        invoiceNo,
+        invoiceNumber,
+        invoiceNo: String(invoiceNumber),
         branchId: sale.branchId,
         saleDate: sale.saleDate,
         saleTime: sale.saleTime,
@@ -556,8 +560,8 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
     return this.rows.find((row) => row.sale.id === id) ?? null
   }
 
-  findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null {
-    return this.rows.find((row) => row.sale.invoiceNo === invoiceNo) ?? null
+  findByInvoiceNumber(invoiceNumber: number): RetailSaleWithItems | null {
+    return this.rows.find((row) => row.sale.invoiceNumber === invoiceNumber) ?? null
   }
 
   findByDraftId(draftId: string): RetailSaleWithItems | null {
@@ -576,8 +580,8 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
       .slice(0, filter.limit)
   }
 
-  peekNextInvoiceNo(prefix: string): string {
-    return `${prefix}${this.next.toString().padStart(5, '0')}`
+  peekNextInvoiceNumber(): number {
+    return this.next
   }
 
   markVoid(id: string, reason: string): void {
@@ -614,11 +618,7 @@ export class FakeRetailBillRepository implements RetailBillRepository {
 
   constructor(private readonly sales: FakeRetailSaleRepository) {}
 
-  postBill(
-    bill: NewRetailBill,
-    billPrefix: string,
-    invoicePrefix: string,
-  ): RetailBillWithSlips {
+  postBill(bill: NewRetailBill, billPrefix: string): RetailBillWithSlips {
     const billNo = `${billPrefix}${this.next.toString().padStart(5, '0')}`
     const billId = `bill-${this.bills.length + 1}`
 
@@ -635,7 +635,7 @@ export class FakeRetailBillRepository implements RetailBillRepository {
             `CHECK constraint failed: retail_sale_items (simulated, slip ${slip.slipNo})`,
           )
         }
-        const written = this.sales.build(slip.sale, invoicePrefix)
+        const written = this.sales.build(slip.sale)
         staged.push({ ...written, slipNo: slip.slipNo, slipLabel: slip.slipLabel })
       }
     } catch (error) {

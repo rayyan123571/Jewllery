@@ -23,8 +23,23 @@ export const SETTING_KEYS = {
   /** See RETAIL_WASTAGE_* below. Both ship as a decision the shop must make. */
   retailWastageDirection: 'retail.wastage.direction',
   retailWastageBasis: 'retail.wastage.basis',
-  retailInvoicePrefix: 'retail.invoicePrefix',
-  /** Prefix for BILL numbers, which are a separate sequence from invoices. */
+  /**
+   * What is shown in front of an invoice number. Default EMPTY — a bare 1, 2, 3.
+   *
+   * Display only, and that is the whole point of it. The stored number is an
+   * integer and nothing here can change it, so a shop that wants "RS-" back sets
+   * this key and every screen, receipt and report picks it up with no migration
+   * and no row moving. It replaced `retail.invoicePrefix`, which fed the
+   * GENERATOR and therefore could not be changed once numbers had been issued.
+   */
+  invoiceDisplayPrefix: 'invoice.display.prefix',
+  /**
+   * Prefix for BILL numbers, which are a separate sequence from invoices.
+   *
+   * Bill numbers were NOT converted to bare integers. A bill and a slip are
+   * different documents and their numbers must not look alike — "7" could be
+   * either — so the bill keeps a visibly different form. See `retailBillPrefix`.
+   */
   retailBillPrefix: 'retail.billPrefix',
   /** 1 | 100 | 1000 whole rupees. See RETAIL_ROUNDING_STEPS below. */
   retailRoundingNearest: 'retail.rounding.nearest',
@@ -160,8 +175,19 @@ export class Settings {
     return this.repo.get(SETTING_KEYS.settlementInvoicePrefix)?.trim() || 'RT-'
   }
 
-  retailInvoicePrefix(): string {
-    return this.repo.get(SETTING_KEYS.retailInvoicePrefix)?.trim() || 'RS-'
+  /**
+   * The prefix shown in front of an invoice number. Empty by default.
+   *
+   * `?? ''` rather than `|| 'RS-'`: empty IS the default here, not a missing
+   * value to be filled in. The other prefix accessors fall back to a real string
+   * because a bill with no prefix at all would be indistinguishable from a slip;
+   * an invoice with no prefix is exactly what the shop asked for.
+   *
+   * Not trimmed to nothing on purpose either — a shop that wants "RS " with a
+   * space, or "INV/", gets what it typed. Only the outer whitespace goes.
+   */
+  invoiceDisplayPrefix(): string {
+    return this.repo.get(SETTING_KEYS.invoiceDisplayPrefix)?.trim() ?? ''
   }
 
   /**

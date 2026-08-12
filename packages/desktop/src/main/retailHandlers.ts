@@ -5,6 +5,7 @@ import {
   computeRetailInvoice,
   computeRetailLine,
   formatGram,
+  formatInvoiceNo,
   formatPurity,
   formatTola,
   isLabourMode,
@@ -101,6 +102,22 @@ export interface RetailHandlerDeps {
   /** For the printed document's letterhead. Null before the shop is set up. */
   readonly shopProfile: () => ShopProfile | null
   readonly session: Session
+}
+
+/**
+ * The number as the shop shows it: the stored integer, with whatever prefix is
+ * set in `invoice.display.prefix` (empty by default, giving a bare 1, 2, 3).
+ *
+ * Every place a number reaches a person goes through here — the save result,
+ * the list, a loaded sale, the 80mm receipt, the bill's slips and the A4
+ * report. That is the point: a prefix that is applied in five places is a
+ * prefix that will one day be applied in four.
+ */
+function displayInvoiceNo(
+  deps: RetailHandlerDeps,
+  sale: { readonly invoiceNumber: number },
+): string {
+  return formatInvoiceNo(sale.invoiceNumber, deps.settings.invoiceDisplayPrefix())
 }
 
 /** Turns any thrown error into a message a shopkeeper can act on. */
@@ -484,7 +501,7 @@ function commit(
     return {
       ok: true,
       saleId: written.sale.id,
-      invoiceNo: written.sale.invoiceNo,
+      invoiceNo: displayInvoiceNo(deps, written.sale),
       status: written.sale.status,
       grandTotal: written.sale.grandTotal.format(),
       balance: written.sale.balance.format(),
@@ -511,7 +528,7 @@ export function retailLoad(
       : reference.invoiceNo
         ? deps.retail.findByInvoiceNo(reference.invoiceNo)
         : null
-    return found ? saleDto(found) : null
+    return found ? saleDto(found, deps.settings.invoiceDisplayPrefix()) : null
   } catch {
     return null
   }
@@ -523,6 +540,7 @@ export function retailList(
 ): readonly RetailSaleSummaryDto[] {
   try {
     requireUser(deps)
+    const prefix = deps.settings.invoiceDisplayPrefix()
     return deps.retail
       .list({
         branchId: deps.branchId,
@@ -534,7 +552,7 @@ export function retailList(
       })
       .map((sale) => ({
         saleId: sale.id,
-        invoiceNo: sale.invoiceNo,
+        invoiceNo: formatInvoiceNo(sale.invoiceNumber, prefix),
         date: sale.saleDate,
         time: sale.saleTime,
         customerName: sale.customerNameSnapshot,
@@ -597,7 +615,7 @@ export function retailReceipt(deps: RetailHandlerDeps, saleId: string): string |
         phone2: shop?.phone2 ?? null,
         address: shop?.address ?? null,
       },
-      invoiceNo: found.sale.invoiceNo,
+      invoiceNo: displayInvoiceNo(deps, found.sale),
       date: found.sale.saleDate,
       time: found.sale.saleTime,
       customerName: found.sale.customerNameSnapshot,
@@ -678,11 +696,11 @@ function itemsTotalOf(sale: RetailSaleWithItems): Money {
   return Money.sum(sale.items.map((item) => item.lineAmount))
 }
 
-function saleDto(found: RetailSaleWithItems): RetailSaleDto {
+function saleDto(found: RetailSaleWithItems, invoicePrefix: string): RetailSaleDto {
   return {
     summary: {
       saleId: found.sale.id,
-      invoiceNo: found.sale.invoiceNo,
+      invoiceNo: formatInvoiceNo(found.sale.invoiceNumber, invoicePrefix),
       date: found.sale.saleDate,
       time: found.sale.saleTime,
       customerName: found.sale.customerNameSnapshot,
@@ -1112,7 +1130,7 @@ export function retailBillSave(
         slipNo: slip.slipNo,
         slipLabel: slip.slipLabel,
         saleId: slip.sale.id,
-        invoiceNo: slip.sale.invoiceNo,
+        invoiceNo: displayInvoiceNo(deps, slip.sale),
       })),
       billTotal: Money.sum(
         written.slips.map((slip) => slip.sale.grandTotal),

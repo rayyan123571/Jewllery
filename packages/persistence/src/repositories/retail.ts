@@ -51,6 +51,7 @@ import type { DatabaseProvider } from '../Database.js'
 
 interface SaleRow {
   id: string
+  invoice_number: number
   invoice_no: string
   branch_id: string
   sale_date: string
@@ -136,6 +137,7 @@ function toCustomer(row: CustomerRow): Customer {
 function toSale(row: SaleRow): RetailSale {
   return {
     id: row.id,
+    invoiceNumber: row.invoice_number,
     invoiceNo: row.invoice_no,
     branchId: row.branch_id,
     saleDate: toIsoDate(row.sale_date),
@@ -334,7 +336,7 @@ export class SqliteSalesmanRepository implements SalesmanRepository {
  */
 const INSERT_SALE = `
   INSERT INTO retail_sales
-    (id, invoice_no, branch_id, sale_date, sale_time, customer_id,
+    (id, invoice_number, invoice_no, branch_id, sale_date, sale_time, customer_id,
      customer_name_snapshot, customer_mobile_snapshot, salesman_id,
      salesman_name_snapshot, rate_purity, rate_per_tola_paisa,
      gold_value_paisa, customer_gold_mg, customer_gold_purity,
@@ -343,7 +345,7 @@ const INSERT_SALE = `
      balance_paisa, amount_in_words, remarks, status, void_reason, draft_id,
      wastage_direction, wastage_basis, created_by, created_at, posted_at,
      bill_id, slip_no, slip_label)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
 const INSERT_ITEM = `
   INSERT INTO retail_sale_items
@@ -353,16 +355,23 @@ const INSERT_ITEM = `
      stone_charges_paisa, line_amount_paisa)
   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
+/**
+ * The integer and the text are written from ONE argument, here, and there is no
+ * other way into the table. That is what makes the pair unable to drift: a
+ * caller cannot supply a number that disagrees with its own text because it
+ * never supplies the text at all.
+ */
 function saleParams(
   sale: NewRetailSale,
   id: string,
-  invoiceNo: string,
+  invoiceNumber: number,
   createdAt: string,
   bill: { id: string; slipNo: number; slipLabel: string } | null,
 ): unknown[] {
   return [
     id,
-    invoiceNo,
+    invoiceNumber,
+    String(invoiceNumber),
     sale.branchId,
     sale.saleDate,
     sale.saleTime,
@@ -450,6 +459,39 @@ function allocateNumber(
   return `${prefix}${row.next_number.toString().padStart(width, '0')}`
 }
 
+/**
+ * The next invoice number, as a bare integer, taking and burning it.
+ *
+ * Deliberately a SEPARATE function from `allocateNumber` above rather than a
+ * flag on it. That one formats a prefixed, zero-padded string and still serves
+ * bill numbers; this one returns an integer and takes no prefix at all — which
+ * is the structural half of "the prefix is a display setting". There is no
+ * argument here for a prefix to be passed in, so no future caller can bake one
+ * into a stored number again.
+ *
+ * The same transaction rule applies: callers must already be inside one. Two
+ * counters saving at the same moment serialise on this row and cannot both take
+ * the same number, and a caller whose transaction then fails rolls the bump back
+ * with it. A number that WAS handed out and then voided stays burned — a gap is
+ * auditable, a reused number is a second document claiming to be the first.
+ */
+function allocateInvoiceNumber(db: BetterSqlite3.Database): number {
+  const row = db
+    .prepare("SELECT next_number FROM invoice_sequences WHERE key = 'retail'")
+    .get() as { next_number: number } | undefined
+
+  if (!row) {
+    const START = 1
+    db.prepare(
+      'INSERT INTO invoice_sequences (key, prefix, next_number) VALUES (?,?,?)',
+    ).run('retail', '', START + 1)
+    return START
+  }
+
+  db.prepare("UPDATE invoice_sequences SET next_number = next_number + 1 WHERE key = 'retail'").run()
+  return row.next_number
+}
+
 export class SqliteRetailSaleRepository implements RetailSaleRepository {
   constructor(
     private readonly conn: DatabaseProvider,
@@ -471,14 +513,14 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
    * burned — a gap is auditable, a reused number is a second document claiming
    * to be the first.
    */
-  post(sale: NewRetailSale, prefix: string): RetailSaleWithItems {
+  post(sale: NewRetailSale): RetailSaleWithItems {
     const db = this.conn.get()
     const id = randomUUID()
     const createdAt = toIsoTimestamp(this.clock.now())
 
     const run = db.transaction(() => {
-      const invoiceNo = allocateNumber(db, 'retail', prefix, 5)
-      db.prepare(INSERT_SALE).run(...saleParams(sale, id, invoiceNo, createdAt, null))
+      const invoiceNumber = allocateInvoiceNumber(db)
+      db.prepare(INSERT_SALE).run(...saleParams(sale, id, invoiceNumber, createdAt, null))
       const insertItem = db.prepare(INSERT_ITEM)
       for (const item of sale.items) insertItem.run(...itemParams(item, id))
     })
@@ -489,12 +531,13 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
     return written
   }
 
-  peekNextInvoiceNo(prefix: string): string {
+  /** A PREVIEW. Reserves nothing, burns nothing — see the note on `post`. */
+  peekNextInvoiceNumber(): number {
     const row = this.conn
       .get()
       .prepare("SELECT next_number FROM invoice_sequences WHERE key = 'retail'")
       .get() as { next_number: number } | undefined
-    return `${prefix}${(row?.next_number ?? 1).toString().padStart(5, '0')}`
+    return row?.next_number ?? 1
   }
 
   findById(id: string): RetailSaleWithItems | null {
@@ -513,11 +556,18 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
     return row ? { sale: toSale(row), items: this.itemsFor(row.id) } : null
   }
 
-  findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null {
+  /**
+   * Looks up by the INTEGER, not the text.
+   *
+   * The text column would work too — it holds the same digits — but the integer
+   * is the indexed one, and matching on it means a caller cannot accidentally
+   * miss a row by passing '007' where the column says '7'.
+   */
+  findByInvoiceNumber(invoiceNumber: number): RetailSaleWithItems | null {
     const row = this.conn
       .get()
-      .prepare('SELECT * FROM retail_sales WHERE invoice_no = ?')
-      .get(invoiceNo.trim()) as SaleRow | undefined
+      .prepare('SELECT * FROM retail_sales WHERE invoice_number = ?')
+      .get(invoiceNumber) as SaleRow | undefined
     return row ? { sale: toSale(row), items: this.itemsFor(row.id) } : null
   }
 
@@ -631,11 +681,7 @@ export class SqliteRetailBillRepository implements RetailBillRepository {
    * The bill takes its own number from a separate sequence. Every allocation
    * made in this call rolls back together with everything else.
    */
-  postBill(
-    bill: NewRetailBill,
-    billPrefix: string,
-    invoicePrefix: string,
-  ): RetailBillWithSlips {
+  postBill(bill: NewRetailBill, billPrefix: string): RetailBillWithSlips {
     const db = this.conn.get()
     const billId = randomUUID()
     const createdAt = toIsoTimestamp(this.clock.now())
@@ -671,9 +717,9 @@ export class SqliteRetailBillRepository implements RetailBillRepository {
 
       for (const slip of bill.slips) {
         const saleId = randomUUID()
-        const invoiceNo = allocateNumber(db, 'retail', invoicePrefix, 5)
+        const invoiceNumber = allocateInvoiceNumber(db)
         insertSale.run(
-          ...saleParams(slip.sale, saleId, invoiceNo, createdAt, {
+          ...saleParams(slip.sale, saleId, invoiceNumber, createdAt, {
             id: billId,
             slipNo: slip.slipNo,
             slipLabel: slip.slipLabel,
