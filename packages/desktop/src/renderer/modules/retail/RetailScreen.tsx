@@ -267,8 +267,13 @@ export function RetailScreen({
    * handler, because a flag has to be remembered in a dozen places and is
    * wrong the first time somebody forgets one. Typing a character and deleting
    * it again correctly leaves the bill clean.
+   *
+   * STATE, not a ref, and that distinction is load-bearing: `dirty` is a memo,
+   * and a memo reading a ref keeps whatever the ref held on the render that
+   * built it. As a ref this read '' on the first render, made every untouched
+   * bill dirty, and fired the guard on the very first press of an arrow.
    */
-  const baseline = useRef<string>('')
+  const [baseline, setBaseline] = useState('')
 
   // A ref as well as state: a second click can arrive before React has
   // re-rendered with a disabled button, and the ref is already set.
@@ -393,6 +398,9 @@ export function RetailScreen({
       if (item) setEntry(item)
     }
     setRecovered(null)
+    // Re-seed: a resumed bill is exactly what was left, so it is not dirty
+    // until the operator touches it again.
+    setBaseline('')
     push('ok', `Resumed the bill for ${found.customerName}. Nothing was lost.`)
   }, [push])
 
@@ -535,7 +543,7 @@ export function RetailScreen({
 
   /** Marks whatever is on screen as the clean state to compare against. */
   const markClean = useCallback((of: RetailBillDraftDto) => {
-    baseline.current = JSON.stringify(of)
+    setBaseline(JSON.stringify(of))
   }, [])
 
   /**
@@ -545,8 +553,8 @@ export function RetailScreen({
    * guard must not stop the operator simply paging through the book.
    */
   const dirty = useMemo(
-    () => !isLocked && JSON.stringify(draft) !== baseline.current,
-    [draft, isLocked],
+    () => !isLocked && baseline !== '' && JSON.stringify(draft) !== baseline,
+    [draft, isLocked, baseline],
   )
 
   useEffect(() => {
@@ -554,6 +562,31 @@ export function RetailScreen({
       .retailNeighbours(stored?.invoiceNumber ?? null, showVoided)
       .then(setNeighbours)
   }, [stored, showVoided, invoiceNo])
+
+  /**
+   * Seeds the clean baseline the first time a bill exists.
+   *
+   * Without this an untouched screen compares its draft against the empty
+   * string, reads as dirty, and the guard fires on the very first press of an
+   * arrow — training the operator to click through the question that exists to
+   * protect them. An empty baseline is the signal to re-seed, which is how
+   * `startNewBill` and a resumed draft get a clean slate too.
+   */
+  useEffect(() => {
+    setBaseline((current) => (current === '' ? JSON.stringify(draft) : current))
+  }, [draft])
+
+  /**
+   * The jump box shows the invoice on screen, and is typed over to leave it.
+   *
+   * Seeded rather than falling back to a display value when empty: a box whose
+   * displayed value reappears the moment it is cleared cannot be cleared, and
+   * typing into it appends to a number the operator thought they had deleted.
+   */
+  useEffect(() => {
+    setJumpText(stored?.invoiceNo ?? invoiceNo)
+    setJumpError(null)
+  }, [stored, invoiceNo])
 
   /** Puts a stored invoice on screen, locked. Returns false if there is none. */
   const openInvoice = useCallback(
@@ -689,7 +722,7 @@ export function RetailScreen({
       setCorrecting(false)
       setJumpText('')
       setJumpError(null)
-      baseline.current = ''
+      setBaseline('')
       void window.api.retailNextInvoiceNo().then(setInvoiceNo)
     },
     [stored],
@@ -1071,7 +1104,7 @@ export function RetailScreen({
           <span className="toolbar__jump-label">Invoice No :</span>
           <input
             className="input input--numeric toolbar__jump-input"
-            value={jumpText === '' ? (stored?.invoiceNo ?? invoiceNo) : jumpText}
+            value={jumpText}
             onChange={(e) => {
               setJumpText(e.target.value)
               setJumpError(null)

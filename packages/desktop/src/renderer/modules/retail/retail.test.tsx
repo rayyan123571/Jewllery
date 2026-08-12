@@ -257,13 +257,18 @@ const api = {
   retailList: vi.fn(async () => []),
   retailVoid: vi.fn(),
   retailNextInvoiceNo: vi.fn(async () => '1'),
-  retailNeighbours: vi.fn(async () => ({
-    first: null,
-    previous: null,
-    next: null,
-    last: null,
-  })),
-  retailLoadAsDraft: vi.fn(async () => null),
+  // Typed loosely on purpose: individual tests give the mock a real book to
+  // walk, and a literal-null default would fix the type at `null`.
+  retailNeighbours: vi.fn(
+    async () =>
+      ({ first: null, previous: null, next: null, last: null }) as {
+        first: { number: number; display: string } | null
+        previous: { number: number; display: string } | null
+        next: { number: number; display: string } | null
+        last: { number: number; display: string } | null
+      },
+  ),
+  retailLoadAsDraft: vi.fn(async (_invoiceNumber: number) => null as unknown),
   retailReceipt: vi.fn(async () => null),
   searchCustomers: vi.fn(async () => []),
   createCustomer: vi.fn(),
@@ -527,14 +532,20 @@ describe('one invoice, one set of items', () => {
     await openRetail(user)
     await addItem(user, 'BANGLE', '4.050')
 
-    await waitFor(() => expect(lastRequest().draft.slips).toHaveLength(1))
+    // Waits on the ITEM, not on the slip count — the slip count is 1 from the
+    // first render, so waiting on it races the calculate debounce and reads the
+    // request that went out before the item was added.
+    await waitFor(() =>
+      expect(lastRequest().draft.slips[0]?.items.map((i) => i.itemName)).toEqual([
+        'BANGLE',
+      ]),
+    )
     const slip = lastRequest().draft.slips[0]
     // Slip 1, 'Full Bill' — the implicit slip every invoice now carries. The
     // schema still stores a bill wrapping a slip, which is what keeps the
     // all-or-nothing transaction downstream reachable.
     expect(slip?.slipNo).toBe(1)
     expect(slip?.slipLabel).toBe('Full Bill')
-    expect(slip?.items.map((i) => i.itemName)).toEqual(['BANGLE'])
   })
 
   it('saves the whole bill through one call', async () => {
@@ -683,3 +694,246 @@ function stubContext(): ActionContext {
     closeWindow: vi.fn(),
   }
 }
+
+
+/**
+ * The guard, and the box that finds an old bill.
+ *
+ * `retail_draft_bills` holds ONE draft per branch, so navigating away from an
+ * unsaved bill destroys it rather than parking it. Every one of these tests is
+ * about that: the arrows, the jump box and NEW must all stop and ask, and the
+ * question must have three real answers.
+ */
+describe('the unsaved-changes guard', () => {
+  /** A book of three invoices, so PREV and FIRST are reachable. */
+  function aBookOfThree(): void {
+    api.retailNeighbours.mockResolvedValue({
+      first: { number: 1, display: '1' },
+      previous: { number: 3, display: '3' },
+      next: null,
+      last: { number: 3, display: '3' },
+    })
+    api.retailLoadAsDraft.mockResolvedValue({
+      saleId: 'sale-3',
+      invoiceNumber: 3,
+      invoiceNo: '3',
+      status: 'posted',
+      voidReason: null,
+      slipCount: 1,
+      draft: {
+        saleDate: '2026-08-30',
+        saleTime: '12:48',
+        customerId: null,
+        customerName: 'IMRAN SAHIB',
+        customerMobile: '03001234567',
+        ratePurity: 'K22',
+        ratePerTolaOverride: '237970.00',
+        weightUnit: 'tola',
+        slips: [
+          {
+            slipNo: 1,
+            slipLabel: 'Full Bill',
+            draftId: 'draft-3',
+            items: [],
+            customerGold: { text: '', exactMg: null },
+            customerGoldPurity: 'K22',
+            hallmarkCharges: '',
+            otherCharges: '',
+            discount: '',
+            amountPaid: '',
+            paymentMethod: 'cash',
+            remarks: null,
+          },
+        ],
+      },
+    })
+  }
+
+  it('does not ask when nothing has been changed', async () => {
+    const user = userEvent.setup()
+    aBookOfThree()
+    await openRetail(user)
+    await waitFor(() => expect(control('retail.nav.prev').disabled).toBe(false))
+
+    await user.click(control('retail.nav.prev'))
+
+    // Straight there. A guard that asks on an untouched bill is one the
+    // operator learns to click through without reading.
+    await waitFor(() => expect(api.retailLoadAsDraft).toHaveBeenCalledWith(3))
+    expect(screen.queryByText('Save this invoice first?')).toBeNull()
+  })
+
+  it('stops every navigation Action and asks first', async () => {
+    const user = userEvent.setup()
+    aBookOfThree()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    await waitFor(() => expect(control('retail.nav.prev').disabled).toBe(false))
+
+    await user.click(control('retail.nav.prev'))
+
+    expect(await screen.findByText('Save this invoice first?')).toBeTruthy()
+    // Nothing moved while the question is up.
+    expect(api.retailLoadAsDraft).not.toHaveBeenCalled()
+  })
+
+  it('stops NEW as well, because NEW loses the bill just as thoroughly', async () => {
+    const user = userEvent.setup()
+    aBookOfThree()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+
+    await user.click(control('retail.new'))
+
+    expect(await screen.findByText('Save this invoice first?')).toBeTruthy()
+  })
+
+  it('offers three real answers, Cancel among them', async () => {
+    const user = userEvent.setup()
+    aBookOfThree()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    await user.click(control('retail.nav.prev'))
+    await screen.findByText('Save this invoice first?')
+
+    // Cancel is a control pressed on purpose, not Escape-and-hope.
+    expect(control('retail.guard.cancel').disabled).toBe(false)
+    expect(control('retail.guard.discard').disabled).toBe(false)
+    expect(control('retail.guard.save').disabled).toBe(false)
+  })
+
+  it('stays exactly where it was when the answer is Cancel', async () => {
+    const user = userEvent.setup()
+    aBookOfThree()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    await user.click(control('retail.nav.prev'))
+    await screen.findByText('Save this invoice first?')
+
+    await user.click(control('retail.guard.cancel'))
+
+    await waitFor(() => expect(screen.queryByText('Save this invoice first?')).toBeNull())
+    expect(api.retailLoadAsDraft).not.toHaveBeenCalled()
+    // The work is still on screen.
+    expect(itemColumns()).toHaveLength(1)
+  })
+
+  it('throws the changes away and goes when the answer is Discard', async () => {
+    const user = userEvent.setup()
+    aBookOfThree()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    await user.click(control('retail.nav.prev'))
+    await screen.findByText('Save this invoice first?')
+
+    await user.click(control('retail.guard.discard'))
+
+    // The draft is cleared on the way out, so nothing comes back offering to
+    // resume a bill the operator has just said to throw away.
+    await waitFor(() => expect(api.retailDraftDiscard).toHaveBeenCalled())
+    await waitFor(() => expect(api.retailLoadAsDraft).toHaveBeenCalledWith(3))
+  })
+
+  it('saves first, then goes, when the answer is Save', async () => {
+    const user = userEvent.setup()
+    aBookOfThree()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    await user.click(control('retail.nav.prev'))
+    await screen.findByText('Save this invoice first?')
+
+    await user.click(control('retail.guard.save'))
+
+    await waitFor(() => expect(retailBillSave).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(api.retailLoadAsDraft).toHaveBeenCalledWith(3))
+  })
+})
+
+describe('the invoice-number jump', () => {
+  function jumpBox(): HTMLInputElement {
+    return screen.getByLabelText(
+      'Invoice number — type one and press Enter to open it',
+    ) as HTMLInputElement
+  }
+
+  it('opens that invoice when the number is one that exists', async () => {
+    const user = userEvent.setup()
+    api.retailLoadAsDraft.mockResolvedValue({
+      saleId: 'sale-4',
+      invoiceNumber: 4,
+      invoiceNo: '4',
+      status: 'posted',
+      voidReason: null,
+      slipCount: 1,
+      draft: {
+        saleDate: '2026-08-30',
+        saleTime: '12:48',
+        customerId: null,
+        customerName: 'IMRAN SAHIB',
+        customerMobile: '',
+        ratePurity: 'K22',
+        ratePerTolaOverride: '237970.00',
+        weightUnit: 'tola',
+        slips: [
+          {
+            slipNo: 1,
+            slipLabel: 'Full Bill',
+            draftId: 'draft-4',
+            items: [],
+            customerGold: { text: '', exactMg: null },
+            customerGoldPurity: 'K22',
+            hallmarkCharges: '',
+            otherCharges: '',
+            discount: '',
+            amountPaid: '',
+            paymentMethod: 'cash',
+            remarks: null,
+          },
+        ],
+      },
+    })
+    await openRetail(user)
+
+    await user.clear(jumpBox())
+    await user.type(jumpBox(), '4{Enter}')
+
+    await waitFor(() => expect(api.retailLoadAsDraft).toHaveBeenCalledWith(4))
+  })
+
+  it('says so and does NOT navigate when the number is unknown', async () => {
+    const user = userEvent.setup()
+    api.retailLoadAsDraft.mockResolvedValue(null)
+    await openRetail(user)
+
+    await user.clear(jumpBox())
+    await user.type(jumpBox(), '999{Enter}')
+
+    // A message beside the box, and the screen stays where it was. Landing on
+    // something the operator did not ask for is worse than not moving.
+    expect(await screen.findByText('No invoice 999.')).toBeTruthy()
+    expect(screen.queryByText(/read-only/)).toBeNull()
+  })
+
+  it('refuses anything that is not a number, without navigating', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+
+    await user.clear(jumpBox())
+    await user.type(jumpBox(), 'abc{Enter}')
+
+    expect(await screen.findByText('Numbers only.')).toBeTruthy()
+    expect(api.retailLoadAsDraft).not.toHaveBeenCalled()
+  })
+
+  it('goes through the guard too, so a jump cannot skip the question', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+
+    await user.clear(jumpBox())
+    await user.type(jumpBox(), '4{Enter}')
+
+    expect(await screen.findByText('Save this invoice first?')).toBeTruthy()
+    expect(api.retailLoadAsDraft).not.toHaveBeenCalled()
+  })
+})
