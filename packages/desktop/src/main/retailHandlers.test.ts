@@ -7,7 +7,6 @@ import {
   FakeRetailBillRepository,
   FakeRetailDraftRepository,
   FakeRetailSaleRepository,
-  FakeSalesmanRepository,
   FakeSettingsRepository,
   RateService,
   RetailSaleService,
@@ -40,7 +39,6 @@ import {
   retailVoid,
   retailWastageRule,
   retailWastageRuleSet,
-  salesmenList,
   type RetailHandlerDeps,
 } from './retailHandlers.js'
 import type {
@@ -87,7 +85,6 @@ const salesman: PublicUser = { ...admin, id: 'user-2', name: 'Bilal', role: 'SAL
 let deps: RetailHandlerDeps
 let rates: FakeGoldRateRepository
 let customers: FakeCustomerRepository
-let salesmen: FakeSalesmanRepository
 let settingsRepo: FakeSettingsRepository
 let drafts: FakeRetailDraftRepository
 
@@ -95,7 +92,6 @@ function build(user: PublicUser | null): RetailHandlerDeps {
   const audit = new FakeAuditRepository(clock)
   rates = new FakeGoldRateRepository(clock)
   customers = new FakeCustomerRepository()
-  salesmen = new FakeSalesmanRepository()
   settingsRepo = new FakeSettingsRepository()
   const settings = new Settings(settingsRepo)
   const rateService = new RateService({ goldRates: rates, audit, clock })
@@ -110,7 +106,6 @@ function build(user: PublicUser | null): RetailHandlerDeps {
       retailBills: new FakeRetailBillRepository(retailSales),
       retailDrafts: drafts,
       customers,
-      salesmen,
       audit,
       rates: rateService,
       settings,
@@ -165,7 +160,6 @@ function draft(overrides: Partial<RetailDraftDto> = {}): RetailDraftDto {
     customerId: null,
     customerName: 'IMRAN SAHIB',
     customerMobile: '03001234567',
-    salesmanId: null,
     ratePurity: 'K22',
     ratePerTolaOverride: '',
     weightUnit: 'gram',
@@ -213,7 +207,6 @@ describe('a handler refuses without a session', () => {
 
   it('returns nothing rather than leaking a customer list', () => {
     expect(customerSearch(deps, 'IM')).toEqual([])
-    expect(salesmenList(deps)).toEqual([])
     expect(retailList(deps, {})).toEqual([])
     expect(retailLoad(deps, { saleId: 'sale-1' })).toBeNull()
     expect(retailReceipt(deps, 'sale-1')).toBeNull()
@@ -557,8 +550,7 @@ describe('the bill boundary', () => {
       customerId: null,
       customerName: 'IMRAN SAHIB',
       customerMobile: '03001234567',
-      salesmanId: null,
-      ratePurity: 'K22',
+        ratePurity: 'K22',
       ratePerTolaOverride: '',
       weightUnit: 'gram',
       slips,
@@ -793,11 +785,6 @@ describe('customers', () => {
     expect(customerSearch(deps, '   ')).toEqual([])
   })
 
-  it('lists only active salesmen', () => {
-    salesmen.rows.push({ id: 's1', name: 'BILAL', isActive: true })
-    salesmen.rows.push({ id: 's2', name: 'RETIRED', isActive: false })
-    expect(salesmenList(deps).map((s) => s.name)).toEqual(['BILAL'])
-  })
 })
 
 describe('the one link that leaves the application', () => {
@@ -885,8 +872,7 @@ describe('the bill in progress, across the boundary', () => {
         customerId: null,
         customerName: overrides.customerName ?? 'IMRAN SAHIB',
         customerMobile: overrides.customerMobile ?? '03001234567',
-        salesmanId: null,
-        ratePurity: 'K22',
+            ratePurity: 'K22',
         ratePerTolaOverride: '',
         weightUnit: 'gram' as const,
         slips,

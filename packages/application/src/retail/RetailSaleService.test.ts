@@ -15,7 +15,6 @@ import {
   FakeRetailBillRepository,
   FakeRetailDraftRepository,
   FakeRetailSaleRepository,
-  FakeSalesmanRepository,
   FakeSettingsRepository,
 } from '../testing/fakes.js'
 import { RateService } from '../rates/RateService.js'
@@ -50,7 +49,6 @@ const actor: PublicUser = {
 let rates: FakeGoldRateRepository
 let audit: FakeAuditRepository
 let customers: FakeCustomerRepository
-let salesmen: FakeSalesmanRepository
 let sales: FakeRetailSaleRepository
 let bills: FakeRetailBillRepository
 let drafts: FakeRetailDraftRepository
@@ -77,8 +75,7 @@ function draft(overrides: Partial<RetailDraftInput> = {}): RetailDraftInput {
     customerId: null,
     customerName: 'Walk-in',
     customerMobile: null,
-    salesmanId: null,
-    ratePurity: 'K22',
+      ratePurity: 'K22',
     items: [ITEM],
     customerGold: Weight.ZERO,
     customerGoldPurity: null,
@@ -102,7 +99,6 @@ beforeEach(() => {
   rates = new FakeGoldRateRepository(clock)
   audit = new FakeAuditRepository(clock)
   customers = new FakeCustomerRepository()
-  salesmen = new FakeSalesmanRepository()
   sales = new FakeRetailSaleRepository()
   bills = new FakeRetailBillRepository(sales)
   drafts = new FakeRetailDraftRepository()
@@ -113,7 +109,6 @@ beforeEach(() => {
     retailBills: bills,
     retailDrafts: drafts,
     customers,
-    salesmen,
     audit,
     rates: new RateService({ goldRates: rates, audit, clock }),
     settings: new Settings(settingsRepo),
@@ -395,8 +390,7 @@ describe('a bill posts atomically, or not at all', () => {
       customerId: null,
       customerName: 'Walk-in',
       customerMobile: null,
-      salesmanId: null,
-      ratePurity: 'K22',
+          ratePurity: 'K22',
       slips,
     }
     return {

@@ -824,7 +824,6 @@ describe('a draft survives a crash', () => {
     customerId: null,
     customerName: 'IMRAN SAHIB',
     customerMobile: '03001234567',
-    salesmanId: null,
     ratePurity: 'K22',
     ratePerTolaOverride: '',
     weightUnit: 'tola',

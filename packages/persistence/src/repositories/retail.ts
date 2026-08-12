@@ -785,7 +785,6 @@ interface DraftBillRow {
   customer_id: string | null
   customer_name: string
   customer_mobile: string | null
-  salesman_id: string | null
   rate_purity: string
   rate_override_text: string
   weight_unit: string
@@ -858,10 +857,10 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
       db.prepare(
         `INSERT INTO retail_draft_bills
            (id, branch_id, bill_date, bill_time, customer_id, customer_name,
-            customer_mobile, salesman_id, rate_purity, rate_override_text,
+            customer_mobile, rate_purity, rate_override_text,
             weight_unit, active_slip_no, editing_slip_no, editing_line_no,
             created_by, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         billId,
         draft.branchId,
@@ -870,7 +869,6 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
         draft.customerId,
         draft.customerName,
         draft.customerMobile,
-        draft.salesmanId,
         draft.ratePurity,
         draft.ratePerTolaOverride,
         draft.weightUnit,
@@ -961,7 +959,6 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
       customerId: bill.customer_id,
       customerName: bill.customer_name,
       customerMobile: bill.customer_mobile,
-      salesmanId: bill.salesman_id,
       ratePurity: bill.rate_purity,
       ratePerTolaOverride: bill.rate_override_text,
       weightUnit: bill.weight_unit,

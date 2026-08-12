@@ -18,7 +18,6 @@ import {
   type RetailLineComputed,
   type RetailSale,
   type RetailSaleWithItems,
-  type Salesman,
   type WastageRule,
 } from '@jewellery/domain'
 import type {
@@ -29,7 +28,6 @@ import type {
   RetailDraftRepository,
   RetailSaleFilter,
   RetailSaleRepository,
-  SalesmanRepository,
 } from '../abstractions/repositories.js'
 import type { Settings } from '../settings/keys.js'
 import type { RateService } from '../rates/RateService.js'
@@ -54,7 +52,6 @@ export interface RetailDependencies {
   readonly retailBills: RetailBillRepository
   readonly retailDrafts: RetailDraftRepository
   readonly customers: CustomerRepository
-  readonly salesmen: SalesmanRepository
   readonly audit: AuditRepository
   readonly rates: RateService
   readonly settings: Settings
@@ -86,7 +83,6 @@ export interface RetailDraftInput {
   readonly customerId: string | null
   readonly customerName: string
   readonly customerMobile: string | null
-  readonly salesmanId: string | null
   readonly ratePurity: Purity
   /** Overrides the recorded rate. Still stored on the sale. */
   readonly ratePerTolaOverride?: Money
@@ -109,8 +105,8 @@ export interface RetailDraftInput {
  * One slip's own facts. Everything shared by the visit lives on the bill.
  *
  * The split is exactly the one migration 009 draws: items, charges, discount and
- * payment belong to the document; customer, mobile, salesman, date, time and
- * rate belong to the visit. Holding the shared facts once is what stops two
+ * payment belong to the document; customer, mobile, date, time and rate belong
+ * to the visit. Holding the shared facts once is what stops two
  * slips from the same visit disagreeing about who bought them.
  */
 export interface RetailSlipInput {
@@ -136,7 +132,6 @@ export interface RetailBillInput {
   readonly customerId: string | null
   readonly customerName: string
   readonly customerMobile: string | null
-  readonly salesmanId: string | null
   readonly ratePurity: Purity
   readonly ratePerTolaOverride?: Money
   readonly slips: readonly RetailSlipInput[]
@@ -351,10 +346,13 @@ export class RetailSaleService {
         customerId: input.customerId,
         customerNameSnapshot: input.customerName.trim(),
         customerMobileSnapshot: input.customerMobile,
-        salesmanId: input.salesmanId,
-        salesmanNameSnapshot: input.salesmanId
-          ? (this.deps.salesmen.findById(input.salesmanId)?.name ?? null)
-          : null,
+        // The shop does not track a salesman, so nothing is attributed to one.
+        // The COLUMNS stay (migration 005) and any value an older sale already
+        // carries is left exactly as it was — see the schema note there. What
+        // stops here is the writing: a field the UI cannot set but the service
+        // still populates is a field that comes back by accident.
+        salesmanId: null,
+        salesmanNameSnapshot: null,
         ratePurity: input.ratePurity,
         ratePerTola: calculation.ratePerTola,
         goldValue: calculation.goldValue,
@@ -610,10 +608,8 @@ export class RetailSaleService {
         customerId: input.customerId,
         customerNameSnapshot: input.customerName.trim(),
         customerMobileSnapshot: input.customerMobile,
-        salesmanId: input.salesmanId,
-        salesmanNameSnapshot: input.salesmanId
-          ? (this.deps.salesmen.findById(input.salesmanId)?.name ?? null)
-          : null,
+        salesmanId: null,
+        salesmanNameSnapshot: null,
         status: 'posted',
         createdByUserId: actor.id,
         slips: validated.map(({ slip, calculation }) => ({
@@ -670,7 +666,6 @@ export class RetailSaleService {
       customerId: bill.customerId,
       customerName: bill.customerName,
       customerMobile: bill.customerMobile,
-      salesmanId: bill.salesmanId,
       ratePurity: bill.ratePurity,
       ...(bill.ratePerTolaOverride ? { ratePerTolaOverride: bill.ratePerTolaOverride } : {}),
       items: slip.items,
@@ -702,10 +697,8 @@ export class RetailSaleService {
       customerId: input.customerId,
       customerNameSnapshot: input.customerName.trim(),
       customerMobileSnapshot: input.customerMobile,
-      salesmanId: input.salesmanId,
-      salesmanNameSnapshot: input.salesmanId
-        ? (this.deps.salesmen.findById(input.salesmanId)?.name ?? null)
-        : null,
+      salesmanId: null,
+      salesmanNameSnapshot: null,
       ratePurity: input.ratePurity,
       ratePerTola: calculation.ratePerTola,
       goldValue: calculation.goldValue,
@@ -806,11 +799,6 @@ export class RetailSaleService {
   /** Sales matching a date range, a customer and a status. Read-only. */
   list(filter: RetailSaleFilter): readonly RetailSale[] {
     return this.deps.retailSales.list(filter)
-  }
-
-  /** The salesmen a sale may be attributed to. Active only. */
-  salesmen(): readonly Salesman[] {
-    return this.deps.salesmen.list(true)
   }
 
   /** A preview of the next number, already carrying the shop's display prefix. */

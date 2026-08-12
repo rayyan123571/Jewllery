@@ -62,7 +62,6 @@ export interface RetailReceiptData {
   readonly time: string
   readonly customerName: string
   readonly customerMobile?: string | null
-  readonly salesmanName?: string | null
   readonly ratePurity: string
   readonly ratePerTola: Money
   readonly lines: readonly RetailReceiptLine[]
@@ -197,7 +196,7 @@ export function buildRetailReceiptHtml(data: RetailReceiptData): string {
   const infoRows = [
     `<tr>${labelCell('بل نمبر')}${valueCell(esc(data.invoiceNo))}${labelCell('تاریخ')}${valueCell(formatDate(data.date))}</tr>`,
     `<tr>${labelCell('گاہک')}${valueCell(esc(data.customerName), 'center', true)}${labelCell('وقت')}${valueCell(esc(data.time))}</tr>`,
-    `<tr>${labelCell('ریٹ فی تولہ')}${valueCell(`${esc(data.ratePurity)} ${data.ratePerTola.formatWhole()}`)}${labelCell('سیلزمین')}${valueCell(esc(data.salesmanName) || '-', 'center', true)}</tr>`,
+    `<tr>${labelCell('ریٹ فی تولہ')}${valueCell(`${esc(data.ratePurity)} ${data.ratePerTola.formatWhole()}`)}${labelCell('')}${valueCell('')}</tr>`,
     data.customerMobile
       ? `<tr>${labelCell('موبائل')}${valueCell(`<span dir="ltr">${esc(data.customerMobile)}</span>`)}${labelCell('')}${valueCell('')}</tr>`
       : '',

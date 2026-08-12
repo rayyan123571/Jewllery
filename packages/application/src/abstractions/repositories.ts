@@ -312,6 +312,13 @@ export interface NewRetailSale {
   readonly customerId: string | null
   readonly customerNameSnapshot: string
   readonly customerMobileSnapshot: string | null
+  /**
+   * Kept, and always written null by the service.
+   *
+   * The shop does not track a salesman. The COLUMNS stay so an older sale keeps
+   * whatever it recorded and so re-adding the field is a UI change rather than
+   * a migration — but nothing sets them any more. See migration 005.
+   */
   readonly salesmanId: string | null
   readonly salesmanNameSnapshot: string | null
   readonly ratePurity: Purity
@@ -488,7 +495,6 @@ export interface DraftBill {
   readonly customerId: string | null
   readonly customerName: string
   readonly customerMobile: string | null
-  readonly salesmanId: string | null
   readonly ratePurity: string
   readonly ratePerTolaOverride: string
   readonly weightUnit: string

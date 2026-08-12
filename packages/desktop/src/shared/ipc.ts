@@ -200,7 +200,6 @@ export interface RendererApi {
   createCustomer(
     input: NewCustomerDto,
   ): Promise<{ ok: true; customer: CustomerDto } | { ok: false; message: string }>
-  listSalesmen(): Promise<readonly SalesmanDto[]>
   /**
    * The saved rule plus the worked example for all four combinations.
    * `selection` previews a rule without saving it.
@@ -439,7 +438,6 @@ export const IPC_RETAIL = {
   receipt: 'retail:receipt',
   customerSearch: 'customers:search',
   customerCreate: 'customers:create',
-  salesmenList: 'salesmen:list',
   wastageRule: 'settings:retailWastageRule',
   wastageRuleSet: 'settings:retailWastageRule:set',
   /** The rounding step applied to the invoice total. See RetailRoundingDto. */
@@ -529,7 +527,6 @@ export interface RetailDraftDto {
   readonly customerId: string | null
   readonly customerName: string
   readonly customerMobile: string | null
-  readonly salesmanId: string | null
   readonly ratePurity: string
   /** Empty means "use the rate recorded for this purity and date". */
   readonly ratePerTolaOverride: string
@@ -660,7 +657,6 @@ export interface RetailBillDraftDto {
   readonly customerId: string | null
   readonly customerName: string
   readonly customerMobile: string | null
-  readonly salesmanId: string | null
   readonly ratePurity: string
   readonly ratePerTolaOverride: string
   readonly weightUnit: WeightUnit
@@ -745,7 +741,6 @@ export interface RetailSaleSummaryDto {
   readonly date: string
   readonly time: string
   readonly customerName: string
-  readonly salesmanName: string | null
   readonly grandTotal: string
   readonly balance: string
   readonly status: string
@@ -785,11 +780,6 @@ export interface NewCustomerDto {
   /** Typed decimal strings, parsed exactly on the main side. */
   readonly openingGoldGrams: string
   readonly openingCashRupees: string
-}
-
-export interface SalesmanDto {
-  readonly id: string
-  readonly name: string
 }
 
 export interface WastageRuleChoice {

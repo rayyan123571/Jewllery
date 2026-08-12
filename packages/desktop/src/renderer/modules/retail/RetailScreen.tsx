@@ -23,7 +23,6 @@ import type {
   RetailItemDto,
   RetailLineDto,
   RetailSlipDto,
-  SalesmanDto,
   WeightDto,
   WeightFieldDto,
   WeightUnit,
@@ -107,7 +106,6 @@ interface BillForm {
   customerId: string | null
   customerName: string
   customerMobile: string
-  salesmanId: string
   ratePurity: string
   ratePerTolaOverride: string
   weightUnit: WeightUnit
@@ -183,7 +181,6 @@ export function RetailScreen({
     customerId: null,
     customerName: '',
     customerMobile: '',
-    salesmanId: '',
     ratePurity: 'K22',
     ratePerTolaOverride: '',
     weightUnit: 'tola',
@@ -197,7 +194,6 @@ export function RetailScreen({
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [calc, setCalc] = useState<RetailBillCalculationDto | null>(null)
   const [invoiceNo, setInvoiceNo] = useState('—')
-  const [salesmen, setSalesmen] = useState<readonly SalesmanDto[]>([])
   const [busy, setBusy] = useState(false)
   const [confirmHighWastage, setConfirmHighWastage] = useState<string | null>(null)
   const [confirmDeleteSlip, setConfirmDeleteSlip] = useState<number | null>(null)
@@ -235,7 +231,6 @@ export function RetailScreen({
       customerId: form.customerId,
       customerName: form.customerName,
       customerMobile: form.customerMobile.trim() || null,
-      salesmanId: form.salesmanId || null,
       ratePurity: form.ratePurity,
       ratePerTolaOverride: form.ratePerTolaOverride,
       weightUnit: form.weightUnit,
@@ -246,7 +241,6 @@ export function RetailScreen({
 
   useEffect(() => {
     void window.api.retailNextInvoiceNo().then(setInvoiceNo)
-    void window.api.listSalesmen().then(setSalesmen)
   }, [])
 
   /**
@@ -313,7 +307,6 @@ export function RetailScreen({
       customerId: state.draft.customerId,
       customerName: state.draft.customerName,
       customerMobile: state.draft.customerMobile ?? '',
-      salesmanId: state.draft.salesmanId ?? '',
       ratePurity: state.draft.ratePurity,
       ratePerTolaOverride: state.draft.ratePerTolaOverride,
       weightUnit: state.draft.weightUnit,
@@ -515,7 +508,7 @@ export function RetailScreen({
   )
 
   const startNewBill = useCallback(
-    (keepRateAndSalesman: boolean) => {
+    (keepRate: boolean) => {
       setSlips([emptySlip(1, FIRST_SLIP_LABEL)])
       setActiveSlipNo(1)
       setEntry(EMPTY_ENTRY)
@@ -530,9 +523,8 @@ export function RetailScreen({
         customerId: null,
         customerName: '',
         customerMobile: '',
-        salesmanId: keepRateAndSalesman ? current.salesmanId : '',
-        ratePurity: keepRateAndSalesman ? current.ratePurity : 'K22',
-        ratePerTolaOverride: keepRateAndSalesman ? current.ratePerTolaOverride : '',
+        ratePurity: keepRate ? current.ratePurity : 'K22',
+        ratePerTolaOverride: keepRate ? current.ratePerTolaOverride : '',
       }))
       void window.api.retailNextInvoiceNo().then(setInvoiceNo)
     },
@@ -635,9 +627,9 @@ export function RetailScreen({
             `Rs ${result.billTotal}.` +
             (printed ? ' Sent to the printer.' : ''),
         )
-        // A fresh bill, with the rate and the salesman kept: the next customer
-        // is served by the same person at the same rate, and retyping both on
-        // every sale is how a counter ends up with the wrong one.
+        // A fresh bill with the RATE kept: the next customer is served at the
+        // same rate, and retyping it on every sale is how a counter ends up
+        // with the wrong one.
         startNewBill(true)
         onPosted()
       } finally {
@@ -801,24 +793,6 @@ export function RetailScreen({
               placeholder="0300-0000000"
               aria-label="Customer mobile"
             />
-          </label>
-          <label className="baseline-field">
-            <span className="baseline-field__label">Salesman :</span>
-            <select
-              className="baseline-field__input"
-              value={form.salesmanId}
-              onChange={(e) => set('salesmanId', e.target.value)}
-              aria-label="Salesman"
-            >
-              <option value="">
-                {salesmen.length === 0 ? 'None recorded' : 'Not attributed'}
-              </option>
-              {salesmen.map((salesman) => (
-                <option key={salesman.id} value={salesman.id}>
-                  {salesman.name}
-                </option>
-              ))}
-            </select>
           </label>
         </div>
 

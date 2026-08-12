@@ -33,7 +33,6 @@ import {
   type RetailDraftSaveRequest,
   type RetailRoundingDto,
   type RetailSaleSummaryDto,
-  type SalesmanDto,
   type SetRateRequest,
   type SettleRequest,
   type WastageRuleChoice,
@@ -120,8 +119,6 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_RETAIL.customerCreate, input) as ReturnType<
       RendererApi['createCustomer']
     >,
-  listSalesmen: () =>
-    ipcRenderer.invoke(IPC_RETAIL.salesmenList) as Promise<readonly SalesmanDto[]>,
   retailWastageRule: (selection: WastageRuleChoice | null) =>
     ipcRenderer.invoke(IPC_RETAIL.wastageRule, selection) as Promise<WastageRuleDto>,
   setRetailWastageRule: (rule: WastageRuleChoice) =>

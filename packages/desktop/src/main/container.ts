@@ -143,7 +143,6 @@ export function createContainer(options: ContainerOptions): Container {
     retailBills: repositories.retailBills,
     retailDrafts: repositories.retailDrafts,
     customers: repositories.customers,
-    salesmen: repositories.salesmen,
     audit: repositories.audit,
     rates,
     settings,

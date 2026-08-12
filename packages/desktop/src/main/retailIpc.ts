@@ -40,7 +40,6 @@ import {
   retailVoid,
   retailWastageRule,
   retailWastageRuleSet,
-  salesmenList,
   type RetailHandlerDeps,
 } from './retailHandlers.js'
 
@@ -102,8 +101,6 @@ export function registerRetailHandlers(container: Container, session: Session): 
   ipcMain.handle(IPC_RETAIL.customerCreate, (_event, input: NewCustomerDto) =>
     customerCreate(deps, input),
   )
-
-  ipcMain.handle(IPC_RETAIL.salesmenList, () => salesmenList(deps))
 
   ipcMain.handle(IPC_RETAIL.wastageRule, (_event, selection: WastageRuleChoice | null) =>
     retailWastageRule(deps, selection),

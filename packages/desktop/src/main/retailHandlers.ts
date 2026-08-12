@@ -62,7 +62,6 @@ import type {
   RetailSaleDto,
   RetailSlipDto,
   RetailSaleSummaryDto,
-  SalesmanDto,
   WastageRuleChoice,
   WastageRuleDto,
   WeightDto,
@@ -257,7 +256,6 @@ function draftInput(
     customerId: draft.customerId,
     customerName: draft.customerName,
     customerMobile: draft.customerMobile?.trim() ? draft.customerMobile.trim() : null,
-    salesmanId: draft.salesmanId,
     ratePurity,
     // An empty box means "use the recorded rate", not "price this at nothing".
     ...(override.isPositive ? { ratePerTolaOverride: override } : {}),
@@ -556,7 +554,6 @@ export function retailList(
         date: sale.saleDate,
         time: sale.saleTime,
         customerName: sale.customerNameSnapshot,
-        salesmanName: sale.salesmanNameSnapshot,
         grandTotal: sale.grandTotal.format(),
         balance: sale.balance.format(),
         status: sale.status,
@@ -576,7 +573,8 @@ function clampLimit(limit: number | undefined): number {
  * Voids a posted sale.
  *
  * Permission-checked, because this is the one retail action that changes what
- * the books already say. A salesman may sell all day and may not unsell.
+ * the books already say. Selling all day and unselling are not the same
+ * permission, and only one of them is a correction to the record.
  */
 export function retailVoid(
   deps: RetailHandlerDeps,
@@ -620,7 +618,6 @@ export function retailReceipt(deps: RetailHandlerDeps, saleId: string): string |
       time: found.sale.saleTime,
       customerName: found.sale.customerNameSnapshot,
       customerMobile: found.sale.customerMobileSnapshot,
-      salesmanName: found.sale.salesmanNameSnapshot,
       ratePurity: formatPurity(found.sale.ratePurity),
       ratePerTola: found.sale.ratePerTola,
       lines: found.items.map(receiptLine(found)),
@@ -704,7 +701,6 @@ function saleDto(found: RetailSaleWithItems, invoicePrefix: string): RetailSaleD
       date: found.sale.saleDate,
       time: found.sale.saleTime,
       customerName: found.sale.customerNameSnapshot,
-      salesmanName: found.sale.salesmanNameSnapshot,
       grandTotal: found.sale.grandTotal.format(),
       balance: found.sale.balance.format(),
       status: found.sale.status,
@@ -807,15 +803,6 @@ export function customerCreate(
     }
   } catch (error) {
     return { ok: false, message: messageOf(error) }
-  }
-}
-
-export function salesmenList(deps: RetailHandlerDeps): readonly SalesmanDto[] {
-  try {
-    requireUser(deps)
-    return deps.retail.salesmen().map((row) => ({ id: row.id, name: row.name }))
-  } catch {
-    return []
   }
 }
 
@@ -975,7 +962,6 @@ function draftOfSlip(bill: RetailBillDraftDto, slip: RetailSlipDto): RetailDraft
     customerId: bill.customerId,
     customerName: bill.customerName,
     customerMobile: bill.customerMobile,
-    salesmanId: bill.salesmanId,
     ratePurity: bill.ratePurity,
     ratePerTolaOverride: bill.ratePerTolaOverride,
     weightUnit: bill.weightUnit,
@@ -1100,7 +1086,6 @@ export function retailBillSave(
       customerId: bill.customerId,
       customerName: bill.customerName,
       customerMobile: bill.customerMobile?.trim() ? bill.customerMobile.trim() : null,
-      salesmanId: bill.salesmanId,
       ratePurity,
       ...(override.isPositive ? { ratePerTolaOverride: override } : {}),
       ...(bill.confirmedHighWastage === true ? { confirmedHighWastage: true } : {}),
@@ -1341,7 +1326,6 @@ function draftBillOf(
     customerId: draft.customerId,
     customerName: draft.customerName,
     customerMobile: draft.customerMobile,
-    salesmanId: draft.salesmanId,
     ratePurity: draft.ratePurity,
     ratePerTolaOverride: draft.ratePerTolaOverride,
     weightUnit: draft.weightUnit,
@@ -1388,8 +1372,7 @@ function draftDtoOf(draft: DraftBill): RetailDraftStateDto {
       customerId: draft.customerId,
       customerName: draft.customerName,
       customerMobile: draft.customerMobile,
-      salesmanId: draft.salesmanId,
-      ratePurity: draft.ratePurity,
+        ratePurity: draft.ratePurity,
       ratePerTolaOverride: draft.ratePerTolaOverride,
       weightUnit: draft.weightUnit === 'gram' ? 'gram' : 'tola',
       slips: draft.slips.map((slip) => ({

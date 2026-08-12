@@ -56,6 +56,15 @@ export const migration005: Migration = {
     CREATE INDEX idx_customers_name   ON customers (name);
     CREATE INDEX idx_customers_mobile ON customers (mobile);
 
+    -- UNUSED BY THE RETAIL UI. The shop does not track a salesman, so nothing
+    -- reads or writes this table any more and no screen offers the field.
+    --
+    -- It is kept rather than dropped, and so are salesman_id and
+    -- salesman_name_snapshot below. Dropping them would be a migration now and
+    -- a second migration the day the shop changes its mind, and it would throw
+    -- away whatever older sales already recorded — which is a real answer to
+    -- "who sold this?" that cannot be reconstructed once deleted. An unused
+    -- column costs nothing; a deleted one costs the history in it.
     CREATE TABLE salesmen (
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL,

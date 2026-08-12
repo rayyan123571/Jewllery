@@ -56,7 +56,6 @@ function invoice(overrides: Partial<RetailReceiptData> = {}): RetailReceiptData 
     time: '12:48',
     customerName: 'IMRAN SAHIB',
     customerMobile: '03067380000',
-    salesmanName: 'BILAL',
     ratePurity: '22K',
     ratePerTola: RATE,
     lines: [
@@ -143,7 +142,6 @@ describe('every figure on the paper came from the data', () => {
     expect(html).toContain('AL-HARAM GOLD JEWELLERS')
     expect(html).toContain('RS-00001')
     expect(html).toContain('IMRAN SAHIB')
-    expect(html).toContain('BILAL')
   })
 
   it('prints the date as DD-MM-YYYY, never the ISO form', () => {
@@ -274,9 +272,11 @@ describe('optional fields', () => {
     expect(buildRetailReceiptHtml(invoice({ customerMobile: null }))).not.toContain('موبائل')
   })
 
-  it('prints a dash rather than an empty box when no salesman was named', () => {
-    const html = buildRetailReceiptHtml(invoice({ salesmanName: null }))
-    expect(html).toContain('سیلزمین')
+  it('names no salesman anywhere — the shop does not track one', () => {
+    // The row is gone rather than blank. A labelled box printed empty on every
+    // receipt reads as a field somebody forgot to fill in, and the counter
+    // starts asking who was supposed to fill it.
+    expect(buildRetailReceiptHtml(invoice())).not.toContain('سیلزمین')
   })
 
   it('handles a sale with no lines without breaking the document', () => {
