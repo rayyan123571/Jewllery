@@ -101,6 +101,22 @@ export type ActionId =
   // The bill's own print, which sends the invoice to the printer.
   | 'retail.bill.print'
   // ── the bill in progress ──────────────────────────────────────────────────
+  // ── the toolbar: walking the book, and finding one bill fast ──────────────
+  | 'retail.nav.first'
+  | 'retail.nav.prev'
+  | 'retail.nav.next'
+  | 'retail.nav.last'
+  | 'retail.invoice.jump'
+  | 'retail.voided.toggle'
+  /** Unlocks a posted invoice for correction, if the role allows it. */
+  | 'retail.edit'
+  // ── the unsaved-changes guard ─────────────────────────────────────────────
+  // Three real answers, never two and a dismiss. "Cancel" has to be a control
+  // the operator can press on purpose, or the safe answer becomes the one you
+  // get by pressing Escape and hoping.
+  | 'retail.guard.save'
+  | 'retail.guard.discard'
+  | 'retail.guard.cancel'
   | 'retail.draft.resume'
   | 'retail.draft.discard'
   | 'retail.save'
@@ -360,7 +376,20 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'retail.bill.print': screen('Print every slip in this bill', 'retail.bill.print'),
     'retail.draft.resume': screen('Carry on with this bill', 'retail.draft.resume'),
     'retail.draft.discard': screen('Throw this draft away', 'retail.draft.discard'),
-    'retail.save': screen('SAVE', 'retail.save', 'F5'),
+    // The four navigation controls. FIRST and LAST are never disabled by
+    // position — only by an empty book; PREV and NEXT go dead at the ends,
+    // which is what tells the operator they are on the first or last bill.
+    'retail.nav.first': screen('First invoice', 'retail.nav.first', 'Ctrl+Home'),
+    'retail.nav.prev': screen('Previous invoice', 'retail.nav.prev', 'Ctrl+←'),
+    'retail.nav.next': screen('Next invoice', 'retail.nav.next', 'Ctrl+→'),
+    'retail.nav.last': screen('Last invoice', 'retail.nav.last', 'Ctrl+End'),
+    'retail.invoice.jump': screen('Go to this invoice number', 'retail.invoice.jump'),
+    'retail.voided.toggle': screen('Show voided invoices too', 'retail.voided.toggle'),
+    'retail.edit': screen('Edit this posted invoice', 'retail.edit'),
+    'retail.guard.save': screen('Save this invoice, then go', 'retail.guard.save'),
+    'retail.guard.discard': screen('Throw these changes away and go', 'retail.guard.discard'),
+    'retail.guard.cancel': screen('Stay on this invoice', 'retail.guard.cancel'),
+    'retail.save': screen('SAVE', 'retail.save', 'Ctrl+S'),
     'retail.save-and-print': screen('SAVE & PRINT', 'retail.save-and-print', 'F6'),
     'retail.print': screen('PRINT', 'retail.print', 'F7'),
     'retail.hold': screen('HOLD', 'retail.hold', 'F8'),
