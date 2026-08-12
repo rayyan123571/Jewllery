@@ -269,8 +269,15 @@ export const theme = {
     crest: '44px',
 
     // ── the retail screen ───────────────────────────────────────────────────
-    /** The fixed label stack down the left of the item matrix. */
-    itemLabelWidth: '150px',
+    /**
+     * The fixed label stack down the left of the item matrix.
+     *
+     * 214px, not 150. The longest label is "Purity Deduction (Tola)", and at
+     * 15px/600 it measures 196px — the old width truncated it mid-word, which
+     * on the row that takes weight OFF a customer's gold is the last place an
+     * operator should have to guess. Plus 8px of padding either side.
+     */
+    itemLabelWidth: '214px',
     /** One item column. Four fit the card; the fifth scrolls it sideways. */
     itemColumnWidth: '158px',
     /**
@@ -280,7 +287,16 @@ export const theme = {
      * whatever the sale — so this is the tightest number that still seats 14px
      * text comfortably. It is measured against the 830px budget, not chosen.
      */
-    itemCellHeight: '18px',
+    itemCellHeight: '34px',
+    /**
+     * The floor under the items card, so DETAILS cannot grow into it.
+     *
+     * Ten label rows at 34px plus the numbered header, the gaps and the card's
+     * own padding. Measured against the 830px budget, not chosen: below this
+     * the Amount row and the Action row start disappearing under the card
+     * beneath, which is Defect B.
+     */
+    itemsCardMin: '404px',
     /** A slip tab. Two lines of label plus the slip's own total. */
     slipTabHeight: '44px',
     /** The right-hand summary column. Narrower than the old 320px rail. */
