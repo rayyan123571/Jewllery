@@ -792,6 +792,11 @@ export class RetailSaleService {
    * reach invoice 7. `parseInvoiceNumber` takes the trailing digits, which is
    * the same rule migration 012 used to convert the stored values.
    */
+  /** By the stored integer, which is what navigation and the jump box carry. */
+  findByInvoiceNumber(invoiceNumber: number): RetailSaleWithItems | null {
+    return this.deps.retailSales.findByInvoiceNumber(invoiceNumber)
+  }
+
   findByInvoiceNo(invoiceNo: string): RetailSaleWithItems | null {
     const number = parseInvoiceNumber(invoiceNo)
     return number === null ? null : this.deps.retailSales.findByInvoiceNumber(number)

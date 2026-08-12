@@ -543,6 +543,7 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
         status: sale.status,
         voidReason: null,
         draftId: sale.draftId,
+        billId: null,
         wastageDirection: sale.wastageDirection,
         wastageBasis: sale.wastageBasis,
         createdByUserId: sale.createdByUserId,
@@ -667,7 +668,15 @@ export class FakeRetailBillRepository implements RetailBillRepository {
           )
         }
         const written = this.sales.build(slip.sale)
-        staged.push({ ...written, slipNo: slip.slipNo, slipLabel: slip.slipLabel })
+        // The slip carries the bill it belongs to, exactly as the real INSERT
+        // does. Without it a loaded invoice cannot answer "how many slips does
+        // my bill hold?", and the multi-slip read-only case goes untested.
+        staged.push({
+          ...written,
+          sale: { ...written.sale, billId },
+          slipNo: slip.slipNo,
+          slipLabel: slip.slipLabel,
+        })
       }
     } catch (error) {
       this.sales.next = sequenceBefore

@@ -183,6 +183,21 @@ export interface RendererApi {
     current: number | null,
     includeVoid: boolean,
   ): Promise<RetailNeighboursDto>
+  /**
+   * A stored invoice, in the shape the screen edits — not the shape it prints.
+   *
+   * `retailLoad` returns a sale as COMPUTED output: net weight, wastage, fine
+   * weight and formatted amounts, all already worked out. The screen edits
+   * INPUT: typed gross, stone, purity deduction and a wastage percentage.
+   * Turning one into the other in the renderer would mean deriving the operator's
+   * typed figures back out of the results — arithmetic, in the one place that is
+   * not allowed to do any.
+   *
+   * So main does it, from the raw stored rows, where the typed values are still
+   * exactly what was typed: `labour_charges_paisa` and `labour_mode` are the
+   * input pair, not the resolved amount, so a per-tola line comes back per-tola.
+   */
+  retailLoadAsDraft(invoiceNumber: number): Promise<RetailInvoiceDto | null>
   /** The 80mm thermal document for a posted sale, as HTML. */
   retailReceipt(saleId: string): Promise<string | null>
   /** Every slip in the bill, computed. Pure — writes nothing. */
@@ -442,6 +457,8 @@ export const IPC_RETAIL = {
   nextInvoiceNo: 'retail:nextInvoiceNo',
   /** Where FIRST / PREV / NEXT / LAST can go from the invoice on screen. */
   neighbours: 'retail:neighbours',
+  /** A posted invoice, read back in the shape the SCREEN edits. */
+  loadAsDraft: 'retail:loadAsDraft',
   receipt: 'retail:receipt',
   customerSearch: 'customers:search',
   customerCreate: 'customers:create',
@@ -739,6 +756,31 @@ export interface RetailNeighboursDto {
   readonly previous: InvoiceRefDto | null
   readonly next: InvoiceRefDto | null
   readonly last: InvoiceRefDto | null
+}
+
+/**
+ * A stored invoice, ready to be shown and — if the role allows — unlocked.
+ *
+ * Carries its own status rather than leaving the screen to infer one: an
+ * invoice that is `void` is shown, and shown as void, because the operator
+ * navigated to it deliberately or typed its number.
+ */
+export interface RetailInvoiceDto {
+  readonly saleId: string
+  readonly invoiceNumber: number
+  /** Preformatted, prefix already applied. */
+  readonly invoiceNo: string
+  readonly status: string
+  readonly voidReason: string | null
+  /**
+   * How many slips the BILL this invoice belongs to holds.
+   *
+   * 1 for everything written since the tab strip came off. More than 1 means an
+   * older multi-slip bill, and the screen shows it read-only with a note rather
+   * than presenting its first slip as though that were the whole visit.
+   */
+  readonly slipCount: number
+  readonly draft: RetailBillDraftDto
 }
 
 export interface RetailLoadRequest {

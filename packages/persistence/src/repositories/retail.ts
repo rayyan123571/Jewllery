@@ -80,6 +80,7 @@ interface SaleRow {
   status: string
   void_reason: string | null
   draft_id: string | null
+  bill_id: string | null
   wastage_direction: string
   wastage_basis: string
   created_by: string
@@ -168,6 +169,7 @@ function toSale(row: SaleRow): RetailSale {
     status: row.status as SaleStatus,
     voidReason: row.void_reason,
     draftId: row.draft_id,
+    billId: row.bill_id,
     wastageDirection: row.wastage_direction as WastageDirection,
     wastageBasis: row.wastage_basis as WastageBasis,
     createdByUserId: row.created_by,

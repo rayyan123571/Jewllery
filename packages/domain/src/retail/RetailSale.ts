@@ -139,6 +139,16 @@ export interface RetailSale {
    * second invoice for one transaction.
    */
   readonly draftId: string | null
+  /**
+   * The bill this sale is a slip of, or null for a sale written before bills.
+   *
+   * Every invoice is now a bill with one implicit slip, so this is set on
+   * everything new. It is read to answer one question: does the bill this
+   * invoice belongs to hold OTHER slips? Bills written before the tab strip
+   * came off can, and one of those must open read-only with a note rather than
+   * silently showing its first slip as though that were the whole visit.
+   */
+  readonly billId: string | null
   /** The wastage rule this sale was PRICED with, so it always reprints the same. */
   readonly wastageDirection: WastageDirection
   readonly wastageBasis: WastageBasis

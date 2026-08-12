@@ -30,6 +30,7 @@ import {
   retailHold,
   retailList,
   retailLoad,
+  retailLoadAsDraft,
   retailNeighbours,
   retailNextInvoiceNo,
   retailReceipt,
@@ -87,6 +88,10 @@ export function registerRetailHandlers(container: Container, session: Session): 
 
   ipcMain.handle(IPC_RETAIL.void, (_event, saleId: string, reason: string) =>
     retailVoid(deps, saleId, reason),
+  )
+
+  ipcMain.handle(IPC_RETAIL.loadAsDraft, (_event, invoiceNumber: number) =>
+    retailLoadAsDraft(deps, invoiceNumber),
   )
 
   ipcMain.handle(IPC_RETAIL.nextInvoiceNo, () => retailNextInvoiceNo(deps))

@@ -28,6 +28,7 @@ import {
   retailDraftSave,
   retailHold,
   retailList,
+  retailLoadAsDraft,
   retailLoad,
   retailNextInvoiceNo,
   retailReceipt,
@@ -148,6 +149,12 @@ function item(overrides: Partial<RetailItemDto> = {}): RetailItemDto {
     stoneCharges: '',
     ...overrides,
   }
+}
+
+/** "900.00" -> 90000. Keeps the labour assertion in paisa, never in floats. */
+function moneyTextOf(rupees: string): number {
+  const [whole = '0', fraction = '0'] = rupees.replace(/,/g, '').split('.')
+  return Number(whole) * 100 + Number(fraction.padEnd(2, '0').slice(0, 2))
 }
 
 function draft(overrides: Partial<RetailDraftDto> = {}): RetailDraftDto {
@@ -684,6 +691,126 @@ describe('the bill boundary', () => {
     expect(html).toContain('page-break-before')
     // One document, not two concatenated shells.
     expect((html?.match(/<html/gi) ?? []).length).toBe(1)
+  })
+
+  describe('opening a stored invoice in the shape the screen edits', () => {
+    /** Posts one payable single-slip bill and returns its invoice number. */
+    function postOne(items: readonly RetailItemDto[]): number {
+      const base = billDraft([slip(1, 'Full Bill', { items })])
+      const computed = retailBillCalculate(deps, { draft: base, activeSlipNo: 1, entry: null })
+      const paid: RetailBillDraftDto = {
+        ...base,
+        slips: [
+          { ...base.slips[0]!, amountPaid: computed.slips[0]!.calculation.grandTotal.rupees },
+        ],
+      }
+      const result = retailBillSave(deps, { draft: paid })
+      if (!result.ok) throw new Error(`Could not post the fixture: ${result.message}`)
+      return Number(result.slips[0]!.invoiceNo)
+    }
+
+    it('returns null for an invoice number nobody has issued', () => {
+      // The unknown-number case the jump box shows a message for. Null, not an
+      // empty invoice — an empty one would look like a bill that had been wiped.
+      expect(retailLoadAsDraft(deps, 9_999)).toBeNull()
+      expect(retailLoadAsDraft(deps, 0)).toBeNull()
+      expect(retailLoadAsDraft(deps, -1)).toBeNull()
+    })
+
+    it('comes back with every weight in milligrams, exactly as stored', () => {
+      const invoiceNumber = postOne([
+        item({
+          grossWeight: weightField('47.240'),
+          stoneWeight: weightField('1.500'),
+          purityDeduction: weightField('0.090'),
+        }),
+      ])
+
+      const loaded = retailLoadAsDraft(deps, invoiceNumber)
+      expect(loaded).not.toBeNull()
+      const line = loaded!.draft.slips[0]!.items[0]!
+
+      // exactMg carries the value, so the text beside it is display only and a
+      // tola rounding can never walk a stored milligram.
+      const stored = deps.retail.findByInvoiceNumber(invoiceNumber)!.items[0]!
+      expect(line.grossWeight.exactMg).toBe(stored.grossWeight.milligrams)
+      expect(line.stoneWeight.exactMg).toBe(stored.stoneWeight.milligrams)
+      expect(line.purityDeduction.exactMg).toBe(stored.purityDeduction.milligrams)
+    })
+
+    it('recalculates to the same figures it was posted with, to the paisa', () => {
+      // The whole point of loading INPUT rather than output: feeding what comes
+      // back into the calculate path must reproduce the invoice, not something
+      // that merely looks like it.
+      const invoiceNumber = postOne([item()])
+      const stored = deps.retail.findByInvoiceNumber(invoiceNumber)!
+
+      const loaded = retailLoadAsDraft(deps, invoiceNumber)!
+      const recomputed = retailBillCalculate(deps, {
+        draft: loaded.draft,
+        activeSlipNo: 1,
+        entry: null,
+      })
+
+      expect(recomputed.active.grandTotal.paisa).toBe(stored.sale.grandTotal.paisa)
+      expect(recomputed.active.totalFine.mg).toBe(stored.items[0]!.fineWeight.milligrams)
+      expect(recomputed.active.lines[0]?.amount.paisa).toBe(stored.items[0]!.lineAmount.paisa)
+    })
+
+    it('keeps a per-tola labour line per-tola, not the amount it resolved to', () => {
+      // The trap: `labourAmount` is the resolved figure and `labourCharges` is
+      // the rate that was typed. Returning the resolved one would silently turn a
+      // rate into a flat charge, and the invoice would reprice on the next edit.
+      const invoiceNumber = postOne([item({ labourCharges: '900', labourMode: 'per_tola' })])
+      const loaded = retailLoadAsDraft(deps, invoiceNumber)!
+      const line = loaded.draft.slips[0]!.items[0]!
+
+      expect(line.labourMode).toBe('per_tola')
+      expect(moneyTextOf(line.labourCharges)).toBe(90_000)
+    })
+
+    it('pins the rate the invoice was priced at, so it cannot reprice itself', () => {
+      const invoiceNumber = postOne([item()])
+      const stored = deps.retail.findByInvoiceNumber(invoiceNumber)!
+      const loaded = retailLoadAsDraft(deps, invoiceNumber)!
+
+      // Without the override a bill from last week would silently reprice at
+      // today's rate the moment it was opened, and the screen would stop matching
+      // the paper in the customer's hand.
+      expect(loaded.draft.ratePerTolaOverride).toBe(stored.sale.ratePerTola.format())
+    })
+
+    it('reports one slip for everything written since the tab strip came off', () => {
+      const invoiceNumber = postOne([item()])
+      expect(retailLoadAsDraft(deps, invoiceNumber)!.slipCount).toBe(1)
+    })
+
+    it('reports an old multi-slip bill as multi-slip, so it can open read-only', () => {
+      const posted = retailBillSave(deps, {
+        draft: payableBill(['Full Bill', 'Gold Bangles']),
+      })
+      expect(posted.ok).toBe(true)
+      if (!posted.ok) return
+
+      // Both slips of the old bill say the bill has two. The screen can no longer
+      // represent that, so it shows the invoice read-only with a note rather than
+      // presenting one slip as though it were the whole visit.
+      for (const written of posted.slips) {
+        const loaded = retailLoadAsDraft(deps, Number(written.invoiceNo))
+        expect(loaded?.slipCount).toBe(2)
+      }
+    })
+
+    it('carries the status through, so a voided invoice is shown as void', () => {
+      const invoiceNumber = postOne([item()])
+      const stored = deps.retail.findByInvoiceNumber(invoiceNumber)!
+      expect(retailLoadAsDraft(deps, invoiceNumber)!.status).toBe('posted')
+
+      retailVoid(deps, stored.sale.id, 'entered twice')
+      const voided = retailLoadAsDraft(deps, invoiceNumber)!
+      expect(voided.status).toBe('void')
+      expect(voided.voidReason).toBe('entered twice')
+    })
   })
 })
 

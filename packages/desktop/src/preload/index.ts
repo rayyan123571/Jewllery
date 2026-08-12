@@ -113,6 +113,10 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_RETAIL.neighbours, current, includeVoid) as ReturnType<
       RendererApi['retailNeighbours']
     >,
+  retailLoadAsDraft: (invoiceNumber: number) =>
+    ipcRenderer.invoke(IPC_RETAIL.loadAsDraft, invoiceNumber) as ReturnType<
+      RendererApi['retailLoadAsDraft']
+    >,
   retailNextInvoiceNo: () =>
     ipcRenderer.invoke(IPC_RETAIL.nextInvoiceNo) as Promise<string>,
   retailReceipt: (saleId: string) =>

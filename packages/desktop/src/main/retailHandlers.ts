@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SLIP_LABEL,
   Money,
   Weight,
   can,
@@ -60,6 +61,7 @@ import type {
   RetailPostResult,
   RetailRoundingDto,
   InvoiceRefDto,
+  RetailInvoiceDto,
   RetailNeighboursDto,
   RetailSaleDto,
   RetailSlipDto,
@@ -635,6 +637,110 @@ export function retailNeighbours(
   } catch {
     return nowhere
   }
+}
+
+/**
+ * A stored invoice, read back in the shape the SCREEN edits.
+ *
+ * The counterpart to `parseItem`, which turns a typed item into a stored one.
+ * This is the exact inverse, and the reason it lives here rather than in the
+ * renderer is the standing rule: `retailLoad` hands back COMPUTED figures, and
+ * recovering the operator's typed values out of those would be arithmetic in
+ * the one layer that may not do any.
+ *
+ * It is exact, not approximate, because the stored row keeps the INPUTS beside
+ * the results. `labour_charges_paisa` with `labour_mode` is the pair that was
+ * typed — a per-tola line stores the rate and the mode, never the resolved
+ * amount — and `purity_deduction_mg` is the absolute weight that was entered.
+ * So a loaded invoice recalculates to the figures it was posted with, to the
+ * paisa, rather than to something that merely looks similar.
+ *
+ * `exactMg` carries every weight, so the text beside it is display only and a
+ * tola/gram rounding can never walk a stored milligram.
+ */
+export function retailLoadAsDraft(
+  deps: RetailHandlerDeps,
+  invoiceNumber: number,
+): RetailInvoiceDto | null {
+  try {
+    requireUser(deps)
+    if (!Number.isSafeInteger(invoiceNumber) || invoiceNumber <= 0) return null
+    const found = deps.retail.findByInvoiceNumber(invoiceNumber)
+    if (!found) return null
+
+    const unit: WeightUnit = 'tola'
+    const field = (value: Weight): WeightFieldDto => ({
+      text: formatTola(value),
+      exactMg: value.milligrams,
+    })
+
+    const items: RetailItemDto[] = found.items.map((item) => ({
+      itemName: item.itemName,
+      purity: item.purity,
+      grossWeight: field(item.grossWeight),
+      stoneWeight: field(item.stoneWeight),
+      purityDeduction: field(item.purityDeduction),
+      // Basis points back to per cent, two places. 1400 -> "14.00".
+      wastagePercent: (item.wastageBp / 100).toFixed(2),
+      labourCharges: item.labourCharges.format(),
+      labourMode: item.labourMode,
+      stoneCharges: item.stoneCharges.format(),
+    }))
+
+    const draft: RetailBillDraftDto = {
+      saleDate: found.sale.saleDate,
+      saleTime: found.sale.saleTime,
+      customerId: found.sale.customerId,
+      customerName: found.sale.customerNameSnapshot,
+      customerMobile: found.sale.customerMobileSnapshot,
+      ratePurity: found.sale.ratePurity,
+      // The rate this invoice was PRICED at, pinned as an override. Without it
+      // a bill from last week would reprice itself at today's rate the moment
+      // it was opened, and the screen would disagree with the paper.
+      ratePerTolaOverride: found.sale.ratePerTola.format(),
+      weightUnit: unit,
+      slips: [
+        {
+          slipNo: 1,
+          slipLabel: DEFAULT_SLIP_LABEL,
+          draftId: found.sale.draftId ?? '',
+          items,
+          customerGold: field(found.sale.customerGold),
+          customerGoldPurity: found.sale.customerGoldPurity,
+          hallmarkCharges: found.sale.hallmarkCharges.format(),
+          otherCharges: found.sale.otherCharges.format(),
+          discount: found.sale.discount.format(),
+          amountPaid: found.sale.amountPaid.format(),
+          paymentMethod: found.sale.paymentMethod,
+          remarks: found.sale.remarks,
+        },
+      ],
+    }
+
+    return {
+      saleId: found.sale.id,
+      invoiceNumber: found.sale.invoiceNumber,
+      invoiceNo: displayInvoiceNo(deps, found.sale),
+      status: found.sale.status,
+      voidReason: found.sale.voidReason,
+      slipCount: slipCountOf(deps, found.sale.billId),
+      draft,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * How many slips the bill holds. 1 when there is no bill at all.
+ *
+ * The only thing this answer is used for is deciding whether an invoice can be
+ * unlocked: a bill with several slips predates the tab strip coming off, and
+ * this screen can no longer represent one, so it opens read-only with a note.
+ */
+function slipCountOf(deps: RetailHandlerDeps, billId: string | null): number {
+  if (!billId) return 1
+  return deps.retail.findBillById(billId)?.slips.length ?? 1
 }
 
 export function retailNextInvoiceNo(deps: RetailHandlerDeps): string {
