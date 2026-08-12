@@ -26,6 +26,7 @@ import type {
   DraftBill,
   RetailBillRepository,
   RetailDraftRepository,
+  RetailNeighbours,
   RetailSaleFilter,
   RetailSaleRepository,
 } from '../abstractions/repositories.js'
@@ -799,6 +800,22 @@ export class RetailSaleService {
   /** Sales matching a date range, a customer and a status. Read-only. */
   list(filter: RetailSaleFilter): readonly RetailSale[] {
     return this.deps.retailSales.list(filter)
+  }
+
+  /**
+   * Where the four navigation controls can go from `current`.
+   *
+   * Read-only, and the ONLY way the screen learns which arrows are live. The
+   * screen never derives this from a list it is holding: a list goes stale the
+   * moment another till posts, and an arrow that looks live and does nothing is
+   * how an operator stops trusting the toolbar.
+   */
+  neighbours(
+    branchId: string,
+    current: number | null,
+    includeVoid: boolean,
+  ): RetailNeighbours {
+    return this.deps.retailSales.neighbours(branchId, current, includeVoid)
   }
 
   /** A preview of the next number, already carrying the shop's display prefix. */

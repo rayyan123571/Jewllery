@@ -233,6 +233,93 @@ describe('a sale is written atomically', () => {
   })
 })
 
+describe('walking the book with FIRST / PREV / NEXT / LAST', () => {
+  /** Posts `count` invoices and hands back their numbers, in order. */
+  const postMany = (count: number): number[] =>
+    Array.from({ length: count }, () => repos.retailSales.post(saleOf()).sale.invoiceNumber)
+
+  const neighbours = (current: number | null, includeVoid = false) =>
+    repos.retailSales.neighbours(BRANCH, current, includeVoid)
+
+  it('steps one at a time, and stops at both ends without wrapping', () => {
+    postMany(3)
+
+    expect(neighbours(1)).toEqual({ first: 1, previous: null, next: 2, last: 3 })
+    expect(neighbours(2)).toEqual({ first: 1, previous: 1, next: 3, last: 3 })
+    // No wrap-around. Past the newest there is nothing, and the toolbar renders
+    // NEXT and LAST disabled rather than looping back to the oldest bill.
+    expect(neighbours(3)).toEqual({ first: 1, previous: 2, next: null, last: 3 })
+  })
+
+  it('orders by the integer, so 9 → 10 and not 9 → 1', () => {
+    // The failure this exists to catch: as TEXT, '10' sorts before '9', so NEXT
+    // from 9 would land on 11 and PREV from 10 would go to 1 — the operator
+    // pressing ▶ once would open a bill five documents away.
+    postMany(12)
+
+    expect(neighbours(9).next).toBe(10)
+    expect(neighbours(10).previous).toBe(9)
+    expect(neighbours(null).previous).toBe(12)
+    expect(neighbours(1).first).toBe(1)
+    expect(neighbours(1).last).toBe(12)
+  })
+
+  it('skips a voided invoice, leaving its number as a visible gap', () => {
+    const [, second] = postMany(3)
+    repos.retailSales.markVoid(
+      repos.retailSales.findByInvoiceNumber(second as number)!.sale.id,
+      'entered twice',
+      toIsoTimestamp(clock.now()),
+    )
+
+    // 1 → 3. Invoice 2 still exists and still owns its number; it is simply not
+    // somewhere the arrows stop, so the gap in the numbering is what tells the
+    // operator a bill was cancelled rather than lost.
+    expect(neighbours(1).next).toBe(3)
+    expect(neighbours(3).previous).toBe(1)
+  })
+
+  it('shows the voided invoice again when the operator asks for it', () => {
+    const [, second] = postMany(3)
+    repos.retailSales.markVoid(
+      repos.retailSales.findByInvoiceNumber(second as number)!.sale.id,
+      'entered twice',
+      toIsoTimestamp(clock.now()),
+    )
+
+    expect(neighbours(1, true).next).toBe(2)
+    expect(neighbours(2, true).next).toBe(3)
+  })
+
+  it('treats an unposted bill as one past the end of the book', () => {
+    postMany(3)
+
+    // null = the screen is holding a bill that has not been posted. PREV goes
+    // back to the newest real invoice; NEXT has nowhere to go, because nothing
+    // has been written after the thing being typed.
+    expect(neighbours(null)).toEqual({ first: 1, previous: 3, next: null, last: 3 })
+  })
+
+  it('has nowhere to go at all in an empty book', () => {
+    expect(neighbours(null)).toEqual({
+      first: null,
+      previous: null,
+      next: null,
+      last: null,
+    })
+  })
+
+  it('never leaves the branch it was asked about', () => {
+    postMany(2)
+    expect(repos.retailSales.neighbours('another-branch', null, false)).toEqual({
+      first: null,
+      previous: null,
+      next: null,
+      last: null,
+    })
+  })
+})
+
 describe('the invoice sequence', () => {
   it('never issues the same number twice', () => {
     const numbers = Array.from(

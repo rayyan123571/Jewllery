@@ -366,6 +366,20 @@ export interface RetailSaleFilter {
   readonly limit: number
 }
 
+/**
+ * The four places the navigation controls can go. Null means "nowhere".
+ *
+ * Invoice NUMBERS rather than ids, because that is what the toolbar shows and
+ * what the operator types into the jump box — and carrying the id here would
+ * mean the same journey identified two ways.
+ */
+export interface RetailNeighbours {
+  readonly first: number | null
+  readonly previous: number | null
+  readonly next: number | null
+  readonly last: number | null
+}
+
 export interface RetailSaleRepository {
   /**
    * Writes the sale, every item and the sequence bump in ONE transaction.
@@ -390,6 +404,18 @@ export interface RetailSaleRepository {
 
   /** A PREVIEW of the next number. Reserves nothing — see `post`. */
   peekNextInvoiceNumber(): number
+
+  /**
+   * Where FIRST / PREV / NEXT / LAST can go from `current`.
+   *
+   * All four in one answer, so the toolbar cannot render an arrow live that
+   * turns out to have nowhere to step. Ordered by the integer, never the text.
+   */
+  neighbours(
+    branchId: string,
+    current: number | null,
+    includeVoid: boolean,
+  ): RetailNeighbours
 
   /** Marks a posted sale void. Never deletes; the number stays burned. */
   markVoid(id: string, reason: string, voidedAt: IsoTimestamp): void

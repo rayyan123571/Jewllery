@@ -59,6 +59,8 @@ import type {
   RetailPostRequest,
   RetailPostResult,
   RetailRoundingDto,
+  InvoiceRefDto,
+  RetailNeighboursDto,
   RetailSaleDto,
   RetailSlipDto,
   RetailSaleSummaryDto,
@@ -550,6 +552,7 @@ export function retailList(
       })
       .map((sale) => ({
         saleId: sale.id,
+        invoiceNumber: sale.invoiceNumber,
         invoiceNo: formatInvoiceNo(sale.invoiceNumber, prefix),
         date: sale.saleDate,
         time: sale.saleTime,
@@ -587,6 +590,50 @@ export function retailVoid(
     return { ok: true }
   } catch (error) {
     return { ok: false, message: messageOf(error) }
+  }
+}
+
+/**
+ * Where the four navigation controls can go from `current`.
+ *
+ * Preformatted on this side, like every other figure that crosses. The renderer
+ * receives "7" (or "RS-7" if the shop has set a prefix) and never assembles one
+ * out of a setting and an integer — which is the same rule that stops the screen
+ * and the printed slip ever disagreeing about a total.
+ *
+ * Refuses nothing and throws nothing: a read that cannot answer comes back as
+ * four nulls, which renders as four disabled arrows rather than an error.
+ */
+export function retailNeighbours(
+  deps: RetailHandlerDeps,
+  current: number | null,
+  includeVoid: boolean,
+): RetailNeighboursDto {
+  const nowhere: RetailNeighboursDto = {
+    first: null,
+    previous: null,
+    next: null,
+    last: null,
+  }
+  try {
+    requireUser(deps)
+    const prefix = deps.settings.invoiceDisplayPrefix()
+    const ref = (n: number | null): InvoiceRefDto | null =>
+      n === null ? null : { number: n, display: formatInvoiceNo(n, prefix) }
+
+    const found = deps.retail.neighbours(
+      deps.branchId,
+      typeof current === 'number' && Number.isSafeInteger(current) ? current : null,
+      includeVoid === true,
+    )
+    return {
+      first: ref(found.first),
+      previous: ref(found.previous),
+      next: ref(found.next),
+      last: ref(found.last),
+    }
+  } catch {
+    return nowhere
   }
 }
 
@@ -697,6 +744,7 @@ function saleDto(found: RetailSaleWithItems, invoicePrefix: string): RetailSaleD
   return {
     summary: {
       saleId: found.sale.id,
+      invoiceNumber: found.sale.invoiceNumber,
       invoiceNo: formatInvoiceNo(found.sale.invoiceNumber, invoicePrefix),
       date: found.sale.saleDate,
       time: found.sale.saleTime,

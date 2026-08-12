@@ -37,6 +37,7 @@ import type {
   PartySearchResult,
   RetailBillRepository,
   RetailDraftRepository,
+  RetailNeighbours,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -582,6 +583,36 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
 
   peekNextInvoiceNumber(): number {
     return this.next
+  }
+
+  neighbours(
+    branchId: string,
+    current: number | null,
+    includeVoid: boolean,
+  ): RetailNeighbours {
+    // Sorted numerically, exactly as the SQL orders by invoice_number — a fake
+    // that sorted these as text would pass while the real query failed on the
+    // one case the integer column exists for.
+    const numbers = this.rows
+      .map((row) => row.sale)
+      .filter((sale) => sale.branchId === branchId)
+      .filter((sale) =>
+        includeVoid ? sale.status === 'posted' || sale.status === 'void' : sale.status === 'posted',
+      )
+      .map((sale) => sale.invoiceNumber)
+      .sort((a, b) => a - b)
+
+    const first = numbers[0] ?? null
+    const last = numbers[numbers.length - 1] ?? null
+    return {
+      first,
+      last,
+      previous:
+        current === null
+          ? last
+          : ([...numbers].reverse().find((n) => n < current) ?? null),
+      next: current === null ? null : (numbers.find((n) => n > current) ?? null),
+    }
   }
 
   markVoid(id: string, reason: string): void {

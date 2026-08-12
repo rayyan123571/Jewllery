@@ -37,6 +37,7 @@ export type {
   NewRetailSlip,
   RetailBillRepository,
   RetailDraftRepository,
+  RetailNeighbours,
   RetailSaleFilter,
   RetailSaleRepository,
 } from './abstractions/repositories.js'

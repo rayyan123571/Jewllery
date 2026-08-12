@@ -172,6 +172,17 @@ export interface RendererApi {
     reason: string,
   ): Promise<{ ok: true } | { ok: false; message: string }>
   retailNextInvoiceNo(): Promise<string>
+  /**
+   * Where the four navigation controls can go from `current`.
+   *
+   * `current` null means the screen is holding a bill that has not been posted.
+   * Every answer comes back preformatted, so the renderer never builds an
+   * invoice number out of a prefix and an integer of its own.
+   */
+  retailNeighbours(
+    current: number | null,
+    includeVoid: boolean,
+  ): Promise<RetailNeighboursDto>
   /** The 80mm thermal document for a posted sale, as HTML. */
   retailReceipt(saleId: string): Promise<string | null>
   /** Every slip in the bill, computed. Pure — writes nothing. */
@@ -429,6 +440,8 @@ export const IPC_RETAIL = {
   void: 'retail:void',
   /** A PREVIEW of the next number. Reserves nothing. */
   nextInvoiceNo: 'retail:nextInvoiceNo',
+  /** Where FIRST / PREV / NEXT / LAST can go from the invoice on screen. */
+  neighbours: 'retail:neighbours',
   receipt: 'retail:receipt',
   customerSearch: 'customers:search',
   customerCreate: 'customers:create',
@@ -714,6 +727,20 @@ export type RetailPostResult =
   /** High wastage. A question with a Continue button, not an error to dismiss. */
   | { readonly ok: false; readonly needsConfirmation: true; readonly message: string }
 
+/** One reachable invoice: the number to navigate by, and the text to show. */
+export interface InvoiceRefDto {
+  readonly number: number
+  readonly display: string
+}
+
+/** Null means "nowhere to go", which is what disables an arrow. */
+export interface RetailNeighboursDto {
+  readonly first: InvoiceRefDto | null
+  readonly previous: InvoiceRefDto | null
+  readonly next: InvoiceRefDto | null
+  readonly last: InvoiceRefDto | null
+}
+
 export interface RetailLoadRequest {
   readonly saleId?: string
   readonly invoiceNo?: string
@@ -729,6 +756,8 @@ export interface RetailListRequest {
 
 export interface RetailSaleSummaryDto {
   readonly saleId: string
+  /** The integer, for navigating from here. `invoiceNo` is what is SHOWN. */
+  readonly invoiceNumber: number
   readonly invoiceNo: string
   readonly date: string
   readonly time: string

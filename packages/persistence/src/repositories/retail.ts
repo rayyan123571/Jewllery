@@ -33,6 +33,7 @@ import type {
   NewRetailSaleItem,
   RetailBillRepository,
   RetailDraftRepository,
+  RetailNeighbours,
   RetailSaleFilter,
   RetailSaleRepository,
   SalesmanRepository,
@@ -602,6 +603,66 @@ export class SqliteRetailSaleRepository implements RetailSaleRepository {
       )
       .all(...params) as SaleRow[]
     return rows.map(toSale)
+  }
+
+  /**
+   * Where the four navigation controls can go from `current`.
+   *
+   * One query set rather than four separate calls, because the toolbar needs
+   * every answer at once: it has to know whether FIRST/PREV and NEXT/LAST are
+   * reachable in order to render them disabled, and asking one at a time would
+   * let the four disagree about the same book — which is exactly the drift that
+   * makes an arrow promise a step it cannot take.
+   *
+   * Ordered by `invoice_number`, the INTEGER column, never by the text. That is
+   * the whole reason migration 012 added it: '10' sorts before '9' as text, so
+   * NEXT from invoice 9 would land on 10 only by accident and PREV from 10
+   * would go somewhere else entirely.
+   *
+   * `current` null means the screen is holding a bill that has not been posted,
+   * which is one PAST the end of the book — so PREV goes to the last posted
+   * invoice and NEXT has nowhere to go.
+   */
+  neighbours(
+    branchId: string,
+    current: number | null,
+    includeVoid: boolean,
+  ): RetailNeighbours {
+    const db = this.conn.get()
+    // A voided invoice is skipped unless the operator has asked to see them.
+    // It is never DELETED and its number is never reused, so hiding it leaves a
+    // visible gap in the numbers — which is correct, and is what tells the
+    // operator a bill was cancelled rather than lost.
+    const statuses = includeVoid ? "('posted','void')" : "('posted')"
+    const scope = `FROM retail_sales WHERE branch_id = ? AND status IN ${statuses}`
+
+    const one = (sql: string, ...params: unknown[]): number | null => {
+      const row = db.prepare(sql).get(branchId, ...params) as
+        | { invoice_number: number | null }
+        | undefined
+      return row?.invoice_number ?? null
+    }
+
+    const first = one(`SELECT MIN(invoice_number) AS invoice_number ${scope}`)
+    const last = one(`SELECT MAX(invoice_number) AS invoice_number ${scope}`)
+    const previous =
+      current === null
+        ? last
+        : one(
+            `SELECT invoice_number ${scope} AND invoice_number < ?
+              ORDER BY invoice_number DESC LIMIT 1`,
+            current,
+          )
+    const next =
+      current === null
+        ? null
+        : one(
+            `SELECT invoice_number ${scope} AND invoice_number > ?
+              ORDER BY invoice_number ASC LIMIT 1`,
+            current,
+          )
+
+    return { first, previous, next, last }
   }
 
   markVoid(id: string, reason: string, voidedAt: IsoTimestamp): void {
