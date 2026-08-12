@@ -1,0 +1,70 @@
+
+== retail_bills ==
+{"id":"ed6fe1dc-da05-4388-bd57-c7b1aa466b63","bill_no":"RB-00001","bill_date":"2026-08-12","bill_time":"17:18","customer_name_snapshot":"AHMED ALIAHMED ALI","status":"posted","posted_at":"2026-08-12T12:24:07.336Z"}
+{"id":"0531e221-d087-4d01-bc7f-1478569792fc","bill_no":"RB-00002","bill_date":"2026-08-12","bill_time":"17:24","customer_name_snapshot":"SANA KHAN","status":"posted","posted_at":"2026-08-12T12:24:36.199Z"}
+{"id":"843f62fc-bcbf-4691-9898-7bc2db6440b2","bill_no":"RB-00003","bill_date":"2026-08-12","bill_time":"17:24","customer_name_snapshot":"BILAL TRADERS","status":"posted","posted_at":"2026-08-12T12:39:55.492Z"}
+{"id":"0f37cd1a-f7c9-4239-84ef-a402df4b1e45","bill_no":"RB-00004","bill_date":"2026-08-12","bill_time":"17:50","customer_name_snapshot":"MIXED RATE CO","status":"posted","posted_at":"2026-08-12T12:50:33.992Z"}
+
+== retail_sales ==
+{"invoice_number":1,"invoice_no":"1","bill_id":"ed6fe1dc-da05-4388-bd57-c7b1aa466b63","slip_no":1,"slip_label":"Full Bill","sale_date":"2026-08-12","sale_time":"17:18","customer_name_snapshot":"AHMED ALIAHMED ALI","rate_purity":"K22","rate_per_tola_paisa":50000000,"gold_value_paisa":417065329,"hallmark_charges_paisa":0,"other_charges_paisa":0,"discount_paisa":0,"grand_total_paisa":418175329,"amount_paid_paisa":418175329,"balance_paisa":0,"status":"posted"}
+{"invoice_number":2,"invoice_no":"2","bill_id":"0531e221-d087-4d01-bc7f-1478569792fc","slip_no":1,"slip_label":"Full Bill","sale_date":"2026-08-12","sale_time":"17:24","customer_name_snapshot":"SANA KHAN","rate_purity":"K22","rate_per_tola_paisa":50000000,"gold_value_paisa":349563195,"hallmark_charges_paisa":0,"other_charges_paisa":0,"discount_paisa":0,"grand_total_paisa":351018195,"amount_paid_paisa":351018195,"balance_paisa":0,"status":"posted"}
+{"invoice_number":3,"invoice_no":"3","bill_id":"843f62fc-bcbf-4691-9898-7bc2db6440b2","slip_no":1,"slip_label":"Full Bill","sale_date":"2026-08-12","sale_time":"17:24","customer_name_snapshot":"BILAL TRADERS","rate_purity":"K22","rate_per_tola_paisa":50000000,"gold_value_paisa":790718519,"hallmark_charges_paisa":0,"other_charges_paisa":0,"discount_paisa":0,"grand_total_paisa":792918519,"amount_paid_paisa":792918519,"balance_paisa":0,"status":"posted"}
+{"invoice_number":4,"invoice_no":"4","bill_id":"0f37cd1a-f7c9-4239-84ef-a402df4b1e45","slip_no":1,"slip_label":"Full Bill","sale_date":"2026-08-12","sale_time":"17:50","customer_name_snapshot":"MIXED RATE CO","rate_purity":"K22","rate_per_tola_paisa":50000000,"gold_value_paisa":460217824,"hallmark_charges_paisa":0,"other_charges_paisa":0,"discount_paisa":0,"grand_total_paisa":460997824,"amount_paid_paisa":460997824,"balance_paisa":0,"status":"posted"}
+
+== retail_sale_items ==
+{"invoice_number":1,"line_no":1,"item_name":"GOLD BANGLEGOLD BANGLE","purity":"K22","gross_weight_mg":47239,"stone_weight_mg":1750,"purity_deduction_mg":1050,"net_weight_mg":44439,"wastage_bp":1400,"wastage_mg":6221,"fine_weight_mg":50660,"labour_charges_paisa":450000,"labour_mode":"fixed","stone_charges_paisa":120000,"line_amount_paisa":217733923}
+{"invoice_number":1,"line_no":2,"item_name":"CHAIN 22K","purity":"K22","gross_weight_mg":29160,"stone_weight_mg":0,"purity_deduction_mg":583,"net_weight_mg":28577,"wastage_bp":1200,"wastage_mg":3429,"fine_weight_mg":32006,"labour_charges_paisa":300000,"labour_mode":"fixed","stone_charges_paisa":0,"line_amount_paisa":137499931}
+{"invoice_number":1,"line_no":3,"item_name":"TOPS PAIR","purity":"K22","gross_weight_mg":14580,"stone_weight_mg":933,"purity_deduction_mg":350,"net_weight_mg":13297,"wastage_bp":1000,"wastage_mg":1330,"fine_weight_mg":14627,"labour_charges_paisa":180000,"labour_mode":"fixed","stone_charges_paisa":60000,"line_amount_paisa":62941475}
+{"invoice_number":2,"line_no":1,"item_name":"RING 21K","purity":"K22","gross_weight_mg":9914,"stone_weight_mg":467,"purity_deduction_mg":233,"net_weight_mg":9214,"wastage_bp":800,"wastage_mg":737,"fine_weight_mg":9951,"labour_charges_paisa":120000,"labour_mode":"fixed","stone_charges_paisa":45000,"line_amount_paisa":29299658}
+{"invoice_number":2,"line_no":2,"item_name":"BRACELET","purity":"K22","gross_weight_mg":37325,"stone_weight_mg":1166,"purity_deduction_mg":816,"net_weight_mg":35343,"wastage_bp":1500,"wastage_mg":5301,"fine_weight_mg":40644,"labour_charges_paisa":520000,"labour_mode":"fixed","stone_charges_paisa":90000,"line_amount_paisa":119607994}
+{"invoice_number":2,"line_no":3,"item_name":"ANKLET PAIR","purity":"K22","gross_weight_mg":62986,"stone_weight_mg":0,"purity_deduction_mg":1283,"net_weight_mg":61703,"wastage_bp":1150,"wastage_mg":7096,"fine_weight_mg":68799,"labour_charges_paisa":680000,"labour_mode":"fixed","stone_charges_paisa":0,"line_amount_paisa":202110543}
+{"invoice_number":3,"line_no":1,"item_name":"KARA SET","purity":"K22","gross_weight_mg":71150,"stone_weight_mg":2333,"purity_deduction_mg":1516,"net_weight_mg":67301,"wastage_bp":1300,"wastage_mg":8749,"fine_weight_mg":76050,"labour_charges_paisa":750000,"labour_mode":"fixed","stone_charges_paisa":150000,"line_amount_paisa":282566667}
+{"invoice_number":3,"line_no":2,"item_name":"PENDANT","purity":"K22","gross_weight_mg":22162,"stone_weight_mg":700,"purity_deduction_mg":467,"net_weight_mg":20995,"wastage_bp":950,"wastage_mg":1995,"fine_weight_mg":22990,"labour_charges_paisa":240000,"labour_mode":"fixed","stone_charges_paisa":70000,"line_amount_paisa":85458148}
+{"invoice_number":3,"line_no":3,"item_name":"BANGLE PAIR","purity":"K22","gross_weight_mg":102060,"stone_weight_mg":0,"purity_deduction_mg":2100,"net_weight_mg":99960,"wastage_bp":1450,"wastage_mg":14494,"fine_weight_mg":114454,"labour_charges_paisa":990000,"labour_mode":"fixed","stone_charges_paisa":0,"line_amount_paisa":424893704}
+{"invoice_number":4,"line_no":1,"item_name":"BOARD RATE PIECE","purity":"K22","gross_weight_mg":46656,"stone_weight_mg":0,"purity_deduction_mg":933,"net_weight_mg":45723,"wastage_bp":1200,"wastage_mg":5487,"fine_weight_mg":51210,"labour_charges_paisa":300000,"labour_mode":"fixed","stone_charges_paisa":0,"line_amount_paisa":219821605}
+{"invoice_number":4,"line_no":2,"item_name":"KEEN QUOTE PIECE","purity":"K22","gross_weight_mg":46656,"stone_weight_mg":0,"purity_deduction_mg":933,"net_weight_mg":45723,"wastage_bp":1200,"wastage_mg":5487,"fine_weight_mg":51210,"labour_charges_paisa":300000,"labour_mode":"fixed","stone_charges_paisa":0,"line_amount_paisa":150233256}
+{"invoice_number":4,"line_no":3,"item_name":"THIRD PIECE","purity":"K22","gross_weight_mg":23328,"stone_weight_mg":583,"purity_deduction_mg":467,"net_weight_mg":22278,"wastage_bp":1000,"wastage_mg":2228,"fine_weight_mg":24506,"labour_charges_paisa":150000,"labour_mode":"fixed","stone_charges_paisa":30000,"line_amount_paisa":90942963}
+
+== declared column types ==
+retail_sales.rate_per_tola_paisa -> INTEGER
+retail_sales.gold_value_paisa -> INTEGER
+retail_sales.customer_gold_mg -> INTEGER
+retail_sales.customer_gold_value_paisa -> INTEGER
+retail_sales.hallmark_charges_paisa -> INTEGER
+retail_sales.other_charges_paisa -> INTEGER
+retail_sales.discount_paisa -> INTEGER
+retail_sales.grand_total_paisa -> INTEGER
+retail_sales.amount_paid_paisa -> INTEGER
+retail_sales.balance_paisa -> INTEGER
+retail_sales.slip_no -> INTEGER
+retail_sales.invoice_number -> INTEGER
+retail_sale_items.line_no -> INTEGER
+retail_sale_items.gross_weight_mg -> INTEGER
+retail_sale_items.stone_weight_mg -> INTEGER
+retail_sale_items.cut_per_tola_mg -> INTEGER
+retail_sale_items.net_weight_mg -> INTEGER
+retail_sale_items.wastage_bp -> INTEGER
+retail_sale_items.wastage_mg -> INTEGER
+retail_sale_items.fine_weight_mg -> INTEGER
+retail_sale_items.labour_charges_paisa -> INTEGER
+retail_sale_items.stone_charges_paisa -> INTEGER
+retail_sale_items.line_amount_paisa -> INTEGER
+retail_sale_items.purity_deduction_mg -> INTEGER
+retail_sale_items.rate_per_tola_paisa -> INTEGER
+
+== stored SQLite storage class, per value ==
+{"invoice_number":1,"line_no":1,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":1,"line_no":2,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":1,"line_no":3,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":2,"line_no":1,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":2,"line_no":2,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":2,"line_no":3,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":3,"line_no":1,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":3,"line_no":2,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":3,"line_no":3,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":4,"line_no":1,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":4,"line_no":2,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+{"invoice_number":4,"line_no":3,"tg":"integer","ts":"integer","td":"integer","tn":"integer","tb":"integer","tw":"integer","tf":"integer","tl":"integer","tsc":"integer","ta":"integer"}
+
+values stored as REAL anywhere in items: 0
+values stored as REAL anywhere in sales: 0
