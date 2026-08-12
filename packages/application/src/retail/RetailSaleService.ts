@@ -75,6 +75,15 @@ export interface RetailItemInput {
   readonly labourCharges: Money
   readonly labourMode: LabourMode
   readonly stoneCharges: Money
+  /**
+   * A rate typed on THIS line, overriding the one its purity would give.
+   *
+   * The grid's Rate cell is editable per item, because one bill can hold a
+   * piece bought at the board rate and another the shop has quoted keenly.
+   * Absent means "use this item's purity rate", which is what fills the cell in
+   * as soon as the purity is chosen.
+   */
+  readonly ratePerTola?: Money
 }
 
 export interface RetailDraftInput {
@@ -219,6 +228,9 @@ export class RetailSaleService {
      * override IS: the operator saying "price this sale at this figure".
      */
     const rateForItem = (item: RetailItemInput): Money =>
+      // The line's own rate wins: it is the most specific thing the operator
+      // said. Then the bill-level override, then the purity's recorded rate.
+      item.ratePerTola ??
       input.ratePerTolaOverride ??
       this.rateFor(input.branchId, item.purity, input.saleDate) ??
       ratePerTola

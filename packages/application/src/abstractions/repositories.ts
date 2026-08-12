@@ -496,6 +496,8 @@ export interface DraftItem {
   readonly labourCharges: string
   readonly labourMode: string
   readonly stoneCharges: string
+  /** As typed. Empty means "use this item's purity rate" — never zero. */
+  readonly ratePerTola: string
 }
 
 export interface DraftSlip {
@@ -526,8 +528,6 @@ export interface DraftBill {
   readonly weightUnit: string
   readonly activeSlipNo: number
   /** Which line is open in DETAILS, if any. An unresolved edit blocks a save. */
-  readonly editingSlipNo: number | null
-  readonly editingLineNo: number | null
   readonly createdByUserId: string
   readonly slips: readonly DraftSlip[]
 }

@@ -125,7 +125,6 @@ const requests: RetailBillCalculateRequest[] = []
 function calculateSlip(
   slip: RetailSlipDto,
   unit: WeightUnit,
-  entry: RetailItemDto | null,
 ): RetailCalculationDto {
   const lines = slip.items.map((item) => lineOf(item, unit))
   const totalFine = Weight.sum(lines.map((line) => Weight.fromMilligrams(line.fine.mg)))
@@ -133,7 +132,6 @@ function calculateSlip(
   const paid = moneyOf(slip.amountPaid)
   return {
     lines,
-    entry: entry ? lineOf(entry, unit) : null,
     totalFine: weightDto(totalFine),
     customerGold: weightDto(weightOf(slip.customerGold, unit)),
     remainingGold: weightDto(totalFine),
@@ -162,11 +160,7 @@ function calculateBill(request: RetailBillCalculateRequest): RetailBillCalculati
   requests.push(request)
   const unit: WeightUnit = request.draft.weightUnit === 'tola' ? 'tola' : 'gram'
   const slips = request.draft.slips.map((slip) => {
-    const calculation = calculateSlip(
-      slip,
-      unit,
-      slip.slipNo === request.activeSlipNo ? request.entry : null,
-    )
+    const calculation = calculateSlip(slip, unit)
     return {
       slipNo: slip.slipNo,
       slipLabel: slip.slipLabel,
@@ -309,8 +303,9 @@ function control(id: ActionId): HTMLButtonElement {
  * items go; the filled ones are what the assertions are about.
  */
 function itemColumns(): HTMLElement[] {
+  // The trailing blank column is an invitation, not an item.
   return Array.from(
-    document.querySelectorAll<HTMLElement>('.item-column:not(.is-empty)'),
+    document.querySelectorAll<HTMLElement>('.item-column:not(.is-blank)'),
   )
 }
 
@@ -334,15 +329,27 @@ const ROW = {
   net: 4,
   polishPercent: 5,
   polish: 6,
-  rate: 7,
-  amount: 8,
+  labour: 7,
+  stoneCharges: 8,
+  rate: 9,
+  amount: 10,
 } as const
 
+/**
+ * What a cell SHOWS.
+ *
+ * Editable cells are inputs now, so their value is in `.value` and not in the
+ * text content — a helper that only read textContent would report every typed
+ * figure as an empty string and quietly pass any assertion for ''.
+ */
 function cell(columnIndex: number, row: keyof typeof ROW): string {
   const column = itemColumns()[columnIndex]
   if (!column) throw new Error(`No item column ${columnIndex}.`)
   const cells = column.querySelectorAll('.item-column__cell')
-  return (cells[ROW[row]]?.textContent ?? '').trim()
+  const found = cells[ROW[row]]
+  if (!found) return ''
+  const input = found.querySelector('input')
+  return (input ? input.value : (found.textContent ?? '')).trim()
 }
 
 /** Opens the retail screen the way an operator does. */
@@ -350,20 +357,30 @@ async function openRetail(user: ReturnType<typeof userEvent.setup>): Promise<voi
   render(<App />)
   await screen.findByLabelText('Main menu')
   await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Sale (Retail)'))
-  await screen.findByText('DETAILS (SELECTED ITEM)')
+  // The label stack of the items grid. There is no DETAILS card to wait for
+  // any more — the grid IS the form.
+  await screen.findByText('Item Name')
 }
 
-/** Types one item into DETAILS and adds it to the active slip. */
+/**
+ * Types one item into the grid, the way an operator does: into the trailing
+ * blank column, name then Enter then weight.
+ *
+ * Deliberately keyboard-only past the first click. If the keyboard model breaks,
+ * every test that adds an item fails — which is the point: this grid is worked
+ * two-handed at a counter and a mouse-driven test would not notice.
+ */
 async function addItem(
   user: ReturnType<typeof userEvent.setup>,
   name: string,
   grams: string,
 ): Promise<void> {
-  await user.clear(screen.getByLabelText('Item name'))
-  await user.type(screen.getByLabelText('Item name'), name)
-  await user.clear(screen.getByLabelText('Gross weight'))
-  await user.type(screen.getByLabelText('Gross weight'), grams)
-  await user.click(control('retail.item.add'))
+  const blank = itemColumns().length + 1
+  await user.click(screen.getByLabelText(`Item ${blank} name`))
+  await user.keyboard(name)
+  await waitFor(() => expect(screen.getByLabelText(`Item ${blank} weight`)).toBeTruthy())
+  await user.keyboard('{Enter}')
+  await user.keyboard(grams)
 }
 
 describe('no dead buttons on the retail screen', () => {
@@ -410,7 +427,6 @@ describe('no dead buttons on the retail screen', () => {
       'retail.print',
       'retail.new',
       'retail.item.add',
-      'retail.item.clear',
       'retail.unit.toggle',
       'retail.customer.add',
       'retail.labour.mode',
@@ -420,79 +436,20 @@ describe('no dead buttons on the retail screen', () => {
     }
   })
 
-  it('draws the mockup’s four item slots on an empty slip, and offers ADD ITEM', async () => {
+  it('draws ONE blank column on an empty bill, not four placeholders', async () => {
     const user = userEvent.setup()
     await openRetail(user)
-    // Four slots, none of them holding an item yet — a place items go rather
-    // than a blank card.
-    expect(document.querySelectorAll('.item-column')).toHaveLength(4)
+    // One column, and it is the blank one. Padding the grid out to four says
+    // nothing about how many items are on the bill and makes the header count
+    // meaningless — the operator would have to count the filled ones.
+    expect(document.querySelectorAll('.item-column')).toHaveLength(1)
+    expect(document.querySelectorAll('.item-column.is-blank')).toHaveLength(1)
     expect(itemColumns()).toHaveLength(0)
+    expect(screen.getByText('ITEMS — 0')).toBeTruthy()
     expect(control('retail.item.add').textContent).toContain('ADD ITEM')
   })
 })
 
-describe('edit in place is resolved, never silently dropped', () => {
-  it('refuses to save while a line is open for editing', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await addItem(user, 'BANGLE', '47.240')
-    await waitFor(() => expect(cell(0, 'item')).toContain('BANGLE'))
-
-    await user.click(screen.getByLabelText('Edit item 1'))
-    // The row says so, and the button changes what it promises.
-    expect(within(itemColumns()[0] as HTMLElement).getByText('editing')).toBeTruthy()
-    expect(control('retail.item.add').textContent).toContain('UPDATE ITEM')
-
-    await user.click(control('retail.save'))
-
-    // Nothing was posted, and the operator was told why in words they can act on.
-    expect(retailBillSave).not.toHaveBeenCalled()
-    expect(await screen.findByText(/open for editing/)).toBeTruthy()
-    expect(screen.getByText(/Saving now would drop what you have typed/)).toBeTruthy()
-  })
-
-  it('writes the edit back over the same line rather than adding a second', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await addItem(user, 'BANGLE', '47.240')
-    await waitFor(() => expect(cell(0, 'item')).toContain('BANGLE'))
-
-    await user.click(screen.getByLabelText('Edit item 1'))
-    await user.clear(screen.getByLabelText('Gross weight'))
-    await user.type(screen.getByLabelText('Gross weight'), '11.664')
-    await user.click(control('retail.item.add'))
-
-    await waitFor(() => expect(cell(0, 'gross')).toBe('11.664'))
-    expect(itemColumns()).toHaveLength(1)
-    expect(screen.queryByText('editing')).toBeNull()
-    // And the save it refused a moment ago now goes through.
-    await user.click(control('retail.save'))
-    await waitFor(() => expect(retailBillSave).toHaveBeenCalledTimes(1))
-  })
-
-  it('saves normally when no edit is open', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await addItem(user, 'BANGLE', '47.240')
-    await user.click(control('retail.save'))
-    await waitFor(() => expect(retailBillSave).toHaveBeenCalledTimes(1))
-  })
-
-  it('closes the edit when the line being edited is deleted', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await addItem(user, 'BANGLE', '47.240')
-    await waitFor(() => expect(cell(0, 'item')).toContain('BANGLE'))
-
-    await user.click(screen.getByLabelText('Edit item 1'))
-    await user.click(screen.getByLabelText('Delete item 1'))
-
-    // Otherwise the entry card would be holding a line that no longer exists,
-    // and the save would stay refused with nothing on screen to resolve.
-    await user.click(control('retail.save'))
-    await waitFor(() => expect(retailBillSave).toHaveBeenCalledTimes(1))
-  })
-})
 
 /**
  * Flips the toggle and waits for the DRAFT to come back round.
@@ -613,7 +570,9 @@ describe('the Gram ⇄ Tola toggle converts what is displayed and nothing else',
     const user = userEvent.setup()
     await openRetailInGrams(user)
     await addItem(user, 'BANGLE', '47.240')
-    await waitFor(() => expect(cell(0, 'gross')).toBe('47.240'))
+    // Waits on a DERIVED cell, not the typed one: the typed value is there the
+    // instant it is keyed, while the flip needs main's computed milligrams.
+    await waitFor(() => expect(cell(0, 'net')).not.toBe('0.000'))
 
     // 47.240 g is 4.050 tola. The screen converted nothing: main sent both.
     await flipUnit(user, 'tola')

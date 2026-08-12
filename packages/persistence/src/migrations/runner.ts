@@ -11,6 +11,7 @@ import { migration009 } from './009-retail-bills.js'
 import { migration010 } from './010-retail-purity-deduction.js'
 import { migration011 } from './011-retail-drafts.js'
 import { migration012 } from './012-invoice-integer.js'
+import { migration013 } from './013-draft-item-rate.js'
 
 export interface Migration {
   /** Applied in ascending order. Never renumber a released migration. */
@@ -40,6 +41,7 @@ const MIGRATIONS: readonly Migration[] = [
   migration010,
   migration011,
   migration012,
+  migration013,
 ]
 
 /**

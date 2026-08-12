@@ -917,8 +917,6 @@ describe('a draft survives a crash', () => {
     activeSlipNo: 2,
     // Mid-edit, deliberately: an unresolved edit blocks a save, so resuming
     // without it would leave a screen that refuses to save and cannot say why.
-    editingSlipNo: 2,
-    editingLineNo: 1,
     createdByUserId: userId,
     slips: [
       {
@@ -945,6 +943,7 @@ describe('a draft survives a crash', () => {
             labourCharges: '5000',
             labourMode: 'fixed',
             stoneCharges: '',
+            ratePerTola: '',
           },
           {
             lineNo: 2,
@@ -957,6 +956,7 @@ describe('a draft survives a crash', () => {
             labourCharges: '',
             labourMode: 'per_tola',
             stoneCharges: '2500',
+            ratePerTola: '',
           },
         ],
       },
@@ -987,6 +987,7 @@ describe('a draft survives a crash', () => {
             labourCharges: '',
             labourMode: 'fixed',
             stoneCharges: '',
+            ratePerTola: '',
           },
         ],
       },
@@ -1005,19 +1006,6 @@ describe('a draft survives a crash', () => {
     // Identical, not merely similar — including the half-typed "2." and every
     // exactMg the unit toggle had set.
     expect(recovered).toEqual(original)
-    closeDatabase(second.db)
-  })
-
-  it('remembers which line was mid-edit', () => {
-    const first = open()
-    const userId = seedBranchAndUser(first.repos)
-    first.repos.retailDrafts.save(DRAFT(userId))
-    closeDatabase(first.db)
-
-    const second = open()
-    const recovered = second.repos.retailDrafts.find(BRANCH)
-    expect(recovered?.editingSlipNo).toBe(2)
-    expect(recovered?.editingLineNo).toBe(1)
     closeDatabase(second.db)
   })
 

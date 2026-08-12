@@ -852,8 +852,6 @@ interface DraftBillRow {
   rate_override_text: string
   weight_unit: string
   active_slip_no: number
-  editing_slip_no: number | null
-  editing_line_no: number | null
   created_by: string
 }
 
@@ -888,6 +886,7 @@ interface DraftItemRow {
   labour_text: string
   labour_mode: string
   stone_charges_text: string
+  rate_text: string
 }
 
 /**
@@ -921,9 +920,8 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
         `INSERT INTO retail_draft_bills
            (id, branch_id, bill_date, bill_time, customer_id, customer_name,
             customer_mobile, rate_purity, rate_override_text,
-            weight_unit, active_slip_no, editing_slip_no, editing_line_no,
-            created_by, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            weight_unit, active_slip_no, created_by, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       ).run(
         billId,
         draft.branchId,
@@ -936,8 +934,6 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
         draft.ratePerTolaOverride,
         draft.weightUnit,
         draft.activeSlipNo,
-        draft.editingSlipNo,
-        draft.editingLineNo,
         draft.createdByUserId,
         now,
         now,
@@ -954,8 +950,9 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
         `INSERT INTO retail_draft_items
            (id, draft_slip_id, line_no, item_name, purity, gross_text, gross_mg,
             stone_text, stone_mg, purity_deduction_text, purity_deduction_mg,
-            wastage_percent_text, labour_text, labour_mode, stone_charges_text)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            wastage_percent_text, labour_text, labour_mode, stone_charges_text,
+            rate_text)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
 
       for (const slip of draft.slips) {
@@ -993,6 +990,7 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
             item.labourCharges,
             item.labourMode,
             item.stoneCharges,
+            item.ratePerTola,
           )
         }
       }
@@ -1026,8 +1024,6 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
       ratePerTolaOverride: bill.rate_override_text,
       weightUnit: bill.weight_unit,
       activeSlipNo: bill.active_slip_no,
-      editingSlipNo: bill.editing_slip_no,
-      editingLineNo: bill.editing_line_no,
       createdByUserId: bill.created_by,
       slips: slipRows.map((slip) => ({
         slipNo: slip.slip_no,
@@ -1055,6 +1051,7 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
           labourCharges: item.labour_text,
           labourMode: item.labour_mode,
           stoneCharges: item.stone_charges_text,
+          ratePerTola: item.rate_text,
         })),
       })),
     }

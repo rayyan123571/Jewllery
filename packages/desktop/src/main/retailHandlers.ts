@@ -228,6 +228,9 @@ function parseItem(dto: RetailItemDto, unit: WeightUnit, ratePurity: Purity): Re
     labourCharges: moneyOf(dto.labourCharges),
     labourMode: isLabourMode(dto.labourMode) ? dto.labourMode : 'fixed',
     stoneCharges: moneyOf(dto.stoneCharges),
+    // Empty is not zero. An empty Rate cell means "price this at its purity's
+    // rate"; a zero would mean the shop is giving the metal away.
+    ...(dto.ratePerTola?.trim() ? { ratePerTola: moneyOf(dto.ratePerTola) } : {}),
   }
 }
 
@@ -415,27 +418,10 @@ export function retailCalculate(
     return computed ? lineDto(computed, row.input.purity) : emptyLineDto(row.dto, null)
   })
 
-  // The row being typed. Computed by the SAME service against the same rate and
-  // the same rule, then deliberately kept out of the totals — it has not been
-  // added to the sale yet, and a total that already counted it would be a lie
-  // the moment the operator abandoned the row.
-  let entry: RetailLineDto | null = null
-  if (request.entry) {
-    try {
-      const input = parseItem(request.entry, unit, ratePurity)
-      const one = deps.retail.calculate(draftInput(deps, draft, [input], false))
-      const computed = one.lines[0]
-      entry = computed ? lineDto(computed, input.purity) : emptyLineDto(request.entry, null)
-    } catch (error) {
-      entry = emptyLineDto(request.entry, messageOf(error))
-    }
-  }
-
   const rateMissing = !calculation.ratePerTola.isPositive
 
   return {
     lines,
-    entry,
     totalFine: weightDto(calculation.totalFine),
     customerGold: weightDto(weightOrZero(draft.customerGold, unit)),
     remainingGold: weightDto(calculation.remainingGold),
@@ -685,6 +671,9 @@ export function retailLoadAsDraft(
       labourCharges: item.labourCharges.format(),
       labourMode: item.labourMode,
       stoneCharges: item.stoneCharges.format(),
+      // The rate this line was PRICED at, so reopening it shows what was
+      // charged rather than what today's board says.
+      ratePerTola: found.sale.ratePerTola.format(),
     }))
 
     const draft: RetailBillDraftDto = {
@@ -1136,9 +1125,9 @@ function draftOfSlip(bill: RetailBillDraftDto, slip: RetailSlipDto): RetailDraft
  * Every slip in the bill, computed. Pure — writes nothing.
  *
  * Called on every keystroke like `retailCalculate`, and just as tolerant: a
- * half-typed slip reports its own errors and still answers. The entry row is
- * computed for the ACTIVE slip only, because that is the only one with a DETAILS
- * form open.
+ * half-typed slip reports its own errors and still answers. Every row is a real
+ * line on the sale now — there is no separate row being typed, because the grid
+ * IS the form.
  */
 export function retailBillCalculate(
   deps: RetailHandlerDeps,
@@ -1146,10 +1135,7 @@ export function retailBillCalculate(
 ): RetailBillCalculationDto {
   const bill = request.draft
   const slips = bill.slips.map((slip) => {
-    const calculation = retailCalculate(deps, {
-      draft: draftOfSlip(bill, slip),
-      entry: slip.slipNo === request.activeSlipNo ? request.entry : null,
-    })
+    const calculation = retailCalculate(deps, { draft: draftOfSlip(bill, slip) })
     return {
       slipNo: slip.slipNo,
       slipLabel: slip.slipLabel,
@@ -1163,10 +1149,7 @@ export function retailBillCalculate(
   const active =
     slips.find((slip) => slip.slipNo === request.activeSlipNo)?.calculation ??
     slips[0]?.calculation ??
-    retailCalculate(deps, {
-      draft: draftOfSlip(bill, emptySlip()),
-      entry: request.entry,
-    })
+    retailCalculate(deps, { draft: draftOfSlip(bill, emptySlip()) })
 
   const billTotal = Money.fromPaisa(
     slips.reduce((sum, slip) => sum + slip.calculation.invoiceTotal.paisa, 0),
@@ -1471,7 +1454,7 @@ export function checkExternalUrl(url: string): { ok: true } | { ok: false; messa
 function draftBillOf(
   deps: RetailHandlerDeps,
   draft: RetailBillDraftDto,
-  ui: { activeSlipNo: number; editingSlipNo: number | null; editingLineNo: number | null },
+  ui: { activeSlipNo: number },
 ): Omit<DraftBill, 'createdByUserId'> {
   return {
     branchId: deps.branchId,
@@ -1484,8 +1467,6 @@ function draftBillOf(
     ratePerTolaOverride: draft.ratePerTolaOverride,
     weightUnit: draft.weightUnit,
     activeSlipNo: ui.activeSlipNo,
-    editingSlipNo: ui.editingSlipNo,
-    editingLineNo: ui.editingLineNo,
     slips: draft.slips.map((slip) => ({
       slipNo: slip.slipNo,
       slipLabel: slip.slipLabel,
@@ -1512,6 +1493,7 @@ function draftBillOf(
         labourCharges: item.labourCharges,
         labourMode: item.labourMode,
         stoneCharges: item.stoneCharges,
+        ratePerTola: item.ratePerTola,
       })),
     })),
   }
@@ -1551,12 +1533,11 @@ function draftDtoOf(draft: DraftBill): RetailDraftStateDto {
           labourCharges: item.labourCharges,
           labourMode: item.labourMode,
           stoneCharges: item.stoneCharges,
+          ratePerTola: item.ratePerTola,
         })),
       })),
     },
     activeSlipNo: draft.activeSlipNo,
-    editingSlipNo: draft.editingSlipNo,
-    editingLineNo: draft.editingLineNo,
   }
 }
 
@@ -1606,8 +1587,6 @@ export function retailDraftSave(
       user,
       draftBillOf(deps, request.draft, {
         activeSlipNo: request.activeSlipNo,
-        editingSlipNo: request.editingSlipNo,
-        editingLineNo: request.editingLineNo,
       }),
     )
     return { ok: true }
@@ -1633,7 +1612,6 @@ export function retailDraftFind(deps: RetailHandlerDeps): RetailDraftFoundDto | 
     const computed = retailBillCalculate(deps, {
       draft: state.draft,
       activeSlipNo: state.activeSlipNo,
-      entry: null,
     })
     return {
       state,

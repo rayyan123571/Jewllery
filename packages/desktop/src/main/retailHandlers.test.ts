@@ -147,6 +147,7 @@ function item(overrides: Partial<RetailItemDto> = {}): RetailItemDto {
     labourCharges: '4500',
     labourMode: 'fixed',
     stoneCharges: '',
+    ratePerTola: '',
     ...overrides,
   }
 }
@@ -183,7 +184,7 @@ function draft(overrides: Partial<RetailDraftDto> = {}): RetailDraftDto {
 
 /** Paid in full, which is what a walk-in has to be. */
 function payable(): RetailDraftDto {
-  const computed = retailCalculate(deps, { draft: draft(), entry: null })
+  const computed = retailCalculate(deps, { draft: draft() })
   return draft({ amountPaid: computed.grandTotal.rupees })
 }
 
@@ -221,7 +222,7 @@ describe('a handler refuses without a session', () => {
     // Deliberately NOT gated. `calculate` is pure, and a screen that cannot
     // show a total until somebody is signed in is a screen that shows nothing
     // at all while the session is being established at startup.
-    const result = retailCalculate(deps, { draft: draft(), entry: null })
+    const result = retailCalculate(deps, { draft: draft() })
     expect(result.grandTotal.paisa).toBeGreaterThan(0)
   })
 })
@@ -315,7 +316,7 @@ describe('nothing throws across the boundary', () => {
 
   it('goes through once the confirmation comes back', () => {
     const high = draft({ items: [item({ wastagePercent: '30.00' })] })
-    const priced = retailCalculate(deps, { draft: high, entry: null })
+    const priced = retailCalculate(deps, { draft: high })
     const result = retailSave(deps, {
       draft: { ...high, amountPaid: priced.grandTotal.rupees, confirmedHighWastage: true },
     })
@@ -336,7 +337,7 @@ describe('nothing throws across the boundary', () => {
 
 describe('calculate is tolerant, because it runs on every keystroke', () => {
   it('answers for an empty draft rather than throwing', () => {
-    const result = retailCalculate(deps, { draft: draft({ items: [] }), entry: null })
+    const result = retailCalculate(deps, { draft: draft({ items: [] }) })
     expect(result.grandTotal.rupees).toBe('0.00')
     expect(result.amountInWords).toBe('Rupees Zero Only')
   })
@@ -347,28 +348,18 @@ describe('calculate is tolerant, because it runs on every keystroke', () => {
       // point, which is what makes typing "12.5" one character at a time work.
       // This is text that can never become a weight.
       draft: draft({ items: [item(), item({ grossWeight: weightField('1.2.3') })] }),
-      entry: null,
     })
     expect(result.lines).toHaveLength(2)
     expect(result.lines[0]?.error).toBeNull()
     expect(result.lines[1]?.error).not.toBeNull()
     // The good line alone is the total.
-    const alone = retailCalculate(deps, { draft: draft(), entry: null })
+    const alone = retailCalculate(deps, { draft: draft() })
     expect(result.grandTotal.paisa).toBe(alone.grandTotal.paisa)
-  })
-
-  it('computes the row being typed WITHOUT putting it in the totals', () => {
-    const empty = retailCalculate(deps, { draft: draft({ items: [] }), entry: item() })
-    expect(empty.entry?.fine.mg).toBeGreaterThan(0)
-    // Nothing has been added to the sale yet.
-    expect(empty.grandTotal.paisa).toBe(0)
-    expect(empty.lines).toHaveLength(0)
   })
 
   it('says a rate is MISSING rather than reporting it as zero', () => {
     const result = retailCalculate(deps, {
       draft: draft({ ratePurity: 'K18' }),
-      entry: null,
     })
     expect(result.rateMissing).toBe(true)
     expect(result.rateDisplay).toBeNull()
@@ -376,7 +367,7 @@ describe('calculate is tolerant, because it runs on every keystroke', () => {
   })
 
   it('gives every weight in both units, so a unit toggle converts nothing', () => {
-    const result = retailCalculate(deps, { draft: draft(), entry: null })
+    const result = retailCalculate(deps, { draft: draft() })
     const gross = result.lines[0]?.gross
     expect(gross?.mg).toBe(47_240)
     expect(gross?.gram).toBe('47.240')
@@ -389,7 +380,6 @@ describe('calculate is tolerant, because it runs on every keystroke', () => {
         weightUnit: 'tola',
         items: [item({ grossWeight: weightField('4.050') })],
       }),
-      entry: null,
     })
     // 4.050 tola is 47,239 mg — one milligram off the gram figure, which is
     // exactly why a toggle must not re-parse displayed text.
@@ -402,7 +392,6 @@ describe('calculate is tolerant, because it runs on every keystroke', () => {
         weightUnit: 'tola',
         items: [item({ grossWeight: { text: '4.050', exactMg: 47_240 } })],
       }),
-      entry: null,
     })
     expect(result.lines[0]?.gross.mg).toBe(47_240)
   })
@@ -568,7 +557,6 @@ describe('the bill boundary', () => {
     const computed = retailBillCalculate(deps, {
       draft,
       activeSlipNo: 1,
-      entry: null,
     })
     return {
       ...draft,
@@ -583,7 +571,6 @@ describe('the bill boundary', () => {
     const computed = retailBillCalculate(deps, {
       draft: billDraft([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]),
       activeSlipNo: 1,
-      entry: null,
     })
     expect(computed.slips).toHaveLength(2)
     expect(computed.billTotal.paisa).toBe(
@@ -598,26 +585,14 @@ describe('the bill boundary', () => {
     const computed = retailBillCalculate(deps, {
       draft: billDraft([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]),
       activeSlipNo: 2,
-      entry: null,
     })
     expect(computed.active).toBe(computed.slips[1]?.calculation)
-  })
-
-  it('computes the entry row for the ACTIVE slip only', () => {
-    const computed = retailBillCalculate(deps, {
-      draft: billDraft([slip(1, 'Full Bill'), slip(2, 'Gold Bangles')]),
-      activeSlipNo: 2,
-      entry: item({ itemName: 'RING' }),
-    })
-    expect(computed.slips[0]?.calculation.entry).toBeNull()
-    expect(computed.slips[1]?.calculation.entry?.itemName).toBe('RING')
   })
 
   it('answers a bill with no slips rather than throwing on a keystroke', () => {
     const computed = retailBillCalculate(deps, {
       draft: billDraft([]),
       activeSlipNo: 1,
-      entry: null,
     })
     expect(computed.slips).toEqual([])
     expect(computed.billTotal.paisa).toBe(0)
@@ -697,7 +672,7 @@ describe('the bill boundary', () => {
     /** Posts one payable single-slip bill and returns its invoice number. */
     function postOne(items: readonly RetailItemDto[]): number {
       const base = billDraft([slip(1, 'Full Bill', { items })])
-      const computed = retailBillCalculate(deps, { draft: base, activeSlipNo: 1, entry: null })
+      const computed = retailBillCalculate(deps, { draft: base, activeSlipNo: 1 })
       const paid: RetailBillDraftDto = {
         ...base,
         slips: [
@@ -749,7 +724,6 @@ describe('the bill boundary', () => {
       const recomputed = retailBillCalculate(deps, {
         draft: loaded.draft,
         activeSlipNo: 1,
-        entry: null,
       })
 
       expect(recomputed.active.grandTotal.paisa).toBe(stored.sale.grandTotal.paisa)
@@ -856,9 +830,9 @@ describe('the rounding card', () => {
   })
 
   it('carries the saved step into a live calculation, on the total only', () => {
-    const exact = retailCalculate(deps, { draft: draft(), entry: null })
+    const exact = retailCalculate(deps, { draft: draft() })
     expect(retailRoundingSet(deps, 100).ok).toBe(true)
-    const rounded = retailCalculate(deps, { draft: draft(), entry: null })
+    const rounded = retailCalculate(deps, { draft: draft() })
 
     expect(rounded.invoiceTotal.paisa % 10_000).toBe(0)
     expect(rounded.invoiceTotal.paisa).not.toBe(exact.invoiceTotal.paisa)
@@ -872,7 +846,6 @@ describe('the rounding card', () => {
     expect(retailRoundingSet(deps, 1000).ok).toBe(true)
     const calc = retailCalculate(deps, {
       draft: draft({ amountPaid: '100000.00' }),
-      entry: null,
     })
     expect(calc.balance.paisa).toBe(
       calc.invoiceTotal.paisa - calc.amountPaid.paisa - calc.customerGoldValue.paisa,
@@ -955,7 +928,7 @@ describe('a sale keeps the rate and the rule it was priced with', () => {
     expect(after?.wastageRuleLabel).toBe(before?.wastageRuleLabel)
 
     // And the NEXT sale is priced by the new rule.
-    const next = retailCalculate(deps, { draft: draft({ draftId: 'draft-9' }), entry: null })
+    const next = retailCalculate(deps, { draft: draft({ draftId: 'draft-9' }) })
     expect(next.wastageRuleLabel).toBe(
       'Wastage taken out of net weight, calculated on gross weight',
     )
@@ -984,8 +957,6 @@ describe('the bill in progress, across the boundary', () => {
     slips: ReturnType<typeof slipOf>[],
     overrides: Partial<{
       activeSlipNo: number
-      editingSlipNo: number | null
-      editingLineNo: number | null
       customerName: string
       customerMobile: string
     }> = {},
@@ -1003,8 +974,6 @@ describe('the bill in progress, across the boundary', () => {
         slips,
       },
       activeSlipNo: overrides.activeSlipNo ?? 1,
-      editingSlipNo: overrides.editingSlipNo ?? null,
-      editingLineNo: overrides.editingLineNo ?? null,
     }
   }
 
@@ -1049,18 +1018,6 @@ describe('the bill in progress, across the boundary', () => {
     expect(retailDraftFind(deps)).toBeNull()
   })
 
-  it('remembers which line was open for editing', () => {
-    expect(
-      retailDraftSave(
-        deps,
-        saveRequest([slipOf(1, 'Full Bill')], { editingSlipNo: 1, editingLineNo: 1 }),
-      ).ok,
-    ).toBe(true)
-    const found = retailDraftFind(deps)
-    expect(found?.state.editingSlipNo).toBe(1)
-    expect(found?.state.editingLineNo).toBe(1)
-  })
-
   it('discards on request, and only on request', () => {
     expect(retailDraftSave(deps, saveRequest([slipOf(1, 'Full Bill')])).ok).toBe(true)
     expect(retailDraftFind(deps)).toBeTruthy()
@@ -1080,7 +1037,6 @@ describe('the bill in progress, across the boundary', () => {
     const computed = retailBillCalculate(deps, {
       draft: unpaid.draft,
       activeSlipNo: 1,
-      entry: null,
     })
     const paid = {
       ...unpaid.draft,

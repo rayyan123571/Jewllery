@@ -539,6 +539,8 @@ export interface RetailItemDto {
   readonly labourCharges: string
   readonly labourMode: string
   readonly stoneCharges: string
+  /** Typed on this line. Empty means "use this item's purity rate". */
+  readonly ratePerTola: string
 }
 
 export interface RetailDraftDto {
@@ -567,15 +569,6 @@ export interface RetailDraftDto {
 
 export interface RetailCalculateRequest {
   readonly draft: RetailDraftDto
-  /**
-   * The row being typed in the ITEM ENTRY card and not yet added.
-   *
-   * It is computed and returned but contributes NOTHING to the totals — it has
-   * not been added to the sale. This is what lets Net Weight, Wastage and Fine
-   * Weight fill themselves in as the operator types without the renderer doing
-   * a single multiplication.
-   */
-  readonly entry: RetailItemDto | null
 }
 
 export interface RetailLineDto {
@@ -605,7 +598,6 @@ export interface RetailLineDto {
 
 export interface RetailCalculationDto {
   readonly lines: readonly RetailLineDto[]
-  readonly entry: RetailLineDto | null
   readonly totalFine: WeightDto
   readonly customerGold: WeightDto
   readonly remainingGold: WeightDto
@@ -688,10 +680,8 @@ export interface RetailBillDraftDto {
 
 export interface RetailBillCalculateRequest {
   readonly draft: RetailBillDraftDto
-  /** Which slip the screen is showing. Its entry row is computed too. */
+  /** Which slip the screen is showing. */
   readonly activeSlipNo: number
-  /** The row being typed in DETAILS and not yet added. Contributes nothing. */
-  readonly entry: RetailItemDto | null
 }
 
 /** One slip, computed. The tab shows `total`; the screen shows the rest. */
@@ -924,17 +914,12 @@ export interface WastageRuleDto {
 export interface RetailDraftSaveRequest {
   readonly draft: RetailBillDraftDto
   readonly activeSlipNo: number
-  /** Which line is open in DETAILS. An unresolved edit must survive a restart. */
-  readonly editingSlipNo: number | null
-  readonly editingLineNo: number | null
 }
 
 /** The screen's state, exactly as it was left. */
 export interface RetailDraftStateDto {
   readonly draft: RetailBillDraftDto
   readonly activeSlipNo: number
-  readonly editingSlipNo: number | null
-  readonly editingLineNo: number | null
 }
 
 /**

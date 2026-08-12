@@ -31,6 +31,15 @@ export function GhostInput({
   onKeyDown,
   disabled,
   ariaLabel,
+  /**
+   * Passed straight to the inner <input>.
+   *
+   * The items grid needs a `data-cell` on the real element to move focus by
+   * keyboard, and an onFocus to remember what the cell held so Esc can put it
+   * back. Both belong to the input, not to the mirror beside it, and there is
+   * no honest way to reach it from outside without this.
+   */
+  inputProps,
 }: {
   value: string
   onChange: (next: string) => void
@@ -43,6 +52,7 @@ export function GhostInput({
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void
   disabled?: boolean
   ariaLabel?: string
+  inputProps?: React.InputHTMLAttributes<HTMLInputElement> & Record<`data-${string}`, string>
 }) {
   const [ghost, setGhost] = useState('')
   const ownRef = useRef<HTMLInputElement>(null)
@@ -84,6 +94,7 @@ export function GhostInput({
         <span className="ghost__completion">{completion}</span>
       </span>
       <input
+        {...inputProps}
         ref={ref}
         className={className}
         // Inline, so it beats any class the caller passes.
