@@ -18,9 +18,7 @@ import {
   checkExternalUrl,
   customerCreate,
   customerSearch,
-  retailBillAddSlip,
   retailBillCalculate,
-  retailBillDeleteSlip,
   retailBillNextNo,
   retailBillReceipt,
   retailBillSave,
@@ -880,7 +878,6 @@ describe('the bill in progress, across the boundary', () => {
       activeSlipNo: overrides.activeSlipNo ?? 1,
       editingSlipNo: overrides.editingSlipNo ?? null,
       editingLineNo: overrides.editingLineNo ?? null,
-      newSlipDraftId: 'draft-slip-new',
     }
   }
 
@@ -966,54 +963,4 @@ describe('the bill in progress, across the boundary', () => {
     expect(retailDraftFind(deps)).toBeNull()
   })
 
-  it('allocates the new slip number on this side, not in the renderer', () => {
-    const added = retailBillAddSlip(deps, saveRequest([slipOf(1, 'Full Bill')]))
-    expect('ok' in added).toBe(false)
-    if ('ok' in added) return
-    expect(added.state.draft.slips.map((s) => s.slipNo)).toEqual([1, 2])
-    expect(added.state.activeSlipNo).toBe(2)
-    // A new slip is a fresh sheet: no line on it can be mid-edit.
-    expect(added.state.editingLineNo).toBeNull()
-  })
-
-  it('deletes a draft slip and moves off it', () => {
-    const two = saveRequest([slipOf(1, 'Full Bill'), slipOf(2, 'Gold Bangles')], {
-      activeSlipNo: 2,
-    })
-    const after = retailBillDeleteSlip(deps, { ...two, slipNo: 2 })
-    expect('ok' in after).toBe(false)
-    if ('ok' in after) return
-    expect(after.state.draft.slips.map((s) => s.slipNo)).toEqual([1])
-    expect(after.state.activeSlipNo).toBe(1)
-  })
-
-  it('refuses to delete the last slip — a bill needs one', () => {
-    const one = saveRequest([slipOf(1, 'Full Bill')])
-    const result = retailBillDeleteSlip(deps, { ...one, slipNo: 1 })
-    expect('ok' in result && result.ok === false).toBe(true)
-    if ('ok' in result) expect(result.message).toContain('at least one slip')
-  })
-
-  it('refuses to delete a slip that is not in the draft', () => {
-    // A POSTED slip is never reachable here, and this refuses by number rather
-    // than trusting that. A posted slip is voided, with a reason — never deleted.
-    const one = saveRequest([slipOf(1, 'Full Bill')])
-    const result = retailBillDeleteSlip(deps, { ...one, slipNo: 7 })
-    expect('ok' in result && result.ok === false).toBe(true)
-    if ('ok' in result) expect(result.message).toContain('voided')
-  })
-
-  it('drops the edit marker when the slip holding it is deleted', () => {
-    const two = saveRequest([slipOf(1, 'Full Bill'), slipOf(2, 'Gold Bangles')], {
-      activeSlipNo: 2,
-      editingSlipNo: 2,
-      editingLineNo: 1,
-    })
-    const after = retailBillDeleteSlip(deps, { ...two, slipNo: 2 })
-    if ('ok' in after) return
-    // Otherwise the resumed screen would refuse to save, naming a line on a
-    // slip that no longer exists.
-    expect(after.state.editingSlipNo).toBeNull()
-    expect(after.state.editingLineNo).toBeNull()
-  })
 })

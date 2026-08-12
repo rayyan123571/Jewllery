@@ -250,8 +250,6 @@ const api = {
   retailDraftSave: vi.fn(async () => ({ ok: true as const })),
   retailDraftFind: vi.fn(async () => null),
   retailDraftDiscard: vi.fn(async () => ({ ok: true as const })),
-  retailBillAddSlip: vi.fn(),
-  retailBillDeleteSlip: vi.fn(),
   retailBillReceipt: vi.fn(async () => null),
   retailSave: vi.fn(),
   retailHold: vi.fn(),
@@ -298,14 +296,6 @@ function control(id: ActionId): HTMLButtonElement {
  * The card always draws at least four slots so an empty slip reads as a place
  * items go; the filled ones are what the assertions are about.
  */
-/** The nth slip tab, by position — "Slip 2" is both a tab name and a label. */
-function slipTab(slipNo: number): HTMLElement {
-  const tabs = document.querySelectorAll<HTMLElement>('.slip-tab:not(.slip-tab--add)')
-  const tab = tabs[slipNo - 1]
-  if (!tab) throw new Error(`No slip tab ${slipNo}.`)
-  return tab
-}
-
 function itemColumns(): HTMLElement[] {
   return Array.from(
     document.querySelectorAll<HTMLElement>('.item-column:not(.is-empty)'),
@@ -404,7 +394,6 @@ describe('no dead buttons on the retail screen', () => {
       'retail.print',
       'retail.new',
       'retail.item.add',
-      'retail.slip.add',
       'retail.item.clear',
       'retail.unit.toggle',
       'retail.customer.add',
@@ -513,106 +502,48 @@ async function flipUnit(
  * document under one bill, and the screen has to keep their items apart while
  * sharing the customer between them.
  */
-describe('slips are separate documents under one bill', () => {
-  it('opens with one slip, labelled Full Bill', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    expect(document.querySelectorAll('.slip-tab:not(.slip-tab--add)')).toHaveLength(1)
-    expect(screen.getByText('(Full Bill)')).toBeTruthy()
+describe('one invoice, one set of items', () => {
+  it('shows no slip tabs, no add-slip and no delete-slip control', () => {
+    // The tab strip is GONE, not hidden. A counter serves one customer and one
+    // invoice at a time, and a strip offering to split the bill into documents
+    // is a question nobody at this counter is asking.
+    expect(document.querySelector('.slip-tabs')).toBeNull()
+    expect(document.querySelector('.slip-tab')).toBeNull()
   })
 
-  it('adds a slip, and the new one starts empty', async () => {
+  it('still sends exactly one slip, so the atomic post is unchanged', async () => {
     const user = userEvent.setup()
     await openRetail(user)
     await addItem(user, 'BANGLE', '4.050')
-    await waitFor(() => expect(itemColumns()).toHaveLength(1))
 
-    await user.click(control('retail.slip.add'))
-    await waitFor(() =>
-      expect(document.querySelectorAll('.slip-tab:not(.slip-tab--add)')).toHaveLength(2),
-    )
-    // The items belong to the slip, not to the bill.
-    await waitFor(() => expect(itemColumns()).toHaveLength(0))
+    await waitFor(() => expect(lastRequest().draft.slips).toHaveLength(1))
+    const slip = lastRequest().draft.slips[0]
+    // Slip 1, 'Full Bill' — the implicit slip every invoice now carries. The
+    // schema still stores a bill wrapping a slip, which is what keeps the
+    // all-or-nothing transaction downstream reachable.
+    expect(slip?.slipNo).toBe(1)
+    expect(slip?.slipLabel).toBe('Full Bill')
+    expect(slip?.items.map((i) => i.itemName)).toEqual(['BANGLE'])
   })
 
-  it('keeps each slip’s items to itself, and sends both to main', async () => {
+  it('saves the whole bill through one call', async () => {
     const user = userEvent.setup()
     await openRetail(user)
     await addItem(user, 'BANGLE', '4.050')
-    await user.click(control('retail.slip.add'))
-    await addItem(user, 'CHAIN', '2.000')
-
-    await waitFor(() => expect(lastRequest().draft.slips).toHaveLength(2))
-    const draft = lastRequest().draft
-    expect(draft.slips[0]?.items.map((i) => i.itemName)).toEqual(['BANGLE'])
-    expect(draft.slips[1]?.items.map((i) => i.itemName)).toEqual(['CHAIN'])
-    // Each slip is its own document in the sequence, so each carries its own key.
-    expect(draft.slips[0]?.draftId).not.toBe(draft.slips[1]?.draftId)
-  })
-
-  it('shares the customer across every slip — it belongs to the visit', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await user.type(screen.getByLabelText('Customer'), 'IMRAN SAHIB')
-    await user.click(control('retail.slip.add'))
-
-    await waitFor(() => expect(lastRequest().draft.customerName).toBe('IMRAN SAHIB'))
-    // Once, on the bill — not copied onto each slip where two could disagree.
-    expect(lastRequest().draft.slips).toHaveLength(2)
-  })
-
-  it('refuses to leave a slip with an edit still open', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await addItem(user, 'BANGLE', '4.050')
-    await waitFor(() => expect(itemColumns()).toHaveLength(1))
-    await user.click(control('retail.slip.add'))
-    await waitFor(() =>
-      expect(document.querySelectorAll('.slip-tab:not(.slip-tab--add)')).toHaveLength(2),
-    )
-
-    // Back to slip 1, open an edit, then try to walk away from it.
-    await user.click(slipTab(1))
-    await waitFor(() => expect(itemColumns()).toHaveLength(1))
-    await user.click(screen.getByLabelText('Edit item 1'))
-    await user.click(slipTab(2))
-
-    expect(await screen.findByText(/open for editing on Slip 1/)).toBeTruthy()
-  })
-
-  it('asks before deleting a draft slip', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await user.click(control('retail.slip.add'))
-    await waitFor(() =>
-      expect(document.querySelectorAll('.slip-tab:not(.slip-tab--add)')).toHaveLength(2),
-    )
-
-    await user.click(screen.getByLabelText('Delete slip 2'))
-    // A confirmation, not an immediate deletion.
-    expect(await screen.findByText(/Delete slip 2\?/)).toBeTruthy()
-    expect(document.querySelectorAll('.slip-tab:not(.slip-tab--add)')).toHaveLength(2)
-
-    await user.click(screen.getByText('Delete this slip'))
-    await waitFor(() =>
-      expect(document.querySelectorAll('.slip-tab:not(.slip-tab--add)')).toHaveLength(1),
-    )
-  })
-
-  it('saves the whole bill through one call, not one call per slip', async () => {
-    const user = userEvent.setup()
-    await openRetail(user)
-    await addItem(user, 'BANGLE', '4.050')
-    await user.click(control('retail.slip.add'))
-    await addItem(user, 'CHAIN', '2.000')
-    await waitFor(() => expect(lastRequest().draft.slips).toHaveLength(2))
+    await waitFor(() => expect(lastRequest().draft.slips).toHaveLength(1))
 
     await user.click(control('retail.save'))
     await waitFor(() => expect(retailBillSave).toHaveBeenCalledTimes(1))
-    // The whole bill in one call, not one call per slip — which is what makes
-    // the all-or-nothing transaction downstream reachable at all.
-    const sent = lastRequest().draft
-    expect(sent.slips).toHaveLength(2)
+    expect(lastRequest().draft.slips).toHaveLength(1)
+  })
+
+  it('carries the customer on the bill, not copied onto the slip', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+    await user.type(screen.getByLabelText('Customer'), 'IMRAN SAHIB')
+
+    await waitFor(() => expect(lastRequest().draft.customerName).toBe('IMRAN SAHIB'))
+    expect(lastRequest().draft.slips).toHaveLength(1)
   })
 })
 

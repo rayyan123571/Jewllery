@@ -142,14 +142,6 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_RETAIL.draftDiscard) as ReturnType<
       RendererApi['retailDraftDiscard']
     >,
-  retailBillAddSlip: (request: RetailDraftSaveRequest) =>
-    ipcRenderer.invoke(IPC_RETAIL.billAddSlip, request) as ReturnType<
-      RendererApi['retailBillAddSlip']
-    >,
-  retailBillDeleteSlip: (request: RetailDraftSaveRequest & { slipNo: number }) =>
-    ipcRenderer.invoke(IPC_RETAIL.billDeleteSlip, request) as ReturnType<
-      RendererApi['retailBillDeleteSlip']
-    >,
   retailRounding: () =>
     ipcRenderer.invoke(IPC_RETAIL.rounding) as Promise<RetailRoundingDto>,
   setRetailRounding: (step: number) =>

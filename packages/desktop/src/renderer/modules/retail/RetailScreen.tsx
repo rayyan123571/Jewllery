@@ -9,7 +9,6 @@ import {
 import { Action } from '../../actions/Action.js'
 import { DateField } from '../../components/DateField.js'
 import { useMessages } from '../../components/Messages.js'
-import { Modal } from '../../components/Modal.js'
 import { Icon } from '../../shell/Icon.js'
 import { RateCard } from '../../components/RateCard.js'
 import { CustomerSelector } from './CustomerSelector.js'
@@ -44,7 +43,18 @@ import type {
  * The renderer's entire job is: hold what was typed, hand it over, and render
  * the strings that come back.
  *
- * ── Slips ──────────────────────────────────────────────────────────────────
+ * ── One invoice, one set of items ──────────────────────────────────────────
+ * The screen holds exactly ONE slip and never shows that word. A bill still
+ * wraps it — every invoice is a bill with a single implicit slip, numbered 1 and
+ * labelled 'Full Bill' — because that is what the schema already stores and what
+ * makes the posting atomic. What went is the TAB STRIP: the counter serves one
+ * customer, one invoice at a time.
+ *
+ * Bills written before this change can still hold several slips. Those load, and
+ * they load READ-ONLY with a note saying so, rather than silently showing the
+ * first slip as though it were the whole visit.
+ *
+ * ── Slips, as the schema still sees them ───────────────────────────────────
  * One customer visit produces several slips, each its own printable document.
  * What belongs to the VISIT — customer, mobile, salesman, date, time, rate —
  * lives on the bill and is typed once. What belongs to the DOCUMENT — items,
@@ -196,7 +206,6 @@ export function RetailScreen({
   const [invoiceNo, setInvoiceNo] = useState('—')
   const [busy, setBusy] = useState(false)
   const [confirmHighWastage, setConfirmHighWastage] = useState<string | null>(null)
-  const [confirmDeleteSlip, setConfirmDeleteSlip] = useState<number | null>(null)
   const [lastBillId, setLastBillId] = useState<string | null>(null)
   const [lastSlipSaleIds, setLastSlipSaleIds] = useState<ReadonlyMap<number, string>>(
     new Map(),
@@ -283,7 +292,6 @@ export function RetailScreen({
         activeSlipNo,
         editingSlipNo: editingIndex === null ? null : activeSlipNo,
         editingLineNo: editingIndex === null ? null : editingIndex + 1,
-        newSlipDraftId: '',
       })
     }, 400)
     return () => clearTimeout(timer)
@@ -449,63 +457,6 @@ export function RetailScreen({
     }
     set('weightUnit', next)
   }, [unit, calc])
-
-  // ── slips ─────────────────────────────────────────────────────────────────
-
-  const addSlip = useCallback(() => {
-    setSlips((current) => {
-      const nextNo = Math.max(0, ...current.map((slip) => slip.slipNo)) + 1
-      setActiveSlipNo(nextNo)
-      return [...current, emptySlip(nextNo, '')]
-    })
-    setEntry(EMPTY_ENTRY)
-    setEditingIndex(null)
-  }, [])
-
-  /**
-   * Deletes a DRAFT slip, with confirmation.
-   *
-   * Only a draft. A posted slip is a document the customer is holding, and the
-   * only way to undo one is to void it — which leaves both the slip and the
-   * reason on the record. Nothing on this screen can delete a posted slip,
-   * because nothing on this screen holds one: saving starts a fresh bill.
-   */
-  const deleteSlip = useCallback(
-    (slipNo: number) => {
-      setSlips((current) => {
-        if (current.length <= 1) return current
-        const remaining = current.filter((slip) => slip.slipNo !== slipNo)
-        if (slipNo === activeSlipNo) {
-          setActiveSlipNo(remaining[0]?.slipNo ?? 1)
-          setEntry(EMPTY_ENTRY)
-          setEditingIndex(null)
-        }
-        return remaining
-      })
-      setConfirmDeleteSlip(null)
-    },
-    [activeSlipNo],
-  )
-
-  const selectSlip = useCallback(
-    (slipNo: number) => {
-      if (slipNo === activeSlipNo) return
-      // Moving away with an edit open would leave it unresolvable — the DETAILS
-      // card would be holding a line belonging to a slip that is no longer shown.
-      if (editingIndex !== null) {
-        push(
-          'bad',
-          `Item ${editingIndex + 1} is open for editing on Slip ${activeSlipNo}. ` +
-            `Press UPDATE ITEM to write your changes back, or ABANDON EDIT to leave ` +
-            `that item exactly as it was, before moving to another slip.`,
-        )
-        return
-      }
-      setActiveSlipNo(slipNo)
-      setEntry(EMPTY_ENTRY)
-    },
-    [activeSlipNo, editingIndex, push],
-  )
 
   const startNewBill = useCallback(
     (keepRate: boolean) => {
@@ -673,7 +624,6 @@ export function RetailScreen({
       'retail.save-and-print': () => void commit(true),
       'retail.print': () => void printBill(),
       'retail.bill.print': () => void printBill(),
-      'retail.slip.add': addSlip,
       'retail.new': () => startNewBill(true),
       'retail.cancel': () => startNewBill(false),
       'retail.wastage.confirm': () => void commit(false, true),
@@ -686,7 +636,6 @@ export function RetailScreen({
     window.addEventListener('jewellery:action', listener)
     return () => window.removeEventListener('jewellery:action', listener)
   }, [
-    addSlip,
     commit,
     commitEntry,
     clearEntry,
@@ -797,49 +746,6 @@ export function RetailScreen({
         </div>
 
         <RateCard rates={rates} onSaved={onRateSaved} />
-      </div>
-
-      {/* ── slip tabs ─────────────────────────────────────────────────────── */}
-      <div className="slip-tabs" role="tablist" aria-label="Slips in this bill">
-        {(slips ?? []).map((slip) => {
-          const computed = calc?.slips.find((s) => s.slipNo === slip.slipNo)
-          return (
-            <Action
-              key={slip.slipNo}
-              id="retail.slip.select"
-              variant="plain"
-              className={`slip-tab${slip.slipNo === activeSlipNo ? ' is-active' : ''}`}
-              active={slip.slipNo === activeSlipNo}
-              onActivate={() => selectSlip(slip.slipNo)}
-            >
-              <span className="slip-tab__name">Slip {slip.slipNo}</span>
-              <span className="slip-tab__label">
-                {slip.slipLabel ? `(${slip.slipLabel})` : 'Untitled'}
-              </span>
-              {/* The slip's own total, beneath its label, as the mockup shows. */}
-              <span className="slip-tab__total">Rs {computed?.total ?? '0.00'}</span>
-            </Action>
-          )
-        })}
-        <Action
-          id="retail.slip.add"
-          variant="plain"
-          className="slip-tab slip-tab--add"
-          ariaLabel="Add another slip to this bill"
-        >
-          <Icon name="plus" size={18} />
-        </Action>
-        {slips.length > 1 ? (
-          <Action
-            id="retail.slip.delete"
-            variant="icon"
-            className="slip-tabs__delete is-danger"
-            ariaLabel={`Delete slip ${activeSlipNo}`}
-            onActivate={() => setConfirmDeleteSlip(activeSlipNo)}
-          >
-            <Icon name="trash" size={16} />
-          </Action>
-        ) : null}
       </div>
 
       <div className="retail__notices">
@@ -1018,37 +924,6 @@ export function RetailScreen({
         </Action>
       </div>
 
-      {confirmDeleteSlip !== null ? (
-        <Modal
-          label={`Delete slip ${confirmDeleteSlip}?`}
-          onClose={() => setConfirmDeleteSlip(null)}
-        >
-          <h2 className="modal__title">Delete slip {confirmDeleteSlip}?</h2>
-          <p className="hint">
-            This slip is still a draft, so deleting it removes it and its items from this
-            bill. Nothing has been posted and no invoice number has been spent. A slip that
-            has already been saved cannot be deleted — it is voided, which leaves it and
-            the reason on the record.
-          </p>
-          <div className="confirm__actions">
-            <Action
-              id="retail.slip.delete"
-              variant="ghost"
-              onActivate={() => setConfirmDeleteSlip(null)}
-            >
-              Keep it
-            </Action>
-            <Action
-              id="retail.slip.delete"
-              variant="primary"
-              className="is-cancel"
-              onActivate={() => deleteSlip(confirmDeleteSlip)}
-            >
-              Delete this slip
-            </Action>
-          </div>
-        </Modal>
-      ) : null}
     </div>
   )
 }

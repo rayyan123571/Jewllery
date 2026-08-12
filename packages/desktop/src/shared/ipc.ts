@@ -190,12 +190,6 @@ export interface RendererApi {
   /** The branch's open draft, or null. Read once, on launch. */
   retailDraftFind(): Promise<RetailDraftFoundDto | null>
   retailDraftDiscard(): Promise<{ ok: true } | { ok: false; message: string }>
-  retailBillAddSlip(
-    request: RetailDraftSaveRequest,
-  ): Promise<RetailDraftFoundDto | { ok: false; message: string }>
-  retailBillDeleteSlip(
-    request: RetailDraftSaveRequest & { slipNo: number },
-  ): Promise<RetailDraftFoundDto | { ok: false; message: string }>
   searchCustomers(query: string): Promise<readonly CustomerDto[]>
   createCustomer(
     input: NewCustomerDto,
@@ -456,8 +450,6 @@ export const IPC_RETAIL = {
   draftSave: 'retail:draft:save',
   draftFind: 'retail:draft:find',
   draftDiscard: 'retail:draft:discard',
-  billAddSlip: 'retail:bill:addSlip',
-  billDeleteSlip: 'retail:bill:deleteSlip',
   openExternal: 'app:openExternal',
 } as const
 
@@ -864,8 +856,6 @@ export interface RetailDraftSaveRequest {
   /** Which line is open in DETAILS. An unresolved edit must survive a restart. */
   readonly editingSlipNo: number | null
   readonly editingLineNo: number | null
-  /** Minted by the screen, used only by addSlip. Ignored otherwise. */
-  readonly newSlipDraftId: string
 }
 
 /** The screen's state, exactly as it was left. */
