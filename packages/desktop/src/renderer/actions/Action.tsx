@@ -107,6 +107,19 @@ interface ActionProps {
    * of action, it is a ready action mid-run.
    */
   readonly busy?: boolean
+  /**
+   * A ready control with nothing to act on *right now*.
+   *
+   * Distinct from `busy`, which means "already running", and from `not-built`,
+   * which means the module does not exist yet. This is the third real state: on
+   * the first invoice PREV has no earlier bill to open, so it renders with the
+   * same visible disabled treatment rather than disappearing — a control that
+   * vanishes at an edge is one the operator stops expecting to be there.
+   *
+   * Like `busy`, it can only ever ADD `disabled`. It can never enable a control
+   * the registry says is not built.
+   */
+  readonly unavailable?: boolean
 }
 
 export function Action({
@@ -121,6 +134,7 @@ export function Action({
   activateOnMouseDown = false,
   type = 'button',
   busy = false,
+  unavailable = false,
 }: ActionProps) {
   const registry = useActions()
   const action = registry[id]
@@ -138,6 +152,11 @@ export function Action({
       type={type}
       // Read by shell.test.tsx. Every button in the DOM must carry this.
       data-action={id}
+      // Why a READY control is nonetheless disabled. Without this the "no dead
+      // buttons" test cannot tell a control with nothing to act on right now
+      // from one that is disabled because somebody forgot to wire it — and the
+      // only way to keep that test passing would be to loosen it.
+      {...(unavailable ? { 'data-unavailable': 'true' } : {})}
       data-action-state={action.kind}
       className={[`action action--${variant}`, active ? 'is-active' : '', className ?? '']
         .filter(Boolean)
@@ -147,7 +166,7 @@ export function Action({
       // must be genuinely unclickable and skipped by keyboard navigation.
       // `busy` may only add to this, never subtract: a not-built control is
       // disabled whatever the screen claims.
-      disabled={notBuilt || busy}
+      disabled={notBuilt || busy || unavailable}
       title={actionTitle(action)}
       aria-label={ariaLabel ?? undefined}
       onMouseDown={

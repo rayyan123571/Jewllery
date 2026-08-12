@@ -257,6 +257,13 @@ const api = {
   retailList: vi.fn(async () => []),
   retailVoid: vi.fn(),
   retailNextInvoiceNo: vi.fn(async () => '1'),
+  retailNeighbours: vi.fn(async () => ({
+    first: null,
+    previous: null,
+    next: null,
+    last: null,
+  })),
+  retailLoadAsDraft: vi.fn(async () => null),
   retailReceipt: vi.fn(async () => null),
   searchCustomers: vi.fn(async () => []),
   createCustomer: vi.fn(),
@@ -379,6 +386,10 @@ describe('no dead buttons on the retail screen', () => {
     const mismatched = Array.from(document.querySelectorAll('button'))
       .map((button) => {
         const id = button.getAttribute('data-action') as ActionId
+        // A control may also be disabled because it has nothing to act on right
+        // now — PREV on the first invoice. That is a READY control at an edge,
+        // and it says so in the DOM, so it is not a dead button.
+        if (button.getAttribute('data-unavailable') === 'true') return null
         const expected = registry[id].kind === 'not-built'
         return expected === button.disabled ? null : `${id}: expected disabled=${expected}`
       })

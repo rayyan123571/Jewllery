@@ -9,6 +9,7 @@ import {
 import { Action } from '../../actions/Action.js'
 import { DateField } from '../../components/DateField.js'
 import { useMessages } from '../../components/Messages.js'
+import { Modal } from '../../components/Modal.js'
 import { Icon } from '../../shell/Icon.js'
 import { RateCard } from '../../components/RateCard.js'
 import { CustomerSelector } from './CustomerSelector.js'
@@ -19,8 +20,10 @@ import type {
   RetailBillDraftDto,
   RetailCalculationDto,
   RetailDraftFoundDto,
+  RetailInvoiceDto,
   RetailItemDto,
   RetailLineDto,
+  RetailNeighboursDto,
   RetailSlipDto,
   WeightDto,
   WeightFieldDto,
@@ -129,6 +132,26 @@ interface BillForm {
  * unique — it has to be unique among the drafts one counter has open, which the
  * timestamp alone very nearly achieves.
  */
+/** Nowhere to go, which is what four disabled arrows look like. */
+const NOWHERE: RetailNeighboursDto = {
+  first: null,
+  previous: null,
+  next: null,
+  last: null,
+}
+
+/**
+ * A navigation the operator has been asked about but not yet answered.
+ *
+ * `what` is shown in the dialog so the question names the destination — "go to
+ * invoice 4", not "leave this page". `run` is the move itself, held until an
+ * answer arrives, so nothing about the destination has to be recomputed after.
+ */
+interface Guarded {
+  readonly what: string
+  readonly run: () => void | Promise<void>
+}
+
 function newDraftId(): string {
   const webCrypto = globalThis.crypto
   if (webCrypto && typeof webCrypto.randomUUID === 'function') return webCrypto.randomUUID()
@@ -212,7 +235,40 @@ export function RetailScreen({
   )
   /** A bill somebody was part-way through when the app last closed. */
   const [recovered, setRecovered] = useState<RetailDraftFoundDto | null>(null)
+
+  // ── the book, and where the screen is in it ───────────────────────────────
+  /**
+   * The stored invoice on screen, or null when this is a new bill.
+   *
+   * Null is not "invoice zero" — it is the bill being typed, which sits one
+   * PAST the end of the book. That is why `neighbours` is asked with null and
+   * answers with PREV pointing at the newest invoice and NEXT pointing nowhere.
+   */
+  const [stored, setStored] = useState<RetailInvoiceDto | null>(null)
+  const [neighbours, setNeighbours] = useState<RetailNeighboursDto>(NOWHERE)
+  const [showVoided, setShowVoided] = useState(false)
+  /**
+   * A posted invoice is shown locked. EDIT unlocks it for a CORRECTION, which
+   * saves as a NEW invoice — a posted row is never amended in place, here or
+   * anywhere else (DECISIONS §6). `correcting` is what puts the note on screen
+   * saying so, so nobody believes they are editing the original.
+   */
+  const [correcting, setCorrecting] = useState(false)
+  /** The navigation waiting on the operator's answer. Null when nothing is. */
+  const [guard, setGuard] = useState<Guarded | null>(null)
+  const [jumpText, setJumpText] = useState('')
+  const [jumpError, setJumpError] = useState<string | null>(null)
   const { push } = useMessages()
+
+  /**
+   * The bill as it was when it was loaded or started, serialized.
+   *
+   * `dirty` is a comparison against this rather than a flag set by every
+   * handler, because a flag has to be remembered in a dozen places and is
+   * wrong the first time somebody forgets one. Typing a character and deleting
+   * it again correctly leaves the bill clean.
+   */
+  const baseline = useRef<string>('')
 
   // A ref as well as state: a second click can arrive before React has
   // re-rendered with a disabled button, and the ref is already set.
@@ -286,6 +342,13 @@ export function RetailScreen({
    */
   useEffect(() => {
     if (recovered) return
+    // SUSPENDED while a stored invoice is displayed, and this is the whole
+    // reason the guard can be trusted. `retail_draft_bills` holds ONE draft per
+    // branch (migration 011 replaces it wholesale on every write), so an
+    // autosave running while invoice 3 is on screen would overwrite the
+    // half-finished bill the operator was typing — the exact loss the guard
+    // exists to prevent, arriving 400ms after it was prevented.
+    if (stored) return
     const timer = setTimeout(() => {
       void window.api.retailDraftSave({
         draft,
@@ -295,7 +358,7 @@ export function RetailScreen({
       })
     }, 400)
     return () => clearTimeout(timer)
-  }, [draft, activeSlipNo, editingIndex, recovered])
+  }, [draft, activeSlipNo, editingIndex, recovered, stored])
 
   /**
    * On launch: is there a bill somebody was part-way through?
@@ -458,6 +521,145 @@ export function RetailScreen({
     set('weightUnit', next)
   }, [unit, calc])
 
+
+  // ── walking the book ──────────────────────────────────────────────────────
+
+  /**
+   * A stored invoice that has not been unlocked. Nothing on it can be typed
+   * into, and the item and payment controls are disabled rather than hidden.
+   */
+  const isLocked = stored !== null && !correcting
+  /** An old multi-slip bill can be READ, never unlocked — see loadAsDraft. */
+  const isLegacyBill = (stored?.slipCount ?? 1) > 1
+
+
+  /** Marks whatever is on screen as the clean state to compare against. */
+  const markClean = useCallback((of: RetailBillDraftDto) => {
+    baseline.current = JSON.stringify(of)
+  }, [])
+
+  /**
+   * Has the operator changed anything since this bill was loaded or started?
+   *
+   * A locked invoice is never dirty: nothing on it can be typed into, so the
+   * guard must not stop the operator simply paging through the book.
+   */
+  const dirty = useMemo(
+    () => !isLocked && JSON.stringify(draft) !== baseline.current,
+    [draft, isLocked],
+  )
+
+  useEffect(() => {
+    void window.api
+      .retailNeighbours(stored?.invoiceNumber ?? null, showVoided)
+      .then(setNeighbours)
+  }, [stored, showVoided, invoiceNo])
+
+  /** Puts a stored invoice on screen, locked. Returns false if there is none. */
+  const openInvoice = useCallback(
+    async (invoiceNumber: number): Promise<boolean> => {
+      const loaded = await window.api.retailLoadAsDraft(invoiceNumber)
+      if (!loaded) return false
+
+      const next = loaded.draft
+      setForm({
+        saleDate: next.saleDate,
+        saleTime: next.saleTime,
+        customerId: next.customerId,
+        customerName: next.customerName,
+        customerMobile: next.customerMobile ?? '',
+        ratePurity: next.ratePurity,
+        ratePerTolaOverride: next.ratePerTolaOverride,
+        weightUnit: next.weightUnit,
+      })
+      setSlips(next.slips)
+      setActiveSlipNo(1)
+      setCustomer(null)
+      setEntry(EMPTY_ENTRY)
+      setEditingIndex(null)
+      setStored(loaded)
+      setCorrecting(false)
+      setJumpError(null)
+      setJumpText('')
+      markClean(next)
+      return true
+    },
+    [markClean],
+  )
+
+  /**
+   * Runs a navigation, or stops and asks first.
+   *
+   * EVERY way off this bill goes through here — the four arrows, the invoice
+   * jump and NEW — because a guard with one exception is a guard that loses
+   * work through that exception.
+   */
+  const guarded = useCallback(
+    (what: string, run: () => void | Promise<void>) => {
+      if (!dirty) {
+        void run()
+        return
+      }
+      setGuard({ what, run })
+    },
+    [dirty],
+  )
+
+  const goTo = useCallback(
+    (target: number | null, what: string) => {
+      if (target === null) return
+      guarded(what, async () => {
+        const opened = await openInvoice(target)
+        if (!opened) push('bad', `Invoice ${target} could not be opened.`)
+      })
+    },
+    [guarded, openInvoice, push],
+  )
+
+  /**
+   * The invoice-number box: type a number, press Enter, go straight there.
+   *
+   * How the counter finds an old bill fast. An unknown number says so beside
+   * the box and does NOT navigate — moving to something else would leave the
+   * operator looking at a bill they did not ask for and did not notice
+   * arriving.
+   */
+  const jumpToTyped = useCallback(() => {
+    const typed = jumpText.trim()
+    if (typed === '') {
+      setJumpError(null)
+      return
+    }
+    if (!/^\d+$/.test(typed)) {
+      setJumpError('Numbers only.')
+      return
+    }
+    const wanted = Number(typed)
+    guarded(`invoice ${wanted}`, async () => {
+      const opened = await openInvoice(wanted)
+      if (!opened) setJumpError(`No invoice ${wanted}.`)
+    })
+  }, [jumpText, guarded, openInvoice])
+
+  /**
+   * Unlocks a posted invoice — for a CORRECTION, not an amendment.
+   *
+   * A posted row is never edited in place. There is no `update` on the sale
+   * repository and there deliberately never will be, so saving from here issues
+   * a NEW invoice number and leaves the original standing until it is voided.
+   * The banner says exactly that while the screen is unlocked, because an
+   * operator who believes they are amending invoice 3 will not think to void it.
+   */
+  const startCorrection = useCallback(() => {
+    if (!stored) return
+    setCorrecting(true)
+    push(
+      'ok',
+      `Invoice ${stored.invoiceNo} is unlocked for a correction. Saving issues a ` +
+        `NEW invoice number — invoice ${stored.invoiceNo} stands until you void it.`,
+    )
+  }, [stored, push])
+
   const startNewBill = useCallback(
     (keepRate: boolean) => {
       setSlips([emptySlip(1, FIRST_SLIP_LABEL)])
@@ -475,11 +677,22 @@ export function RetailScreen({
         customerName: '',
         customerMobile: '',
         ratePurity: keepRate ? current.ratePurity : 'K22',
-        ratePerTolaOverride: keepRate ? current.ratePerTolaOverride : '',
+        // A stored invoice pinned its own rate as an override. Starting a new
+        // bill must drop that pin, or every sale after opening an old one would
+        // silently be priced at last week's rate.
+        ratePerTolaOverride: keepRate && !stored ? current.ratePerTolaOverride : '',
       }))
+      // Back to the end of the book: a new bill is not a stored invoice, so
+      // nothing is locked, the draft resumes saving and PREV points at the
+      // newest posted invoice again.
+      setStored(null)
+      setCorrecting(false)
+      setJumpText('')
+      setJumpError(null)
+      baseline.current = ''
       void window.api.retailNextInvoiceNo().then(setInvoiceNo)
     },
-    [],
+    [stored],
   )
 
   /**
@@ -624,7 +837,18 @@ export function RetailScreen({
       'retail.save-and-print': () => void commit(true),
       'retail.print': () => void printBill(),
       'retail.bill.print': () => void printBill(),
-      'retail.new': () => startNewBill(true),
+      'retail.new': () => guarded('a new invoice', () => startNewBill(true)),
+      'retail.nav.first': () =>
+        goTo(neighbours.first?.number ?? null, `invoice ${neighbours.first?.display}`),
+      'retail.nav.prev': () =>
+        goTo(neighbours.previous?.number ?? null, `invoice ${neighbours.previous?.display}`),
+      'retail.nav.next': () =>
+        goTo(neighbours.next?.number ?? null, `invoice ${neighbours.next?.display}`),
+      'retail.nav.last': () =>
+        goTo(neighbours.last?.number ?? null, `invoice ${neighbours.last?.display}`),
+      'retail.invoice.jump': jumpToTyped,
+      'retail.edit': startCorrection,
+      'retail.voided.toggle': () => setShowVoided((current) => !current),
       'retail.cancel': () => startNewBill(false),
       'retail.wastage.confirm': () => void commit(false, true),
       'retail.wastage.back': () => setConfirmHighWastage(null),
@@ -638,6 +862,11 @@ export function RetailScreen({
   }, [
     commit,
     commitEntry,
+    guarded,
+    goTo,
+    neighbours,
+    jumpToTyped,
+    startCorrection,
     clearEntry,
     printBill,
     sendOnWhatsApp,
@@ -654,22 +883,51 @@ export function RetailScreen({
    */
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent): void => {
+      // A dialog owns the keyboard while it is open. Checked FIRST, so the
+      // guard's own question cannot be answered by a shortcut behind it.
+      if (document.querySelector('.modal')) return
+
+      // Ctrl-chords: navigation, and the save the brief advertises as Ctrl+S.
+      if (event.ctrlKey && !event.altKey) {
+        const chords: Record<string, () => void> = {
+          Home: () =>
+            goTo(neighbours.first?.number ?? null, `invoice ${neighbours.first?.display}`),
+          End: () =>
+            goTo(neighbours.last?.number ?? null, `invoice ${neighbours.last?.display}`),
+          ArrowLeft: () =>
+            goTo(
+              neighbours.previous?.number ?? null,
+              `invoice ${neighbours.previous?.display}`,
+            ),
+          ArrowRight: () =>
+            goTo(neighbours.next?.number ?? null, `invoice ${neighbours.next?.display}`),
+          s: () => void commit(false),
+          S: () => void commit(false),
+        }
+        const chord = chords[event.key]
+        if (!chord) return
+        event.preventDefault()
+        chord()
+        return
+      }
+
       const keys: Record<string, () => void> = {
         F2: commitEntry,
+        // F5 still fires SAVE. The toolbar advertises Ctrl+S because that is
+        // what the brief asks it to show; both reach the same handler, and
+        // taking F5 away would retrain a counter for no gain.
         F5: () => void commit(false),
         F6: () => void printBill(),
-        F9: () => startNewBill(true),
+        F9: () => guarded('a new invoice', () => startNewBill(true)),
       }
       const handler = keys[event.key]
       if (!handler) return
-      // A dialog owns the keyboard while it is open.
-      if (document.querySelector('.modal')) return
       event.preventDefault()
       handler()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [commit, commitEntry, printBill, startNewBill])
+  }, [commit, commitEntry, printBill, startNewBill, guarded, goTo, neighbours])
 
   const rateMissing = calc?.rateMissing ?? false
   const editing = editingIndex !== null
@@ -677,18 +935,171 @@ export function RetailScreen({
   return (
     <div className="retail">
       {/* ── the header strip, replacing the deleted top bar ───────────────── */}
+      {/*
+        ── the toolbar ────────────────────────────────────────────────────────
+        GoldLab's CustomerEntry row, mirrored to LTR and set in our own tokens.
+        Its two rows are folded into one: add · customer · NEW | the four
+        navigation controls | SAVE | the invoice-number box.
+
+        Two things about the reference are deliberately NOT copied. Its "نام"
+        chip beside the combo is a label, not a control, so there is nothing
+        here to stand in for it — the ▼ opens the customer list, which is what
+        that control actually does. And its receipt-number box is read-only,
+        with the editable lookup living in a separate status bar; the two are
+        merged here, because finding an old bill fast is the reason the box is
+        worth a place on the toolbar at all.
+      */}
+      <div className="retail__toolbar">
+        <Action
+          id="retail.customer.add"
+          variant="primary"
+          className="toolbar__add"
+          ariaLabel="Add a new customer"
+          unavailable={isLocked}
+        >
+          <Icon name="plus" size={18} />
+        </Action>
+
+        <CustomerSelector
+          selected={customer}
+          typedName={form.customerName}
+          onTypedName={(name) => set('customerName', name)}
+          onSelect={(picked) => {
+            setCustomer(picked)
+            setForm((current) => ({
+              ...current,
+              customerId: picked?.id ?? null,
+              customerName: picked?.name ?? current.customerName,
+              // Auto-filled from the customer, and still editable: a walk-in
+              // gives a number that belongs to nobody on file.
+              customerMobile: picked?.mobile ?? current.customerMobile,
+            }))
+          }}
+          variant="toolbar"
+          disabled={isLocked}
+        />
+
+        <Action
+          id="retail.new"
+          variant="outline"
+          className="toolbar__new"
+          onActivate={() => guarded('a new invoice', () => startNewBill(true))}
+        >
+          NEW
+        </Action>
+
+        <span className="toolbar__rule" aria-hidden="true" />
+
+        {/* FIRST and LAST are dead only when the book is empty. PREV and NEXT
+            go dead at the ends, which is what tells the operator where they
+            are — disabled, never hidden. */}
+        <div className="toolbar__nav" role="group" aria-label="Move between invoices">
+          <Action
+            id="retail.nav.first"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={
+              neighbours.first === null ||
+              neighbours.first.number === stored?.invoiceNumber
+            }
+            onActivate={() =>
+              goTo(neighbours.first?.number ?? null, `invoice ${neighbours.first?.display}`)
+            }
+          >
+            <span aria-hidden="true">|◀</span>
+            <span>FIRST</span>
+          </Action>
+          <Action
+            id="retail.nav.prev"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={neighbours.previous === null}
+            onActivate={() =>
+              goTo(
+                neighbours.previous?.number ?? null,
+                `invoice ${neighbours.previous?.display}`,
+              )
+            }
+          >
+            <span aria-hidden="true">◀</span>
+            <span>PREV</span>
+          </Action>
+          <Action
+            id="retail.nav.next"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={neighbours.next === null}
+            onActivate={() =>
+              goTo(neighbours.next?.number ?? null, `invoice ${neighbours.next?.display}`)
+            }
+          >
+            <span>NEXT</span>
+            <span aria-hidden="true">▶</span>
+          </Action>
+          <Action
+            id="retail.nav.last"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={
+              neighbours.last === null || neighbours.last.number === stored?.invoiceNumber
+            }
+            onActivate={() =>
+              goTo(neighbours.last?.number ?? null, `invoice ${neighbours.last?.display}`)
+            }
+          >
+            <span>LAST</span>
+            <span aria-hidden="true">▶|</span>
+          </Action>
+        </div>
+
+        <Action
+          id="retail.save"
+          variant="primary"
+          className="toolbar__save"
+          busy={busy}
+          unavailable={isLocked}
+        >
+          SAVE
+        </Action>
+
+        <span className="toolbar__rule" aria-hidden="true" />
+
+        {/* Editable, which GoldLab's is not: this is how the counter finds an
+            old bill fast. An unknown number says so beside the box and does not
+            move — landing somewhere unasked-for is worse than not moving. */}
+        <label className="toolbar__jump">
+          <span className="toolbar__jump-label">Invoice No :</span>
+          <input
+            className="input input--numeric toolbar__jump-input"
+            value={jumpText === '' ? (stored?.invoiceNo ?? invoiceNo) : jumpText}
+            onChange={(e) => {
+              setJumpText(e.target.value)
+              setJumpError(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                jumpToTyped()
+              }
+              if (e.key === 'Escape') {
+                setJumpText('')
+                setJumpError(null)
+              }
+            }}
+            inputMode="numeric"
+            aria-label="Invoice number — type one and press Enter to open it"
+          />
+        </label>
+        {jumpError ? (
+          <span className="toolbar__jump-error" role="alert">
+            {jumpError}
+          </span>
+        ) : null}
+      </div>
+
+      {/* The visit's remaining facts, on their own row. */}
       <div className="retail__head">
         <div className="bill-fields">
-          <label className="stack-field">
-            <span className="stack-field__label">Invoice No :</span>
-            <input
-              className="input input--derived"
-              value={invoiceNo}
-              readOnly
-              disabled
-              aria-label="Invoice number"
-            />
-          </label>
           <DateField
             value={form.saleDate}
             onChange={(iso) => set('saleDate', iso)}
@@ -705,48 +1116,73 @@ export function RetailScreen({
                 placeholder="HH:MM"
                 inputMode="numeric"
                 aria-label="Sale time"
+                disabled={isLocked}
               />
               <span className="input-group__glyph" aria-hidden="true">
                 <Icon name="clock" size={16} />
               </span>
             </span>
           </label>
-        </div>
-
-        {/* Underlined baseline fields, as the mockup draws them: a label and a
-            rule, with no box. They are the visit's facts, shared by every slip. */}
-        <div className="bill-party">
-          <CustomerSelector
-            selected={customer}
-            typedName={form.customerName}
-            onTypedName={(name) => set('customerName', name)}
-            onSelect={(picked) => {
-              setCustomer(picked)
-              setForm((current) => ({
-                ...current,
-                customerId: picked?.id ?? null,
-                customerName: picked?.name ?? current.customerName,
-                // Auto-filled from the customer, and still editable: a walk-in
-                // gives a number that belongs to nobody on file.
-                customerMobile: picked?.mobile ?? current.customerMobile,
-              }))
-            }}
-            variant="baseline"
-          />
-          <label className="baseline-field">
-            <span className="baseline-field__label">Mobile :</span>
+          <label className="stack-field">
+            <span className="stack-field__label">Mobile :</span>
             <input
-              className="baseline-field__input"
+              className="input"
               value={form.customerMobile}
               onChange={(e) => set('customerMobile', e.target.value)}
               placeholder="0300-0000000"
               aria-label="Customer mobile"
+              disabled={isLocked}
             />
           </label>
         </div>
 
         <RateCard rates={rates} onSaved={onRateSaved} />
       </div>
+
+      {/* What the operator is looking at, whenever it is not a new bill. */}
+      {stored ? (
+        <div className={`record-state${stored.status === 'void' ? ' is-void' : ''}`}>
+          <span className="record-state__what">
+            Invoice {stored.invoiceNo} · {stored.status.toUpperCase()}
+            {isLocked ? ' · read-only' : ' · correcting'}
+          </span>
+          {stored.voidReason ? (
+            <span className="record-state__why">Voided: {stored.voidReason}</span>
+          ) : null}
+          {isLegacyBill ? (
+            <span className="record-state__why">
+              This bill holds {stored.slipCount} slips, from before one invoice meant one
+              set of items. It can be read and printed, and it cannot be unlocked here —
+              correcting it means voiding it and entering the slips as separate invoices.
+            </span>
+          ) : null}
+          {isLocked && !isLegacyBill ? (
+            <Action
+              id="retail.edit"
+              variant="outline"
+              className="record-state__edit"
+              onActivate={startCorrection}
+            >
+              EDIT
+            </Action>
+          ) : null}
+          {!isLocked ? (
+            <span className="record-state__why">
+              Saving issues a NEW invoice number. Invoice {stored.invoiceNo} stands until
+              you void it — a posted bill is never amended in place.
+            </span>
+          ) : null}
+          <Action
+            id="retail.voided.toggle"
+            variant="ghost"
+            className="record-state__voided"
+            active={showVoided}
+            onActivate={() => setShowVoided((current) => !current)}
+          >
+            {showVoided ? 'Hiding nothing' : 'Show voided'}
+          </Action>
+        </div>
+      ) : null}
 
       <div className="retail__notices">
         {/*
@@ -924,6 +1360,53 @@ export function RetailScreen({
         </Action>
       </div>
 
+
+      {guard ? (
+        <Modal label="This invoice has unsaved changes" onClose={() => setGuard(null)}>
+          <h2 className="modal__title">Save this invoice first?</h2>
+          <p className="hint">
+            This bill has changes that have not been saved. Going to {guard.what} now
+            would leave them behind — there is one draft per counter, so it cannot be
+            parked and come back later.
+          </p>
+          <div className="confirm__actions">
+            {/* Three real answers. Cancel is a control the operator presses on
+                purpose: if the safe answer were only reachable by pressing
+                Escape and hoping, it would be the one nobody chose. */}
+            <Action
+              id="retail.guard.cancel"
+              variant="ghost"
+              onActivate={() => setGuard(null)}
+            >
+              Stay here
+            </Action>
+            <Action
+              id="retail.guard.discard"
+              variant="outline"
+              className="is-cancel"
+              onActivate={() => {
+                const go = guard.run
+                setGuard(null)
+                void window.api.retailDraftDiscard().then(() => go())
+              }}
+            >
+              Discard changes
+            </Action>
+            <Action
+              id="retail.guard.save"
+              variant="primary"
+              busy={busy}
+              onActivate={() => {
+                const go = guard.run
+                setGuard(null)
+                void commit(false).then(() => go())
+              }}
+            >
+              Save, then go
+            </Action>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
@@ -1613,6 +2096,7 @@ function PaymentBlock({
           </span>
         </div>
       </div>
+
     </div>
   )
 }

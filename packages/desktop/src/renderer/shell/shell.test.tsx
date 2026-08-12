@@ -135,6 +135,13 @@ const noopApi = {
   retailList: vi.fn(async () => []),
   retailVoid: vi.fn(),
   retailNextInvoiceNo: vi.fn(async () => 'RS-00001'),
+  retailNeighbours: vi.fn(async () => ({
+    first: null,
+    previous: null,
+    next: null,
+    last: null,
+  })),
+  retailLoadAsDraft: vi.fn(async () => null),
   retailReceipt: vi.fn(async () => null),
   searchCustomers: vi.fn(async () => []),
   createCustomer: vi.fn(),

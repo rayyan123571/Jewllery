@@ -39,12 +39,19 @@ export function CustomerSelector({
    * is a second one to keep correct.
    */
   variant = 'field',
+  /**
+   * A locked invoice is being READ, so the box shows who bought it and refuses
+   * to be typed into. The dropdown still opens nothing; the list is only ever
+   * raised by typing, so there is no second path to guard.
+   */
+  disabled = false,
 }: {
   selected: CustomerDto | null
   typedName: string
   onTypedName: (name: string) => void
   onSelect: (customer: CustomerDto | null) => void
-  variant?: 'field' | 'baseline'
+  variant?: 'field' | 'baseline' | 'toolbar'
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -62,15 +69,24 @@ export function CustomerSelector({
   )
 
   const baseline = variant === 'baseline'
+  const toolbar = variant === 'toolbar'
   return (
-    <div className={`customer ${baseline ? 'baseline-field' : 'field'}`}>
-      <span className={baseline ? 'baseline-field__label' : 'field__label'}>
-        {baseline ? 'Customer :' : 'Customer'}
-      </span>
+    <div
+      className={`customer ${toolbar ? 'customer--toolbar' : baseline ? 'baseline-field' : 'field'}`}
+    >
+      {/* The toolbar carries no label. GoldLab's grey "نام" chip beside the box
+          is a label rather than a control, and at 40px of toolbar height the
+          placeholder says the same thing without spending the width. */}
+      {toolbar ? null : (
+        <span className={baseline ? 'baseline-field__label' : 'field__label'}>
+          {baseline ? 'Customer :' : 'Customer'}
+        </span>
+      )}
       <span className="input-group">
         <GhostInput
           value={typedName}
           onChange={(next) => {
+            if (disabled) return
             onTypedName(next)
             setOpen(true)
             // Typing past a chosen customer clears the selection, so a sale can
@@ -82,8 +98,13 @@ export function CustomerSelector({
             if (found) pick(found)
           }}
           suggestions={matches.map((m) => m.name)}
-          className={baseline ? 'baseline-field__input' : 'input'}
-          placeholder={baseline ? 'Walk In Customer' : 'Name, code or mobile — or type a walk-in name'}
+          className={baseline || toolbar ? 'baseline-field__input' : 'input'}
+          placeholder={
+            baseline || toolbar
+              ? 'Walk In Customer'
+              : 'Name, code or mobile — or type a walk-in name'
+          }
+          disabled={disabled}
           inputRef={nameRef}
           ariaLabel="Customer"
           onKeyDown={(event) => {

@@ -3026,13 +3026,203 @@ a {
 
 .retail {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   gap: 2px;
-  /* head · slip tabs · notices · body · actions. The notices row is always
-     present even when empty, so the body and the action bar cannot slide onto
-     each other's tracks. */
+  /* toolbar · head · record state · notices · body · actions. The slip-tab row
+     is gone with the tabs. The notices row is always present even when empty,
+     so the body and the action bar cannot slide onto each other's tracks. */
   flex: 1;
   min-height: 0;
+}
+
+/* ── the toolbar ──────────────────────────────────────────────────────────────
+   GoldLab's CustomerEntry row, mirrored to LTR and set in our own tokens: ink
+   ground, brass primaries, parchment rules. Nothing here is a new colour — the
+   reference's blue/green/red scheme is exactly what does not come across.
+
+   One row, at 44px. GoldLab uses two, which costs 88px of a 830px window; the
+   controls fit on one because the labels are shorter in English and the four
+   navigation steps are icon-and-word rather than full Urdu phrases.
+*/
+.retail__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: var(--size-button-height);
+  padding: 0 var(--space-12);
+  background: var(--colour-ink-panel);
+  border-radius: var(--size-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+/* A hairline of the chrome's own language, separating the three clusters:
+   customer · navigation · save and the number. */
+.retail__toolbar .toolbar__rule {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--space-8) var(--space-4);
+  background: var(--colour-chrome-line);
+}
+
+.retail__toolbar .toolbar__add {
+  flex: 0 0 auto;
+  width: var(--size-input-group-button);
+  height: var(--size-input-group-button);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The customer combo takes the slack, because it is the only control here whose
+   content has no fixed width. */
+.retail__toolbar .customer--toolbar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 180px;
+}
+
+.retail__toolbar .customer--toolbar .input-group {
+  display: flex;
+  align-items: center;
+}
+
+.retail__toolbar .customer--toolbar .baseline-field__input {
+  height: var(--size-input-group-button);
+  padding: 0 var(--space-8);
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  color: var(--colour-text);
+  font-size: var(--font-size-base);
+}
+
+.retail__toolbar .customer--toolbar .baseline-field__input:disabled {
+  background: var(--colour-disabled-surface);
+  color: var(--colour-disabled-text);
+}
+
+.retail__toolbar .toolbar__new {
+  flex: 0 0 auto;
+  height: var(--size-input-group-button);
+  padding: 0 var(--space-12);
+  letter-spacing: var(--tracking-label);
+  font-size: var(--font-size-sm);
+}
+
+.toolbar__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* The four steps. Same height and treatment, so the pair that goes dead at an
+   edge reads as the same control unavailable rather than a different control. */
+.toolbar__nav .toolbar__step {
+  height: var(--size-input-group-button);
+  padding: 0 var(--space-8);
+  gap: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-label);
+  white-space: nowrap;
+}
+
+/* Disabled on ink. The light-side disabled tokens vanish against this ground,
+   so the treatment is a dimming of the control's own colour instead. */
+.retail__toolbar .toolbar__step:disabled,
+.retail__toolbar .toolbar__add:disabled,
+.retail__toolbar .toolbar__save:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.retail__toolbar .toolbar__save {
+  flex: 0 0 auto;
+  height: var(--size-input-group-button);
+  padding: 0 var(--space-24);
+  letter-spacing: var(--tracking-label);
+}
+
+.toolbar__jump {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex: 0 0 auto;
+}
+
+.toolbar__jump-label {
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--colour-gold-on-dark);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.toolbar__jump-input {
+  width: 84px;
+  height: var(--size-input-group-button);
+  text-align: center;
+  font-weight: 600;
+}
+
+.toolbar__jump-error {
+  font-size: var(--font-size-xs);
+  color: var(--colour-chrome-danger);
+  background: var(--colour-chrome-danger-fill);
+  border-radius: var(--size-radius);
+  padding: var(--space-4) var(--space-8);
+  white-space: nowrap;
+}
+
+/* ── what the operator is looking at ──────────────────────────────────────────
+   Only present when a STORED invoice is on screen. A new bill shows nothing
+   here, because "you are typing a new bill" is what an empty form already says.
+*/
+.record-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-12);
+  padding: var(--space-4) var(--space-12);
+  background: var(--colour-parchment);
+  border-left: 3px solid var(--colour-gold-metal);
+  border-radius: var(--size-radius);
+}
+
+.record-state.is-void {
+  background: var(--colour-negative-soft);
+  border-left-color: var(--colour-negative);
+}
+
+.record-state__what {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  color: var(--colour-gold-deep);
+  text-transform: uppercase;
+}
+
+.record-state.is-void .record-state__what {
+  color: var(--colour-negative);
+}
+
+.record-state__why {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+}
+
+.record-state__edit,
+.record-state__voided {
+  height: var(--size-input-group-button);
+  padding: 0 var(--space-12);
+  font-size: var(--font-size-xs);
+  letter-spacing: var(--tracking-label);
+}
+
+.record-state__voided {
+  margin-left: auto;
 }
 
 /* ── the header strip ─────────────────────────────────────────────────────── */
