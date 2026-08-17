@@ -79,7 +79,7 @@ export class PartyService {
       notes: emptyToNull(input.notes),
     }
 
-    const created = this.deps.parties.create(party)
+    const created = this.deps.parties.create(party, actor.id)
 
     this.deps.audit.append({
       branchId: created.branchId,

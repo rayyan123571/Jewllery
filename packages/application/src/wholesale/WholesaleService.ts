@@ -189,10 +189,6 @@ export class WholesaleService {
       branchId: input.branchId,
       partyId: input.partyId,
       kind: 'ISSUE',
-      invoiceNo: this.deps.wholesale.nextInvoiceNo(
-        input.branchId,
-        this.deps.settings.wholesaleInvoicePrefix(),
-      ),
       entryDate: input.entryDate,
       ratePerTola: rate,
       totalGross: totals.grossTotal,
@@ -284,10 +280,6 @@ export class WholesaleService {
       branchId: input.branchId,
       partyId: input.partyId,
       kind: 'SETTLEMENT',
-      invoiceNo: this.deps.wholesale.nextInvoiceNo(
-        input.branchId,
-        this.deps.settings.settlementInvoicePrefix(),
-      ),
       entryDate: input.entryDate,
       ratePerTola: needsRate ? (rate as Money) : null,
       totalGross: Weight.ZERO,
@@ -351,7 +343,6 @@ export class WholesaleService {
       branchId: original.entry.branchId,
       partyId: original.entry.partyId,
       kind: original.entry.kind,
-      invoiceNo: `${original.entry.invoiceNo}-REV`,
       entryDate: this.deps.rates.today(),
       ratePerTola: original.entry.ratePerTola,
       totalGross: original.entry.totalGross.negated(),
@@ -372,7 +363,7 @@ export class WholesaleService {
 
     this.deps.wholesale.markReversed(original.entry.id, reversal.entry.id)
     this.audit(actor, 'TRANSACTION_REVERSED', reversal.entry, {
-      reversed: original.entry.invoiceNo,
+      reversed: original.entry.invoiceNumber,
       reason: reason.trim(),
     })
     return reversal
@@ -400,8 +391,35 @@ export class WholesaleService {
     return this.deps.wholesale.findById(id)
   }
 
-  findByInvoiceNo(branchId: string, invoiceNo: string): WholesaleEntryWithLines | null {
-    return this.deps.wholesale.findByInvoiceNo(branchId, invoiceNo.trim())
+  /**
+   * One slip out of the ISSUE book, by the number printed on it.
+   *
+   * The issue book is the one the slip screen edits. A settlement is read from
+   * the ledger, where it belongs, rather than through the arrows.
+   */
+  findByNumber(branchId: string, invoiceNumber: number): WholesaleEntryWithLines | null {
+    return this.deps.wholesale.findByNumber(branchId, 'ISSUE', invoiceNumber)
+  }
+
+  /** A PREVIEW of the next slip number. Reserves nothing, burns nothing. */
+  peekNextNumber(): number {
+    return this.deps.wholesale.peekNextNumber('ISSUE')
+  }
+
+  /**
+   * Where the four navigation controls can go from the slip on screen.
+   *
+   * Reversed slips are skipped unless asked for. A reversal never deletes the
+   * original and never reuses its number, so hiding it leaves a visible gap in
+   * the numbering — which is correct, and is what tells the operator a slip was
+   * corrected rather than lost.
+   */
+  neighbours(
+    branchId: string,
+    current: number | null,
+    includeReversed: boolean,
+  ): { first: number | null; previous: number | null; next: number | null; last: number | null } {
+    return this.deps.wholesale.neighbours(branchId, current, includeReversed)
   }
 
   listRecent(branchId: string, limit = 50): WholesaleEntry[] {
@@ -453,7 +471,7 @@ export class WholesaleService {
       action,
       entity: 'wholesale_entries',
       entityId: entry.id,
-      detail: JSON.stringify({ invoiceNo: entry.invoiceNo, ...detail }),
+      detail: JSON.stringify({ invoiceNumber: entry.invoiceNumber, ...detail }),
     })
   }
 }

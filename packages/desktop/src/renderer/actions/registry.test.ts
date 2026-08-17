@@ -65,10 +65,17 @@ describe('a not-built action explains itself', () => {
   it('names the module and the milestone in its hover text', () => {
     const action = registry['wholesale.hold']
     expect(action.kind).toBe('ready')
-    // HOLD is wired; Purchase is not. Take an unbuilt one for the message test.
+    // Import-from-stock is a feature that has not been drawn. Its owning
+    // module IS built now, so the message says "screen not built yet" rather
+    // than promising a milestone that has already shipped — an unbuilt module
+    // still gets the milestone form, which quick.party-balance shows.
     const unbuilt = registry['wholesale.import-from-stock']
     expect(unbuilt.kind).toBe('not-built')
-    expect(actionTitle(unbuilt)).toBe('Stock Management — not built yet (M4)')
+    expect(actionTitle(unbuilt)).toBe('Stock Management — screen not built yet')
+
+    const milestone = registry['quick.party-balance']
+    expect(milestone.kind).toBe('not-built')
+    expect(actionTitle(milestone)).toBe('Customers — not built yet (M1)')
   })
 
   it('attributes a control to the module that actually blocks it', () => {

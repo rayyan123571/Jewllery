@@ -5,6 +5,8 @@ import { Icon } from './shell/Icon.js'
 import { MODULES, isModuleBuilt, moduleById, type ModuleId } from './shell/modules.js'
 import { ModulePlaceholder } from './shell/ModulePlaceholder.js'
 import { WholesaleScreen } from './modules/wholesale/WholesaleScreen.js'
+import { PurchaseScreen } from './modules/purchase/PurchaseScreen.js'
+import { StockScreen } from './modules/stock/StockScreen.js'
 import { RetailScreen } from './modules/retail/RetailScreen.js'
 import { GoldRateScreen } from './modules/rates/GoldRateScreen.js'
 import { SettingsScreen } from './modules/settings/SettingsScreen.js'
@@ -21,15 +23,52 @@ import type { BootstrapDto } from '../shared/ipc.js'
  * it; it is the controls *inside* that module which are disabled.
  */
 
+/**
+ * What the shell holds for the moment before bootstrap answers.
+ *
+ * The shop is BLANK here rather than carrying a name, and that is deliberate:
+ * a placeholder name would be somebody else's shop on screen for a frame, and
+ * whoever saw it would have no way to tell it from their own data failing to
+ * load. `shopName` below turns a blank into the neutral wordmark.
+ */
 const EMPTY_BOOTSTRAP: BootstrapDto = {
   branchId: '',
   branchName: 'Main Branch',
+  shop: {
+    name: '',
+    tagline: '',
+    ownerName: '',
+    secondOwnerName: '',
+    phone1: '',
+    phone2: '',
+    phone3: '',
+    address: '',
+  },
+  receiptFooter: '',
   user: null,
   users: [],
   rates: [],
   backup: { lastBackupAt: null, lastBackupDisplay: 'Never', daysSince: null, integrityOk: false },
   databaseConnected: false,
   sidebarCollapsed: null,
+}
+
+/**
+ * The shop's name, and the two letters that stand for it on the icon rail.
+ *
+ * A shop that has not filled its name in yet gets a neutral wordmark rather
+ * than a blank space where the menu's heading should be — and the crest takes
+ * the initials of whatever IS there, so "CHAUDHRY GOLD" reads CG the moment it
+ * is typed.
+ */
+function shopName(shop: BootstrapDto['shop']): string {
+  return shop.name.trim() || 'GOLD JEWELLERS'
+}
+
+function shopCrest(shop: BootstrapDto['shop']): string {
+  const words = shopName(shop).split(/[\s-]+/).filter(Boolean)
+  const letters = words.slice(0, 2).map((word) => word[0] ?? '')
+  return letters.join('').toUpperCase() || 'GJ'
 }
 
 /**
@@ -87,6 +126,12 @@ function AppShell() {
   /** Set when the operator asks to change who is working. */
   const [switching, setSwitching] = useState(false)
   /**
+   * A purchase the stock ledger asked to open — its reference column names a
+   * purchase number, and clicking it lands here. Consumed by the Purchase
+   * screen exactly once, then cleared.
+   */
+  const [pendingPurchase, setPendingPurchase] = useState<number | null>(null)
+  /**
    * The active module, readable from a callback that must not be rebuilt when it
    * changes. `toggleSidebar` is handed to the action registry, which is memoised
    * — making it depend on `active` would rebuild every action on every
@@ -126,6 +171,20 @@ function AppShell() {
     const next = await window.api.bootstrap()
     setBoot(next)
   }, [])
+
+  /**
+   * The shop's own details changed, so whatever shows them has to catch up.
+   *
+   * The menu's wordmark and the slip preview both read the bootstrap payload,
+   * and Settings is a different screen from both — so it raises an event and
+   * the shell re-reads. The alternative is threading a setter down through
+   * every screen that might one day edit something the shell displays.
+   */
+  useEffect(() => {
+    const onSaved = (): void => void reload()
+    window.addEventListener('jewellery:shop-updated', onSaved)
+    return () => window.removeEventListener('jewellery:shop-updated', onSaved)
+  }, [reload])
 
   const refreshRates = useCallback(async () => {
     const rates = await window.api.currentRates()
@@ -264,13 +323,11 @@ function AppShell() {
         <div className="login">
           <div className="login__card login__card--users">
             <div className="login__brand">
-              <span className="sidebar__crest">AH</span>
-              <span className="sidebar__name">
-                AL-HARAM
-                <br />
-                GOLD JEWELLERS
-              </span>
-              <span className="login__tagline">Trust in Purity</span>
+              <span className="sidebar__crest">{shopCrest(boot.shop)}</span>
+              <span className="sidebar__name">{shopName(boot.shop)}</span>
+              {boot.shop.tagline.trim() ? (
+                <span className="login__tagline">{boot.shop.tagline}</span>
+              ) : null}
             </div>
             {boot.users.length > 0 ? (
               <>
@@ -349,8 +406,31 @@ function AppShell() {
               <WholesaleScreen
                 today={today}
                 rates={boot.rates}
+                shop={boot.shop}
+                receiptFooter={boot.receiptFooter}
                 onRateSaved={() => void reload()}
                 onPosted={() => void reload()}
+              />
+            ) : active === 'purchase' ? (
+              <PurchaseScreen
+                today={today}
+                rates={boot.rates}
+                shop={boot.shop}
+                receiptFooter={boot.receiptFooter}
+                onRateSaved={() => void reload()}
+                onPosted={() => void reload()}
+                pendingOpen={pendingPurchase}
+                onPendingOpenHandled={() => setPendingPurchase(null)}
+              />
+            ) : active === 'stock' ? (
+              <StockScreen
+                today={today}
+                rates={boot.rates}
+                onRateSaved={() => void reload()}
+                onOpenPurchase={(invoiceNumber) => {
+                  setPendingPurchase(invoiceNumber)
+                  setActive('purchase')
+                }}
               />
             ) : active === 'sale-retail' ? (
               <RetailScreen
@@ -389,17 +469,20 @@ function Sidebar({
   return (
     <nav className="sidebar" aria-label="Main menu">
       <div className="sidebar__brand">
-        <span className="sidebar__crest">AH</span>
+        <span className="sidebar__crest">{shopCrest(boot.shop)}</span>
         {/* The wordmark and the tagline are hidden by CSS at 64px, not removed
             from the DOM: the crest stays, and so does everything a test or a
-            screen reader can reach. */}
+            screen reader can reach.
+
+            Both are the shop's own now, from Settings. They were typed in here,
+            so every shop using this application had AL-HARAM at the top of its
+            menu whoever it belonged to. A blank tagline takes its line with it
+            rather than leaving a gap under the name. */}
         <span className="sidebar__lockup">
-          <span className="sidebar__name">
-            AL-HARAM
-            <br />
-            GOLD JEWELLERS
-          </span>
-          <span className="sidebar__tagline">Trust in Purity</span>
+          <span className="sidebar__name">{shopName(boot.shop)}</span>
+          {boot.shop.tagline.trim() ? (
+            <span className="sidebar__tagline">{boot.shop.tagline}</span>
+          ) : null}
         </span>
         <Action
           id="app.sidebar-toggle"

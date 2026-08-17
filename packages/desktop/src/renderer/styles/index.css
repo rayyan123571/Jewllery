@@ -781,17 +781,36 @@ a {
    Everything here is `min-height: 0`. Without it a flex or grid child refuses
    to shrink below its content and the overflow reappears at the page level,
    which is the whole defect. */
+/*
+ * FLEX, not a grid of positional tracks — the same fix `.retail` carries, and
+ * for the same reason.
+ *
+ * The record-state strip only renders when a STORED slip is on screen, so the
+ * number of children changes. With `grid-template-rows: auto minmax(0, 1fr)`
+ * the flexible track was POSITIONAL: open a slip and everything shifted down
+ * one, so the body fell to an implicit `auto` row and the 1fr landed on the
+ * strip. A column flex box cannot make that mistake — the body is the only
+ * thing that grows, whatever else is or is not present.
+ */
 .screen {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-16);
   flex: 1;
   min-height: 0;
 }
 
+.screen > * {
+  flex: 0 0 auto;
+}
+
 .screen__head {
   display: grid;
   gap: var(--space-12);
+}
+
+.screen > .screen__body {
+  flex: 1 1 auto;
 }
 
 .screen__body {
@@ -3093,7 +3112,7 @@ a {
    controls fit on one because the labels are shorter in English and the four
    navigation steps are icon-and-word rather than full Urdu phrases.
 */
-.retail__toolbar {
+.invoice-toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-8);
@@ -3106,14 +3125,14 @@ a {
 
 /* A hairline of the chrome's own language, separating the three clusters:
    customer · navigation · save and the number. */
-.retail__toolbar .toolbar__rule {
+.invoice-toolbar .toolbar__rule {
   width: 1px;
   align-self: stretch;
   margin: var(--space-8) var(--space-4);
   background: var(--colour-chrome-line);
 }
 
-.retail__toolbar .toolbar__add {
+.invoice-toolbar .toolbar__add {
   flex: 0 0 auto;
   width: var(--size-input-group-button);
   height: var(--size-input-group-button);
@@ -3125,18 +3144,18 @@ a {
 
 /* The customer combo takes the slack, because it is the only control here whose
    content has no fixed width. */
-.retail__toolbar .customer--toolbar {
+.invoice-toolbar .customer--toolbar {
   position: relative;
   flex: 1 1 auto;
   min-width: 180px;
 }
 
-.retail__toolbar .customer--toolbar .input-group {
+.invoice-toolbar .customer--toolbar .input-group {
   display: flex;
   align-items: center;
 }
 
-.retail__toolbar .customer--toolbar .baseline-field__input {
+.invoice-toolbar .customer--toolbar .baseline-field__input {
   height: var(--size-input-group-button);
   padding: 0 var(--space-8);
   background: var(--colour-surface);
@@ -3146,12 +3165,12 @@ a {
   font-size: var(--font-size-base);
 }
 
-.retail__toolbar .customer--toolbar .baseline-field__input:disabled {
+.invoice-toolbar .customer--toolbar .baseline-field__input:disabled {
   background: var(--colour-disabled-surface);
   color: var(--colour-disabled-text);
 }
 
-.retail__toolbar .toolbar__new {
+.invoice-toolbar .toolbar__new {
   flex: 0 0 auto;
   height: var(--size-input-group-button);
   padding: 0 var(--space-12);
@@ -3180,18 +3199,42 @@ a {
 
 /* Disabled on ink. The light-side disabled tokens vanish against this ground,
    so the treatment is a dimming of the control's own colour instead. */
-.retail__toolbar .toolbar__step:disabled,
-.retail__toolbar .toolbar__add:disabled,
-.retail__toolbar .toolbar__save:disabled {
+.invoice-toolbar .toolbar__step:disabled,
+.invoice-toolbar .toolbar__add:disabled,
+.invoice-toolbar .toolbar__save:disabled {
   opacity: 0.38;
   cursor: not-allowed;
 }
 
-.retail__toolbar .toolbar__save {
+.invoice-toolbar .toolbar__save {
   flex: 0 0 auto;
   height: var(--size-input-group-button);
   padding: 0 var(--space-24);
   letter-spacing: var(--tracking-label);
+}
+
+/* ── the same toolbar, over the wholesale book ────────────────────────────────
+   The slip toolbar wears `invoice-toolbar` for its look and adds only what its
+   own combo needs. The party selector renders a `field` wrapper the retail
+   customer combo does not, so the height is set on that rather than a copy of
+   the whole block being kept in step by hand.
+*/
+/* One column, not two: the Code box is not rendered here, and the two-column
+   grid `.party` carries would otherwise hold 110px open for a field that does
+   not exist. `grid-column: span 2` goes with it — this is a flex child now. */
+.invoice-toolbar .party--toolbar {
+  display: block;
+  grid-column: auto;
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 180px;
+}
+
+/* The combo takes the toolbar's height rather than the field strip's, so it
+   lines up with the four navigation steps beside it. */
+.invoice-toolbar .party--toolbar .input-group,
+.invoice-toolbar .party--toolbar .input {
+  height: var(--size-input-group-button);
 }
 
 .toolbar__jump {
@@ -4358,4 +4401,188 @@ a {
 .drag-strip .window-controls__close:hover:not(:disabled) {
   background: var(--colour-chrome-close);
   color: var(--colour-text-inverse);
+}
+
+/* ── the slip header, as it will print ────────────────────────────────────────
+   Beside the shop's own fields on the Settings screen. Deliberately black on
+   white with a hard border: this is a facsimile of 1-bit thermal paper, and
+   dressing it in the application's parchment would make it look like part of
+   the screen rather than like the thing that comes out of the printer.
+*/
+.shop-preview {
+  margin-top: var(--space-16);
+  padding: var(--space-8) var(--space-12);
+  border: 2px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  color: #000;
+  text-align: center;
+}
+
+.shop-preview__name {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.shop-preview__line {
+  font-size: var(--font-size-xs);
+  line-height: 1.8;
+}
+
+/* ── Settings, as four sections ───────────────────────────────────────────────
+   A reading list down the left and one section at a time on the right. The old
+   screen stacked everything in one column, so the shopkeeper looking for "change
+   my shop's name" scrolled past two tables of worked arithmetic to find it.
+*/
+.settings__split {
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+  gap: var(--space-16);
+  min-height: 0;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  align-content: start;
+}
+
+/* Two lines per entry: what it is, and what is inside it. The second line is
+   what makes the list readable without opening every section to find out. */
+.settings-nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  width: 100%;
+  padding: var(--space-12);
+  text-align: left;
+  background: var(--colour-surface);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  color: var(--colour-text);
+  cursor: pointer;
+}
+
+.settings-nav__item:hover {
+  border-color: var(--colour-gold-metal);
+}
+
+.settings-nav__item.is-active {
+  background: var(--colour-parchment);
+  border-color: var(--colour-gold-metal);
+  box-shadow: inset 3px 0 0 var(--colour-gold-metal);
+}
+
+.settings-nav__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-nav__label {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+
+.settings-nav__hint {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+}
+
+/* The section itself scrolls, not the page — the same rule every other screen
+   in this application follows. */
+.settings-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-4);
+}
+
+.settings-head {
+  margin-bottom: var(--space-12);
+}
+
+.settings-head__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--colour-text);
+}
+
+.settings-head__line {
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--colour-text-muted);
+  max-width: 68ch;
+}
+
+/* Two cards side by side where there is room, one under the other where there
+   is not. `--wide` is for the cards carrying a table, which need the full row. */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: var(--space-16);
+  align-items: start;
+}
+
+.settings-grid__wide {
+  grid-column: 1 / -1;
+}
+
+/* ── purchase and stock (M6 / M4) ─────────────────────────────────────────────
+   The purchase grid wears the wholesale grid's clothes. Its one structural
+   difference is the last column: the bucket selector rides beside the delete
+   button, because the column list is fixed and a bucket is a property of the
+   line, not a tenth column. The column is wider to hold both. */
+
+.col--bucket-action {
+  width: calc(var(--size-col-action) + 108px);
+}
+
+.bucket-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bucket-action__select {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+/* The stock ledger's reference column: a purchase number that opens the
+   purchase. Styled as a link, because "click this to see the source" is what
+   an underline has always meant. */
+.link {
+  color: var(--color-accent, #8a6d3b);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
+
+/* ── inventory setup (M4 stage 1) ─────────────────────────────────────────────
+   Two shop-owned lists side by side: the category tree and the locations.
+   Children indent one step; the tree never goes deeper, so one step is all
+   the indentation that will ever exist. */
+
+.setup-column {
+  flex: 1;
+  min-width: 0;
+  align-self: flex-start;
+}
+
+.setup-tree__group {
+  margin-bottom: 4px;
+}
+
+.setup-tree__child {
+  padding-left: 20px;
 }

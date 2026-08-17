@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "main": "dist-electron/main.cjs",
-  "comment": "Electron. main/ is the composition root and may see everything; renderer/ is sandboxed React and may see neither persistence nor the filesystem. NOTE: no \"type\": \"module\" here on purpose — vite-plugin-electron reads it to choose its output format, and both the main process and a sandboxed preload must be CommonJS.",
+  "comment": "Electron. main/ is the composition root and may see everything; renderer/ is sandboxed React and may see neither persistence nor the filesystem. NOTE: no \"type\": \"module\" here on purpose \u00e2\u20ac\u201d vite-plugin-electron reads it to choose its output format, and both the main process and a sandboxed preload must be CommonJS.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,13 +11,13 @@
     "start": "electron ."
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
     "@jewellery/application": "*",
     "@jewellery/domain": "*",
     "@jewellery/persistence": "*",
     "@jewellery/printing": "*",
-    "better-sqlite3": "^13.0.2"
-  },
-  "devDependencies": {
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.0.10",
@@ -64,6 +64,7 @@
     },
     "extraMetadata": {
       "main": "dist-electron/main.cjs"
-    }
+    },
+    "electronVersion": "37.10.3"
   }
 }

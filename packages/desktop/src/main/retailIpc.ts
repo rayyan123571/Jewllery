@@ -10,6 +10,8 @@ import type {
   RetailListRequest,
   RetailLoadRequest,
   RetailPostRequest,
+  PrintSettingsDto,
+  ShopProfileDto,
   WastageRuleChoice,
 } from '../shared/ipc.js'
 import type { Container } from './container.js'
@@ -40,6 +42,10 @@ import {
   retailVoid,
   retailWastageRule,
   retailWastageRuleSet,
+  printSettings,
+  setPrintSettings,
+  setShopProfile,
+  shopProfile,
   type RetailHandlerDeps,
 } from './retailHandlers.js'
 
@@ -63,6 +69,7 @@ export function registerRetailHandlers(container: Container, session: Session): 
     customers: container.retailCustomers,
     settings: new Settings(container.repositories.settings),
     shopProfile: () => container.repositories.shop.get(),
+    shop: container.repositories.shop,
     session,
   }
 
@@ -146,6 +153,19 @@ export function registerRetailHandlers(container: Container, session: Session): 
 
   ipcMain.handle(IPC_RETAIL.roundingSet, (_event, step: number) =>
     retailRoundingSet(deps, step),
+  )
+
+  // ── the shop's identity, and what goes on the paper ──────────────────────
+  ipcMain.handle(IPC_RETAIL.shopProfile, () => shopProfile(deps))
+
+  ipcMain.handle(IPC_RETAIL.shopProfileSet, (_event, profile: ShopProfileDto) =>
+    setShopProfile(deps, profile),
+  )
+
+  ipcMain.handle(IPC_RETAIL.printSettings, () => printSettings(deps))
+
+  ipcMain.handle(IPC_RETAIL.printSettingsSet, (_event, changes: Partial<PrintSettingsDto>) =>
+    setPrintSettings(deps, changes),
   )
 
   /**

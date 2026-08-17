@@ -64,6 +64,18 @@ const noopApi = {
   bootstrap: vi.fn(async () => ({
     branchId: 'branch-1',
     branchName: 'Main Branch',
+    shop: {
+      name: 'AL-HARAM GOLD JEWELLERS',
+      tagline: 'Trust in Purity',
+      ownerName: 'Haji Abdul Rehman',
+      secondOwnerName: '',
+      phone1: '0300-7779999',
+      phone2: '',
+      phone3: '',
+      address: 'Sona Bazaar, Lahore',
+    },
+    receiptFooter: 'Thank you — please visit again',
+
     user: { id: 'u1', name: 'Admin', username: 'admin', role: 'ADMIN', mustChangePassword: false },
     rates: [
       // 24K deliberately unpriced: an unset purity is a real state on a fresh
@@ -118,6 +130,16 @@ const noopApi = {
   postIssue: vi.fn(),
   settle: vi.fn(),
   partyLedger: vi.fn(async () => []),
+  // The wholesale screen walks its slip book on mount, exactly as the retail
+  // screen walks the invoice book. An empty book is enough here: this suite is
+  // about which controls exist and whether they are wired.
+  wholesaleNeighbours: vi.fn(async () => ({
+    first: null,
+    previous: null,
+    next: null,
+    last: null,
+  })),
+  wholesaleLoadAsDraft: vi.fn(async () => null),
   setRate: vi.fn(),
   // The Gold Rate screen asks for this on mount. An empty answer is enough:
   // this suite is about which controls exist and whether they are wired.
@@ -130,6 +152,71 @@ const noopApi = {
   // all, in the domain, application and IPC-handler tests.
   retailCalculate: vi.fn(async () => emptyCalculation()),
   retailSave: vi.fn(),
+  purchaseNextInvoiceNo: vi.fn(async () => '1'),
+  purchasePreview: vi.fn(async () => ({
+    lines: [],
+    grossTotalDisplay: '0.000',
+    khalisTotalDisplay: '0.000',
+    amountTotalDisplay: '0.00',
+    rateDisplay: null,
+    rateMissing: false,
+  })),
+  purchaseSave: vi.fn(),
+  purchaseHold: vi.fn(),
+  purchaseCancel: vi.fn(),
+  purchaseNeighbours: vi.fn(async () => ({
+    first: null,
+    previous: null,
+    next: null,
+    last: null,
+  })),
+  purchaseLoadAsDraft: vi.fn(async () => null),
+  purchaseRateFor: vi.fn(async () => null),
+  stockSummary: vi.fn(async () => ({
+    buckets: [],
+    totalGrossDisplay: '0.000',
+    totalKhalisDisplay: '0.000',
+    totalIsNegative: false,
+    negativeBuckets: [],
+    valuationDisplay: null,
+    valuationRateDisplay: null,
+    valuationAtDisplay: '',
+  })),
+  stockLedger: vi.fn(async () => []),
+  stockAdjust: vi.fn(),
+  inventoryItems: vi.fn(async () => []),
+  inventoryItemCreate: vi.fn(),
+  inventoryItemUpdate: vi.fn(),
+  inventoryItemSetActive: vi.fn(),
+  inventoryCategoryTree: vi.fn(async () => []),
+  inventoryCategoryCreate: vi.fn(),
+  inventoryCategoryRename: vi.fn(),
+  inventoryCategorySetActive: vi.fn(),
+  inventoryLocations: vi.fn(async () => []),
+  inventoryLocationCreate: vi.fn(),
+  inventoryLocationRename: vi.fn(),
+  inventoryLocationSetActive: vi.fn(),
+  inventorySummary: vi.fn(async () => ({
+    groupBy: 'category',
+    rows: [],
+    totalCount: 0,
+    totalGrossDisplay: '0.000',
+    totalKhalisDisplay: '0.000',
+    valuationDisplay: null,
+    valuationRateDisplay: null,
+    valuationAtDisplay: '',
+  })),
+  pieceList: vi.fn(async () => []),
+  pieceHistory: vi.fn(async () => null),
+  pieceMove: vi.fn(),
+  openingNextTag: vi.fn(async () => '1'),
+  openingPreview: vi.fn(async () => ({
+    lines: [],
+    count: 0,
+    grossTotalDisplay: '0.000',
+    khalisTotalDisplay: '0.000',
+  })),
+  openingPost: vi.fn(),
   retailHold: vi.fn(),
   retailLoad: vi.fn(async () => null),
   retailList: vi.fn(async () => []),
@@ -181,6 +268,28 @@ const noopApi = {
   retailDraftDiscard: vi.fn(async () => ({ ok: true as const })),
   retailBillAddSlip: vi.fn(),
   retailBillDeleteSlip: vi.fn(),
+  shopProfile: vi.fn(async () => ({
+    name: 'AL-HARAM GOLD JEWELLERS',
+    tagline: 'Trust in Purity',
+    ownerName: 'Haji Abdul Rehman',
+    secondOwnerName: '',
+    phone1: '0300-7779999',
+    phone2: '',
+    phone3: '',
+    address: 'Sona Bazaar, Lahore',
+  })),
+  setShopProfile: vi.fn(async () => ({ ok: true as const })),
+  printSettings: vi.fn(async () => ({
+    paperWidthMm: 80,
+    copies: 1,
+    printAfterSave: false,
+    terms: '',
+    footer: 'Thank you — please visit again',
+    retailPrefix: '',
+    wholesalePrefix: '',
+    settlementPrefix: '',
+  })),
+  setPrintSettings: vi.fn(async () => ({ ok: true as const })),
   retailRounding: vi.fn(async () => ({
     savedStep: 1,
     exactDisplay: 'Rs 1,098,608.35',
@@ -289,6 +398,10 @@ describe('no dead buttons in the rendered shell', () => {
     const mismatched = allButtons()
       .map((button) => {
         const id = button.getAttribute('data-action') as ActionId
+        // A control may also be disabled because it has nothing to act on right
+        // now — PREV on an empty slip book. That is a READY control at an edge,
+        // and it says so in the DOM, so it is not a dead button.
+        if (button.getAttribute('data-unavailable') === 'true') return null
         const expected = registry[id].kind === 'not-built'
         return expected === button.disabled ? null : `${id}: expected disabled=${expected}`
       })
@@ -303,6 +416,10 @@ describe('no dead buttons in the rendered shell', () => {
 
     const missing = allButtons()
       .filter((button) => button.disabled)
+      // A control disabled because it has nothing to act on right now is not
+      // waiting on a module, so it has no module to name. Its hover text says
+      // what it does — "Previous slip (Ctrl+←)" — which is the honest answer.
+      .filter((button) => button.getAttribute('data-unavailable') !== 'true')
       .filter((button) => {
         const title = button.getAttribute('title') ?? ''
         return !title.includes('not built yet')

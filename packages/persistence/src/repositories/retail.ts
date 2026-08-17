@@ -212,10 +212,17 @@ export class SqliteCustomerRepository implements CustomerRepository {
     this.conn
       .get()
       .prepare(
-        `INSERT INTO customers
+        // `branch_id` is filled in from the default branch rather than left
+        // null, and that is load-bearing rather than tidiness: the wholesale
+        // party search is scoped to a branch, so a name added from the retail
+        // counter with no branch on it would be invisible on the wholesale
+        // screen — which is exactly the split this one table exists to end.
+        `INSERT INTO contacts
            (id, code, name, mobile, address, city, cnic, is_walk_in,
-            opening_gold_mg, opening_cash_paisa, created_at, created_by)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+            opening_gold_mg, opening_cash_paisa, created_at, created_by,
+            branch_id, is_active, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,
+                 (SELECT id FROM branches WHERE is_default = 1), 1, ?)`,
       )
       .run(
         id,
@@ -230,6 +237,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
         customer.openingCash.paisa,
         toIsoTimestamp(this.clock.now()),
         createdByUserId,
+        toIsoTimestamp(this.clock.now()),
       )
     return { ...customer, id }
   }
@@ -237,7 +245,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
   findById(id: string): Customer | null {
     const row = this.conn
       .get()
-      .prepare('SELECT * FROM customers WHERE id = ?')
+      .prepare('SELECT * FROM contacts WHERE id = ?')
       .get(id) as CustomerRow | undefined
     return row ? toCustomer(row) : null
   }
@@ -245,7 +253,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
   findByCode(code: string): Customer | null {
     const row = this.conn
       .get()
-      .prepare('SELECT * FROM customers WHERE code = ?')
+      .prepare('SELECT * FROM contacts WHERE code = ?')
       .get(code.trim()) as CustomerRow | undefined
     return row ? toCustomer(row) : null
   }
@@ -265,7 +273,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
       .get()
       .prepare(
         `SELECT id, code, name, mobile, city, is_walk_in
-           FROM customers
+           FROM contacts
           WHERE name LIKE ? COLLATE NOCASE
              OR code LIKE ? COLLATE NOCASE
              OR mobile LIKE ?
@@ -289,7 +297,7 @@ export class SqliteCustomerRepository implements CustomerRepository {
     const row = this.conn
       .get()
       .prepare(
-        `SELECT code FROM customers
+        `SELECT code FROM contacts
           WHERE code LIKE ?
           ORDER BY LENGTH(code) DESC, code DESC
           LIMIT 1`,

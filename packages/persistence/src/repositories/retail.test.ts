@@ -469,7 +469,7 @@ describe('what a sale stores', () => {
     const written = repos.retailSales.post(
       saleOf({ customerId: customer.id, customerNameSnapshot: 'Ahmed Ali' }),
     )
-    db.prepare('UPDATE customers SET name = ? WHERE id = ?').run('Someone Else', customer.id)
+    db.prepare('UPDATE contacts SET name = ? WHERE id = ?').run('Someone Else', customer.id)
 
     // The paper in the customer's hand says Ahmed Ali. So does the screen.
     expect(repos.retailSales.findById(written.sale.id)?.sale.customerNameSnapshot).toBe(

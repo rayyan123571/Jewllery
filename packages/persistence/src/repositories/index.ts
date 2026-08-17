@@ -33,6 +33,14 @@ import type {
 } from '@jewellery/application'
 import type { DatabaseProvider, SqliteDatabase } from '../Database.js'
 import { SqliteWholesaleRepository } from './wholesale.js'
+import { SqlitePurchaseRepository } from './purchase.js'
+import { SqliteStockLedgerRepository } from './stock.js'
+import {
+  SqliteItemCategoryRepository,
+  SqliteItemRepository,
+  SqliteLocationRepository,
+} from './inventory.js'
+import { SqlitePieceRepository } from './pieces.js'
 import {
   SqliteCustomerRepository,
   SqliteRetailBillRepository,
@@ -513,7 +521,7 @@ class SqlitePartyRepository implements PartyRepository {
   ) {}
 
   findById(id: string): Party | null {
-    const row = this.conn.get().prepare('SELECT * FROM parties WHERE id = ?').get(id) as
+    const row = this.conn.get().prepare('SELECT * FROM contacts WHERE id = ?').get(id) as
       | PartyRow
       | undefined
     return row ? toParty(row) : null
@@ -522,7 +530,7 @@ class SqlitePartyRepository implements PartyRepository {
   findByCode(branchId: string, code: string): Party | null {
     const row = this.conn
       .get()
-      .prepare('SELECT * FROM parties WHERE branch_id = ? AND code = ? COLLATE NOCASE')
+      .prepare('SELECT * FROM contacts WHERE branch_id = ? AND code = ? COLLATE NOCASE')
       .get(branchId, code) as PartyRow | undefined
     return row ? toParty(row) : null
   }
@@ -538,9 +546,14 @@ class SqlitePartyRepository implements PartyRepository {
     const rows = this.conn
       .get()
       .prepare(
+        // Walk-ins are excluded, and that is not a leftover from the split.
+        // This table is shared with the retail counter now (migration 015), and
+        // a walk-in is by definition somebody with no account — there is no
+        // ledger for a wholesale balance to sit on. Every OTHER name the retail
+        // counter adds appears here, which is the point of the one table.
         `SELECT id, code, name, mobile, city
-           FROM parties
-          WHERE branch_id = ? AND is_active = 1
+           FROM contacts
+          WHERE branch_id = ? AND is_active = 1 AND is_walk_in = 0
             AND (code LIKE ? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE)
           ORDER BY
             CASE WHEN code LIKE ? COLLATE NOCASE THEN 0
@@ -557,7 +570,7 @@ class SqlitePartyRepository implements PartyRepository {
     const rows = this.conn
       .get()
       .prepare(
-        `SELECT * FROM parties
+        `SELECT * FROM contacts
           WHERE branch_id = ?${includeInactive ? '' : ' AND is_active = 1'}
           ORDER BY name COLLATE NOCASE`,
       )
@@ -565,17 +578,21 @@ class SqlitePartyRepository implements PartyRepository {
     return rows.map(toParty)
   }
 
-  create(party: NewParty): Party {
+  create(party: NewParty, createdByUserId: string): Party {
     const id = randomUUID()
     const stamp = nowFrom(this.clock)
     this.conn
       .get()
       .prepare(
-        `INSERT INTO parties
+        // `is_walk_in` is 0 rather than omitted: this is the same table the
+        // retail counter writes to (migration 015), and a wholesale party is by
+        // definition an account — it carries a ledger balance, which is exactly
+        // what a walk-in cannot do.
+        `INSERT INTO contacts
            (id, branch_id, code, name, mobile, city,
             opening_gold_mg, opening_cash_paisa, is_active, notes,
-            created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+            is_walk_in, created_at, created_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?, ?)`,
       )
       .run(
         id,
@@ -589,6 +606,7 @@ class SqlitePartyRepository implements PartyRepository {
         party.openingCash.paisa,
         party.notes,
         stamp,
+        createdByUserId,
         stamp,
       )
     return this.require(id)
@@ -604,7 +622,7 @@ class SqlitePartyRepository implements PartyRepository {
     this.conn
       .get()
       .prepare(
-        `UPDATE parties SET name = ?, mobile = ?, city = ?, notes = ?, updated_at = ?
+        `UPDATE contacts SET name = ?, mobile = ?, city = ?, notes = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(changes.name, changes.mobile, changes.city, changes.notes, nowFrom(this.clock), id)
@@ -614,7 +632,7 @@ class SqlitePartyRepository implements PartyRepository {
   setActive(id: string, isActive: boolean): Party {
     this.conn
       .get()
-      .prepare('UPDATE parties SET is_active = ?, updated_at = ? WHERE id = ?')
+      .prepare('UPDATE contacts SET is_active = ?, updated_at = ? WHERE id = ?')
       .run(fromBool(isActive), nowFrom(this.clock), id)
     return this.require(id)
   }
@@ -653,5 +671,11 @@ export function createRepositories(
     retailSales: new SqliteRetailSaleRepository(conn, clock),
     retailBills: new SqliteRetailBillRepository(conn, clock),
     retailDrafts: new SqliteRetailDraftRepository(conn, clock),
+    purchases: new SqlitePurchaseRepository(conn, clock),
+    stockLedger: new SqliteStockLedgerRepository(conn, clock),
+    items: new SqliteItemRepository(conn, clock),
+    itemCategories: new SqliteItemCategoryRepository(conn, clock),
+    locations: new SqliteLocationRepository(conn, clock),
+    pieces: new SqlitePieceRepository(conn, clock),
   }
 }

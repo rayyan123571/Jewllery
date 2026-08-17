@@ -10,6 +10,7 @@ import {
   IPC,
   type BackupStatusDto,
   type BootstrapDto,
+  type ShopProfileDto,
   type LoginRequest,
   type LoginResponse,
   type RateDto,
@@ -76,11 +77,34 @@ export function registerIpcHandlers(
     mustChangePassword: user.mustChangePassword,
   })
 
+  /**
+   * The shop, with empty strings where nothing has been filled in.
+   *
+   * Never null on the wire: the screens that read it render a fallback for a
+   * blank name, and a null here would make each of them handle the absence a
+   * second time.
+   */
+  const shopDto = (): ShopProfileDto => {
+    const shop = container.repositories.shop.get()
+    return {
+      name: shop?.name ?? '',
+      tagline: shop?.tagline ?? '',
+      ownerName: shop?.ownerName ?? '',
+      secondOwnerName: shop?.secondOwnerName ?? '',
+      phone1: shop?.phone1 ?? '',
+      phone2: shop?.phone2 ?? '',
+      phone3: shop?.phone3 ?? '',
+      address: shop?.address ?? '',
+    }
+  }
+
   ipcMain.handle(IPC.bootstrap, (): BootstrapDto => {
     const branch = container.repositories.branches.findById(container.branchId)
     return {
       branchId: container.branchId,
       branchName: branch?.name ?? 'Main Branch',
+      shop: shopDto(),
+      receiptFooter: container.settings.receiptFooter(),
       user: session.user ? userDto(session.user) : null,
       users: container.activeUsers().map(userDto),
       rates: ratesDto(),

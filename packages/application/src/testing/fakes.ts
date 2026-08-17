@@ -8,20 +8,32 @@ import {
   type IsoDate,
   type NewAuditEntry,
   type NewGoldRate,
+  type IsoTimestamp,
+  type Piece,
+  type PieceEvent,
   type Purity,
   type NewParty,
   type Party,
   type Role,
   type User,
   type WholesaleEntry,
+  type WholesaleEntryKind,
   type WholesaleEntryWithLines,
   type Customer,
+  type Item,
+  type ItemCategory,
   type NewCustomer,
+  type PurchaseEntry,
+  type PurchaseEntryWithLines,
   type RetailBillWithSlips,
   type RetailSale,
   type RetailSaleWithItems,
   type RetailSlip,
   type Salesman,
+  type StockBucketTotals,
+  type StockLocation,
+  type StockMovement,
+  Weight,
 } from '@jewellery/domain'
 import type {
   AuditRepository,
@@ -29,12 +41,27 @@ import type {
   CustomerSearchResult,
   GoldRateRepository,
   DraftBill,
+  ItemCategoryRepository,
+  ItemRepository,
+  ItemUpdate,
+  LocationRepository,
+  NewItem,
+  NewItemCategory,
+  NewLocation,
+  NewPiece,
+  NewPurchaseEntry,
   NewRetailBill,
   NewRetailSale,
+  NewStockMovement,
+  PieceFilter,
+  PieceRepository,
+  PieceSummaryGroup,
   NewUser,
   NewWholesaleEntry,
   PartyRepository,
   PartySearchResult,
+  PurchaseNeighbours,
+  PurchaseRepository,
   RetailBillRepository,
   RetailDraftRepository,
   RetailNeighbours,
@@ -42,6 +69,8 @@ import type {
   RetailSaleRepository,
   SalesmanRepository,
   SettingsRepository,
+  StockLedgerRepository,
+  StockMovementFilter,
   UserRepository,
   WholesaleRepository,
 } from '../abstractions/repositories.js'
@@ -271,7 +300,7 @@ export class FakePartyRepository implements PartyRepository {
       .sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  create(party: NewParty): Party {
+  create(party: NewParty, _createdByUserId = 'user-1'): Party {
     const now = toIsoTimestamp(this.clock.now())
     const created: Party = {
       ...party,
@@ -327,18 +356,21 @@ export class FakeSettingsRepository implements SettingsRepository {
 export class FakeWholesaleRepository implements WholesaleRepository {
   readonly entries: WholesaleEntryWithLines[] = []
   private sequence = 0
+  /** One counter per book, both starting at 1 — issues and settlements. */
+  private readonly next = new Map<WholesaleEntryKind, number>()
 
   constructor(private readonly clock: Clock) {}
 
   post(entry: NewWholesaleEntry): WholesaleEntryWithLines {
-    if (this.entries.some((e) => e.entry.invoiceNo === entry.invoiceNo)) {
-      throw new Error(`Duplicate invoice number: ${entry.invoiceNo}`)
-    }
     const id = `entry-${++this.sequence}`
     const stored: WholesaleEntryWithLines = {
       entry: {
         ...entry,
         id,
+        // The same rule the SQLite repository follows: a reversal keeps the
+        // number of the slip it corrects, everything else takes the next one
+        // from its own book.
+        invoiceNumber: this.allocate(entry),
         reversedByEntryId: null,
         createdAt: toIsoTimestamp(this.clock.now()),
       },
@@ -348,25 +380,65 @@ export class FakeWholesaleRepository implements WholesaleRepository {
     return stored
   }
 
+  private allocate(entry: NewWholesaleEntry): number {
+    if (entry.reversesEntryId) {
+      const original = this.findById(entry.reversesEntryId)
+      if (original) return original.entry.invoiceNumber
+    }
+    const next = this.peekNextNumber(entry.kind)
+    this.next.set(entry.kind, next + 1)
+    return next
+  }
+
   findById(id: string): WholesaleEntryWithLines | null {
     return this.entries.find((e) => e.entry.id === id) ?? null
   }
 
-  findByInvoiceNo(branchId: string, invoiceNo: string): WholesaleEntryWithLines | null {
+  findByNumber(
+    branchId: string,
+    kind: WholesaleEntryKind,
+    invoiceNumber: number,
+  ): WholesaleEntryWithLines | null {
     return (
       this.entries.find(
         (e) =>
           e.entry.branchId === branchId &&
-          e.entry.invoiceNo.toLowerCase() === invoiceNo.toLowerCase(),
+          e.entry.kind === kind &&
+          e.entry.invoiceNumber === invoiceNumber &&
+          e.entry.reversesEntryId === null,
       ) ?? null
     )
   }
 
-  nextInvoiceNo(branchId: string, prefix: string): string {
+  peekNextNumber(kind: WholesaleEntryKind): number {
+    return this.next.get(kind) ?? 1
+  }
+
+  /** The same scope the SQLite one uses: the ISSUE book, no reversal rows. */
+  neighbours(
+    branchId: string,
+    current: number | null,
+    includeReversed: boolean,
+  ): { first: number | null; previous: number | null; next: number | null; last: number | null } {
     const numbers = this.entries
-      .filter((e) => e.entry.branchId === branchId && e.entry.invoiceNo.startsWith(prefix))
-      .map((e) => Number(/(\d+)\s*$/.exec(e.entry.invoiceNo)?.[1] ?? 0))
-    return `${prefix}${numbers.length === 0 ? 10_001 : Math.max(...numbers) + 1}`
+      .filter(
+        (e) =>
+          e.entry.branchId === branchId &&
+          e.entry.kind === 'ISSUE' &&
+          e.entry.reversesEntryId === null &&
+          (includeReversed || e.entry.reversedByEntryId === null),
+      )
+      .map((e) => e.entry.invoiceNumber)
+      .sort((a, b) => a - b)
+
+    const first = numbers[0] ?? null
+    const last = numbers[numbers.length - 1] ?? null
+    const previous =
+      current === null
+        ? last
+        : (numbers.filter((n) => n < current).pop() ?? null)
+    const next = current === null ? null : (numbers.find((n) => n > current) ?? null)
+    return { first, previous, next, last }
   }
 
   balances(partyId: string): { goldMg: number; cashPaisa: number } {
@@ -748,5 +820,594 @@ export class FakeRetailDraftRepository implements RetailDraftRepository {
 
   clear(branchId: string): void {
     this.rows.delete(branchId)
+  }
+}
+
+/**
+ * The stock ledger, in memory. Append-only, exactly like the real one: the
+ * rows array only ever grows, and every reader sums it fresh.
+ */
+export class FakeStockLedgerRepository implements StockLedgerRepository {
+  readonly rows: StockMovement[] = []
+  private sequence = 0
+
+  constructor(private readonly clock: Clock) {}
+
+  append(movement: NewStockMovement): StockMovement {
+    const stamp = toIsoTimestamp(this.clock.now())
+    const stored: StockMovement = {
+      ...movement,
+      id: `movement-${++this.sequence}`,
+      at: stamp,
+      createdAt: stamp,
+    }
+    this.rows.push(stored)
+    return stored
+  }
+
+  list(filter: StockMovementFilter): StockMovement[] {
+    return this.rows.filter((row) => {
+      if (row.branchId !== filter.branchId) return false
+      const day = row.at.slice(0, 10)
+      if (filter.fromDate && day < filter.fromDate) return false
+      if (filter.toDate && day > filter.toDate) return false
+      if (filter.bucket && row.bucket !== filter.bucket) return false
+      if (filter.kind && row.kind !== filter.kind) return false
+      return true
+    })
+  }
+
+  forRef(refType: string, refId: string): StockMovement[] {
+    return this.rows.filter((row) => row.refType === refType && row.refId === refId)
+  }
+
+  summary(branchId: string): StockBucketTotals[] {
+    const byBucket = new Map<string, { grossMg: number; khalisMg: number }>()
+    for (const row of this.rows) {
+      if (row.branchId !== branchId) continue
+      const totals = byBucket.get(row.bucket) ?? { grossMg: 0, khalisMg: 0 }
+      totals.grossMg += row.gross.milligrams
+      totals.khalisMg += row.khalis.milligrams
+      byBucket.set(row.bucket, totals)
+    }
+    return [...byBucket.entries()].map(([bucket, totals]) => ({
+      bucket: bucket as StockBucketTotals['bucket'],
+      gross: Weight.fromMilligrams(totals.grossMg),
+      khalis: Weight.fromMilligrams(totals.khalisMg),
+    }))
+  }
+}
+
+/**
+ * Purchases, in memory — including the coupling the real repository has: a
+ * POSTED purchase writes its stock movements through the same call that stores
+ * it, and a cancellation writes the reversing rows. A fake that skipped the
+ * stock half would let the "posting moves stock" tests pass vacuously.
+ */
+export class FakePurchaseRepository implements PurchaseRepository {
+  readonly entries: PurchaseEntryWithLines[] = []
+  private sequence = 0
+  private nextNumber = 1
+
+  constructor(
+    private readonly clock: Clock,
+    private readonly stock: FakeStockLedgerRepository,
+  ) {}
+
+  post(entry: NewPurchaseEntry): PurchaseEntryWithLines {
+    const stamp = toIsoTimestamp(this.clock.now())
+
+    if (entry.heldId) {
+      const index = this.entries.findIndex((e) => e.entry.id === entry.heldId)
+      const held = this.entries[index]
+      if (!held || held.entry.status !== 'held') {
+        throw new Error(`No held purchase: ${entry.heldId ?? ''}`)
+      }
+      const updated: PurchaseEntryWithLines = {
+        entry: {
+          ...held.entry,
+          partyId: entry.partyId,
+          entryDate: entry.entryDate,
+          status: entry.status,
+          ratePerTola: entry.ratePerTola,
+          totalGross: entry.totalGross,
+          totalKhalis: entry.totalKhalis,
+          totalAmount: entry.totalAmount,
+          notes: entry.notes,
+          updatedAt: stamp,
+        },
+        lines: entry.lines.map((line, i) => ({ ...line, id: `line-${held.entry.id}-${i}` })),
+      }
+      this.entries[index] = updated
+      if (entry.status === 'posted') this.writeMovements(updated)
+      return updated
+    }
+
+    const id = `purchase-${++this.sequence}`
+    const stored: PurchaseEntryWithLines = {
+      entry: {
+        branchId: entry.branchId,
+        partyId: entry.partyId,
+        entryDate: entry.entryDate,
+        status: entry.status,
+        ratePerTola: entry.ratePerTola,
+        totalGross: entry.totalGross,
+        totalKhalis: entry.totalKhalis,
+        totalAmount: entry.totalAmount,
+        notes: entry.notes,
+        createdByUserId: entry.createdByUserId,
+        id,
+        invoiceNumber: this.nextNumber++,
+        cancelledAt: null,
+        cancelReason: null,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+      lines: entry.lines.map((line, i) => ({ ...line, id: `line-${id}-${i}` })),
+    }
+    this.entries.push(stored)
+    if (entry.status === 'posted') this.writeMovements(stored)
+    return stored
+  }
+
+  private writeMovements(purchase: PurchaseEntryWithLines): void {
+    for (const line of purchase.lines) {
+      this.stock.append({
+        branchId: purchase.entry.branchId,
+        kind: 'PURCHASE_IN',
+        bucket: line.bucket,
+        gross: line.gross,
+        khalis: line.khalis,
+        katt: line.katt,
+        ratePerTola: line.ratePerTola,
+        refType: 'purchase',
+        refId: purchase.entry.id,
+        itemName: line.itemName,
+        note: null,
+        createdByUserId: purchase.entry.createdByUserId,
+      })
+    }
+  }
+
+  cancel(id: string, reason: string): PurchaseEntryWithLines {
+    const index = this.entries.findIndex((e) => e.entry.id === id)
+    const found = this.entries[index]
+    if (!found) throw new Error(`No such purchase: ${id}`)
+    const stamp = toIsoTimestamp(this.clock.now())
+
+    if (found.entry.status === 'posted') {
+      for (const line of found.lines) {
+        this.stock.append({
+          branchId: found.entry.branchId,
+          kind: 'PURCHASE_IN',
+          bucket: line.bucket,
+          gross: line.gross.negated(),
+          khalis: line.khalis.negated(),
+          katt: line.katt,
+          ratePerTola: line.ratePerTola,
+          refType: 'purchase',
+          refId: found.entry.id,
+          itemName: line.itemName,
+          note: `Reversal: ${reason}`,
+          createdByUserId: found.entry.createdByUserId,
+        })
+      }
+    }
+
+    const cancelled: PurchaseEntryWithLines = {
+      ...found,
+      entry: {
+        ...found.entry,
+        status: 'cancelled',
+        cancelledAt: stamp,
+        cancelReason: reason,
+        updatedAt: stamp,
+      },
+    }
+    this.entries[index] = cancelled
+    return cancelled
+  }
+
+  findById(id: string): PurchaseEntryWithLines | null {
+    return this.entries.find((e) => e.entry.id === id) ?? null
+  }
+
+  findByNumber(branchId: string, invoiceNumber: number): PurchaseEntryWithLines | null {
+    return (
+      this.entries.find(
+        (e) => e.entry.branchId === branchId && e.entry.invoiceNumber === invoiceNumber,
+      ) ?? null
+    )
+  }
+
+  neighbours(
+    branchId: string,
+    current: number | null,
+    includeCancelled: boolean,
+  ): PurchaseNeighbours {
+    const numbers = this.entries
+      .filter(
+        (e) =>
+          e.entry.branchId === branchId &&
+          (includeCancelled || e.entry.status !== 'cancelled'),
+      )
+      .map((e) => e.entry.invoiceNumber)
+      .sort((a, b) => a - b)
+
+    const first = numbers[0] ?? null
+    const last = numbers[numbers.length - 1] ?? null
+    const previous =
+      current === null ? last : (numbers.filter((n) => n < current).pop() ?? null)
+    const next = current === null ? null : (numbers.find((n) => n > current) ?? null)
+    return { first, previous, next, last }
+  }
+
+  peekNextNumber(): number {
+    return this.nextNumber
+  }
+
+  listRecent(branchId: string, limit: number): PurchaseEntry[] {
+    return this.entries
+      .filter((e) => e.entry.branchId === branchId)
+      .map((e) => e.entry)
+      .reverse()
+      .slice(0, limit)
+  }
+}
+
+/** The item master, in memory. Case-insensitive code lookup, like the index. */
+export class FakeItemRepository implements ItemRepository {
+  readonly rows: Item[] = []
+  private sequence = 0
+
+  constructor(private readonly clock: Clock) {}
+
+  findById(id: string): Item | null {
+    return this.rows.find((item) => item.id === id) ?? null
+  }
+
+  findByCode(branchId: string, code: string): Item | null {
+    const target = code.toLowerCase()
+    return (
+      this.rows.find(
+        (item) => item.branchId === branchId && item.code.toLowerCase() === target,
+      ) ?? null
+    )
+  }
+
+  search(branchId: string, query: string, includeInactive: boolean, limit: number): Item[] {
+    const term = query.toLowerCase()
+    const matches = (value: string | null): boolean =>
+      value !== null && value.toLowerCase().includes(term)
+    const prefix = (value: string | null): boolean =>
+      value !== null && value.toLowerCase().startsWith(term)
+    return this.rows
+      .filter(
+        (item) =>
+          item.branchId === branchId &&
+          (includeInactive || item.isActive) &&
+          (matches(item.code) || matches(item.name) || matches(item.designNo)),
+      )
+      .sort((a, b) => {
+        const rank = (item: Item): number =>
+          prefix(item.code) ? 0 : prefix(item.name) ? 1 : 2
+        return rank(a) - rank(b) || a.name.localeCompare(b.name)
+      })
+      .slice(0, limit)
+  }
+
+  list(branchId: string, includeInactive: boolean): Item[] {
+    return this.rows
+      .filter((item) => item.branchId === branchId && (includeInactive || item.isActive))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  create(item: NewItem): Item {
+    const stamp = toIsoTimestamp(this.clock.now())
+    const created: Item = {
+      ...item,
+      id: `item-${++this.sequence}`,
+      isActive: true,
+      createdAt: stamp,
+      updatedAt: stamp,
+    }
+    this.rows.push(created)
+    return created
+  }
+
+  update(id: string, changes: ItemUpdate): Item {
+    return this.mutate(id, (item) => ({ ...item, ...changes }))
+  }
+
+  setActive(id: string, isActive: boolean): Item {
+    return this.mutate(id, (item) => ({ ...item, isActive }))
+  }
+
+  private mutate(id: string, change: (item: Item) => Item): Item {
+    const index = this.rows.findIndex((item) => item.id === id)
+    const existing = this.rows[index]
+    if (!existing) throw new Error(`No such item: ${id}`)
+    const updated = { ...change(existing), updatedAt: toIsoTimestamp(this.clock.now()) }
+    this.rows[index] = updated
+    return updated
+  }
+}
+
+export class FakeItemCategoryRepository implements ItemCategoryRepository {
+  readonly rows: ItemCategory[] = []
+  private sequence = 0
+
+  constructor(private readonly clock: Clock) {}
+
+  findById(id: string): ItemCategory | null {
+    return this.rows.find((category) => category.id === id) ?? null
+  }
+
+  list(branchId: string, includeInactive: boolean): ItemCategory[] {
+    return this.rows
+      .filter((c) => c.branchId === branchId && (includeInactive || c.isActive))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  create(category: NewItemCategory): ItemCategory {
+    const stamp = toIsoTimestamp(this.clock.now())
+    const created: ItemCategory = {
+      ...category,
+      id: `category-${++this.sequence}`,
+      isActive: true,
+      createdAt: stamp,
+      updatedAt: stamp,
+    }
+    this.rows.push(created)
+    return created
+  }
+
+  rename(id: string, name: string): ItemCategory {
+    return this.mutate(id, (category) => ({ ...category, name }))
+  }
+
+  setActive(id: string, isActive: boolean): ItemCategory {
+    return this.mutate(id, (category) => ({ ...category, isActive }))
+  }
+
+  private mutate(id: string, change: (category: ItemCategory) => ItemCategory): ItemCategory {
+    const index = this.rows.findIndex((category) => category.id === id)
+    const existing = this.rows[index]
+    if (!existing) throw new Error(`No such category: ${id}`)
+    const updated = { ...change(existing), updatedAt: toIsoTimestamp(this.clock.now()) }
+    this.rows[index] = updated
+    return updated
+  }
+}
+
+export class FakeLocationRepository implements LocationRepository {
+  readonly rows: StockLocation[] = []
+  private sequence = 0
+
+  constructor(private readonly clock: Clock) {}
+
+  findById(id: string): StockLocation | null {
+    return this.rows.find((location) => location.id === id) ?? null
+  }
+
+  list(branchId: string, includeInactive: boolean): StockLocation[] {
+    return this.rows
+      .filter((l) => l.branchId === branchId && (includeInactive || l.isActive))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  create(location: NewLocation): StockLocation {
+    const stamp = toIsoTimestamp(this.clock.now())
+    const created: StockLocation = {
+      ...location,
+      id: `location-${++this.sequence}`,
+      isActive: true,
+      createdAt: stamp,
+      updatedAt: stamp,
+    }
+    this.rows.push(created)
+    return created
+  }
+
+  rename(id: string, name: string): StockLocation {
+    return this.mutate(id, (location) => ({ ...location, name }))
+  }
+
+  setActive(id: string, isActive: boolean): StockLocation {
+    return this.mutate(id, (location) => ({ ...location, isActive }))
+  }
+
+  private mutate(id: string, change: (location: StockLocation) => StockLocation): StockLocation {
+    const index = this.rows.findIndex((location) => location.id === id)
+    const existing = this.rows[index]
+    if (!existing) throw new Error(`No such location: ${id}`)
+    const updated = { ...change(existing), updatedAt: toIsoTimestamp(this.clock.now()) }
+    this.rows[index] = updated
+    return updated
+  }
+}
+
+/**
+ * Pieces, in memory — with the coupling the real repository has: a batch
+ * writes its pieces, their CREATED events AND their FINISHED ledger rows
+ * through one call, and there is no path that writes one side alone. A fake
+ * that skipped the ledger half would let every invariant test pass vacuously.
+ */
+export class FakePieceRepository implements PieceRepository {
+  readonly rows: Piece[] = []
+  readonly eventRows: PieceEvent[] = []
+  private sequence = 0
+  private nextTag = 1
+
+  constructor(
+    private readonly clock: Clock,
+    private readonly stock: FakeStockLedgerRepository,
+    private readonly items: FakeItemRepository,
+  ) {}
+
+  createBatch(
+    pieces: readonly NewPiece[],
+    movement: {
+      readonly kind: 'OPENING' | 'PURCHASE_IN'
+      readonly at: IsoTimestamp
+      readonly note: string | null
+    },
+  ): Piece[] {
+    const stamp = toIsoTimestamp(this.clock.now())
+    return pieces.map((piece) => {
+      const tag = piece.tagNumber ?? this.nextTag++
+      if (piece.tagNumber !== null && piece.tagNumber >= this.nextTag) {
+        this.nextTag = piece.tagNumber + 1
+      }
+      const created: Piece = {
+        ...piece,
+        id: `piece-${++this.sequence}`,
+        tagNumber: tag,
+        status: 'IN_STOCK',
+        statusChangedAt: stamp,
+        createdAt: stamp,
+        updatedAt: stamp,
+      }
+      this.rows.push(created)
+      this.eventRows.push({
+        id: `event-${this.eventRows.length + 1}`,
+        pieceId: created.id,
+        branchId: piece.branchId,
+        at: movement.at,
+        kind: 'CREATED',
+        fromStatus: null,
+        toStatus: 'IN_STOCK',
+        fromLocationId: null,
+        toLocationId: piece.locationId,
+        note: movement.note,
+        createdByUserId: piece.createdByUserId,
+        createdAt: stamp,
+      })
+      const item = this.items.findById(piece.itemId)
+      // Pushed directly rather than through append(): the real repository
+      // writes the movement's own `at` — the opening DATE — not the moment of
+      // typing, and the fake must not diverge on exactly the thing the
+      // "dated once" tests assert.
+      this.stock.rows.push({
+        id: `movement-${created.id}`,
+        branchId: piece.branchId,
+        at: movement.at,
+        kind: movement.kind,
+        bucket: 'FINISHED',
+        gross: piece.gross,
+        khalis: piece.khalis,
+        katt: piece.katt,
+        ratePerTola: null,
+        refType: 'piece',
+        refId: created.id,
+        itemName: `${item?.name ?? ''} · tag ${tag}`,
+        note: movement.note,
+        createdByUserId: piece.createdByUserId,
+        createdAt: stamp,
+      })
+      return created
+    })
+  }
+
+  findById(id: string): Piece | null {
+    return this.rows.find((piece) => piece.id === id) ?? null
+  }
+
+  findByTag(branchId: string, tagNumber: number): Piece | null {
+    return (
+      this.rows.find((p) => p.branchId === branchId && p.tagNumber === tagNumber) ?? null
+    )
+  }
+
+  list(filter: PieceFilter): Piece[] {
+    return this.rows
+      .filter((piece) => {
+        if (piece.branchId !== filter.branchId) return false
+        if (filter.status !== undefined && piece.status !== filter.status) return false
+        if (filter.itemId !== undefined && piece.itemId !== filter.itemId) return false
+        const item = this.items.findById(piece.itemId)
+        if (filter.categoryId !== undefined && (item?.categoryId ?? null) !== filter.categoryId)
+          return false
+        if (filter.purity !== undefined && item?.purity !== filter.purity) return false
+        if (filter.locationId !== undefined && piece.locationId !== filter.locationId)
+          return false
+        if (filter.supplierId !== undefined && (item?.supplierId ?? null) !== filter.supplierId)
+          return false
+        return true
+      })
+      .sort((a, b) => a.tagNumber - b.tagNumber)
+      .slice(0, filter.limit ?? 500)
+  }
+
+  summaryGroups(branchId: string): PieceSummaryGroup[] {
+    const groups = new Map<string, PieceSummaryGroup>()
+    for (const piece of this.rows) {
+      if (piece.branchId !== branchId || piece.status !== 'IN_STOCK') continue
+      const item = this.items.findById(piece.itemId)
+      if (!item) continue
+      const key = `${item.categoryId ?? ''}|${item.purity}|${piece.locationId ?? ''}|${item.supplierId ?? ''}`
+      const existing = groups.get(key)
+      if (existing) {
+        groups.set(key, {
+          ...existing,
+          count: existing.count + 1,
+          grossMg: existing.grossMg + piece.gross.milligrams,
+          khalisMg: existing.khalisMg + piece.khalis.milligrams,
+        })
+      } else {
+        groups.set(key, {
+          categoryId: item.categoryId,
+          purity: item.purity,
+          locationId: piece.locationId,
+          supplierId: item.supplierId,
+          count: 1,
+          grossMg: piece.gross.milligrams,
+          khalisMg: piece.khalis.milligrams,
+        })
+      }
+    }
+    return [...groups.values()]
+  }
+
+  inStockTotals(branchId: string): { grossMg: number; khalisMg: number } {
+    const mine = this.rows.filter(
+      (piece) => piece.branchId === branchId && piece.status === 'IN_STOCK',
+    )
+    return {
+      grossMg: mine.reduce((sum, piece) => sum + piece.gross.milligrams, 0),
+      khalisMg: mine.reduce((sum, piece) => sum + piece.khalis.milligrams, 0),
+    }
+  }
+
+  moveTo(pieceId: string, locationId: string | null, byUserId: string): Piece {
+    const index = this.rows.findIndex((piece) => piece.id === pieceId)
+    const existing = this.rows[index]
+    if (!existing) throw new Error(`No such piece: ${pieceId}`)
+    const stamp = toIsoTimestamp(this.clock.now())
+    const moved: Piece = { ...existing, locationId, updatedAt: stamp }
+    this.rows[index] = moved
+    this.eventRows.push({
+      id: `event-${this.eventRows.length + 1}`,
+      pieceId,
+      branchId: existing.branchId,
+      at: stamp,
+      kind: 'MOVED',
+      fromStatus: null,
+      toStatus: null,
+      fromLocationId: existing.locationId,
+      toLocationId: locationId,
+      note: null,
+      createdByUserId: byUserId,
+      createdAt: stamp,
+    })
+    return moved
+  }
+
+  events(pieceId: string): PieceEvent[] {
+    return this.eventRows.filter((event) => event.pieceId === pieceId)
+  }
+
+  peekNextTag(): number {
+    return this.nextTag
   }
 }

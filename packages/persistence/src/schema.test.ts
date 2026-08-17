@@ -66,7 +66,9 @@ describe('the schema', () => {
   it('creates the retail tables, including the bill that groups slips', () => {
     const tables = userTables(db)
     for (const expected of [
-      'customers',
+      // One directory, shared with wholesale. `customers` and `parties` were
+      // two tables for one person; see migration 015.
+      'contacts',
       'salesmen',
       'retail_sales',
       'retail_sale_items',
@@ -75,6 +77,84 @@ describe('the schema', () => {
     ]) {
       expect(tables).toContain(expected)
     }
+  })
+
+  it('keeps ONE directory of people, not one per screen', () => {
+    const tables = userTables(db)
+    // The two it replaced are gone rather than left behind empty: a table
+    // nothing writes to is one somebody wires a screen back up to later, and
+    // then the shop has two balances for one person again.
+    expect(tables).not.toContain('customers')
+    expect(tables).not.toContain('parties')
+  })
+
+  it('numbers wholesale slips as integers, from its own sequence', () => {
+    const columns = db
+      .prepare("SELECT name FROM pragma_table_info('wholesale_entries')")
+      .all()
+      .map((row) => (row as { name: string }).name)
+    expect(columns).toContain('invoice_number')
+    // The text number is gone: a slip number that sorts lexically puts 'WS-10'
+    // before 'WS-9', which is how NEXT lands on the wrong slip.
+    expect(columns).not.toContain('invoice_no')
+
+    const sequences = db
+      .prepare('SELECT key, next_number FROM invoice_sequences ORDER BY key')
+      .all() as { key: string; next_number: number }[]
+    // Two books beside retail's, each starting at 1 on a shop with no history.
+    expect(sequences).toContainEqual({ key: 'wholesale', next_number: 1 })
+    expect(sequences).toContainEqual({ key: 'settlement', next_number: 1 })
+  })
+
+  it('creates the purchase tables and the stock ledger', () => {
+    const tables = userTables(db)
+    for (const expected of ['purchase_entries', 'purchase_line_items', 'stock_ledger']) {
+      expect(tables).toContain(expected)
+    }
+
+    const sequences = db
+      .prepare('SELECT key, next_number FROM invoice_sequences ORDER BY key')
+      .all() as { key: string; next_number: number }[]
+    // The purchase book, starting at 1 on a shop with no history.
+    expect(sequences).toContainEqual({ key: 'purchase', next_number: 1 })
+  })
+
+  it('keeps stock as a ledger — no balance column anywhere to drift', () => {
+    // The failure this prevents: a mutable quantity that disagrees with the
+    // movements behind it, with no way to say which of the two is lying.
+    const columns = columnsOf(db, 'stock_ledger').map((c) => c.name)
+    expect(columns).toContain('gross_mg')
+    expect(columns).toContain('khalis_mg')
+    expect(columns).not.toContain('balance_mg')
+    expect(columns).not.toContain('quantity')
+
+    const tables = userTables(db)
+    expect(tables).not.toContain('stock_items')
+    expect(tables).not.toContain('stock_balances')
+  })
+
+  it('creates the inventory setup tables', () => {
+    const tables = userTables(db)
+    for (const expected of ['items', 'item_categories', 'locations', 'pieces', 'piece_events']) {
+      expect(tables).toContain(expected)
+    }
+    const sequences = db
+      .prepare('SELECT key, next_number FROM invoice_sequences ORDER BY key')
+      .all() as { key: string; next_number: number }[]
+    expect(sequences).toContainEqual({ key: 'piece_tag', next_number: 1 })
+  })
+
+  it('keeps the item master free of weight and quantity — stock is pieces', () => {
+    // The failure this prevents: an "on hand" counter that cannot say WHICH
+    // 22K ring is on hand, because two of them weigh 4.200 g and 5.800 g.
+    // Every physical article gets its own row (pieces, stage 2), and quantity
+    // is a COUNT of those rows, never a stored number.
+    const columns = columnsOf(db, 'items').map((c) => c.name)
+    expect(columns).not.toContain('quantity')
+    expect(columns).not.toContain('qty')
+    expect(columns).not.toContain('gross_mg')
+    expect(columns).not.toContain('weight_mg')
+    expect(columns).not.toContain('khalis_mg')
   })
 
   it('gives retail_sales its place in a bill, all three columns nullable', () => {

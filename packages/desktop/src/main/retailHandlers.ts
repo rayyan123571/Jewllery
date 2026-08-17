@@ -36,6 +36,7 @@ import {
   type RetailItemInput,
   type RetailDraftInput,
   type RetailSaleService,
+  type ShopRepository,
   type Settings,
 } from '@jewellery/application'
 import { buildRetailReceiptHtml, type RetailReceiptLine } from '@jewellery/printing'
@@ -60,6 +61,8 @@ import type {
   RetailPostRequest,
   RetailPostResult,
   RetailRoundingDto,
+  PrintSettingsDto,
+  ShopProfileDto,
   InvoiceRefDto,
   RetailInvoiceDto,
   RetailNeighboursDto,
@@ -104,6 +107,8 @@ export interface RetailHandlerDeps {
   readonly settings: Settings
   /** For the printed document's letterhead. Null before the shop is set up. */
   readonly shopProfile: () => ShopProfile | null
+  /** Writes it back, from the Settings card. */
+  readonly shop: ShopRepository
   readonly session: Session
 }
 
@@ -751,13 +756,16 @@ export function retailReceipt(deps: RetailHandlerDeps, saleId: string): string |
     if (!found) return null
     const shop = deps.shopProfile()
     return buildRetailReceiptHtml({
+      // `|| null`, not `?? null`: a field the shop CLEARED is stored as an empty
+      // string in the columns the schema declares NOT NULL, and an empty string
+      // would print as a blank line rather than as no line at all.
       shop: {
-        name: shop?.name ?? 'GOLD JEWELLERS',
-        tagline: shop?.tagline ?? null,
-        ownerName: shop?.ownerName ?? null,
-        phone1: shop?.phone1 ?? null,
-        phone2: shop?.phone2 ?? null,
-        address: shop?.address ?? null,
+        name: shop?.name || 'GOLD JEWELLERS',
+        tagline: shop?.tagline || null,
+        ownerName: shop?.ownerName || null,
+        phone1: shop?.phone1 || null,
+        phone2: shop?.phone2 || null,
+        address: shop?.address || null,
       },
       invoiceNo: displayInvoiceNo(deps, found.sale),
       date: found.sale.saleDate,
@@ -779,6 +787,9 @@ export function retailReceipt(deps: RetailHandlerDeps, saleId: string): string |
       balance: found.sale.balance,
       amountInWords: found.sale.amountInWords,
       remarks: found.sale.remarks,
+      // The shop's own words, from Settings. Cleared means printed as nothing.
+      terms: deps.settings.receiptTerms(),
+      footer: deps.settings.receiptFooter(),
       wastageRuleLabel: labelOfRule({
         direction: found.sale.wastageDirection,
         basis: found.sale.wastageBasis,
@@ -1410,6 +1421,95 @@ export function retailRoundingSet(
   try {
     requirePermission(deps, 'canSetGoldRate')
     deps.settings.setRetailRoundingNearest(step)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
+}
+
+// ── the shop's own identity, and what goes on the paper ─────────────────────
+//
+// This is the half of the application the customer keeps. A shop that cannot
+// change its own name on its own slip is a shop running somebody else's
+// stationery, so all of it is editable — and every field is optional, because a
+// one-owner shop with one phone number should get a slip that looks deliberate
+// rather than half-filled.
+
+/** Empty strings, never nulls: a form has to have something to render. */
+export function shopProfile(deps: RetailHandlerDeps): ShopProfileDto {
+  const shop = deps.shopProfile()
+  return {
+    name: shop?.name ?? '',
+    tagline: shop?.tagline ?? '',
+    ownerName: shop?.ownerName ?? '',
+    secondOwnerName: shop?.secondOwnerName ?? '',
+    phone1: shop?.phone1 ?? '',
+    phone2: shop?.phone2 ?? '',
+    phone3: shop?.phone3 ?? '',
+    address: shop?.address ?? '',
+  }
+}
+
+/**
+ * Saves it.
+ *
+ * The NAME is the one field that is refused when empty. Every other line hides
+ * itself when blank, but a slip with no shop name on it is not a shop's slip —
+ * it is a piece of paper with figures on it, and the customer has no way to
+ * tell whose.
+ *
+ * Blank fields are stored as NULL rather than as empty strings, because the
+ * printer's "hide this line" test is a null check and the two must not disagree.
+ */
+export function setShopProfile(
+  deps: RetailHandlerDeps,
+  profile: ShopProfileDto,
+): { ok: true } | { ok: false; message: string } {
+  try {
+    requirePermission(deps, 'canSetGoldRate')
+    const name = profile.name.trim()
+    if (name === '') {
+      return {
+        ok: false,
+        message:
+          'The shop needs a name — it is what tells the customer whose slip they are ' +
+          'holding. Every other line here can be left blank.',
+      }
+    }
+    // The optional half of the profile stores blanks as NULL; the three columns
+    // the schema declares NOT NULL store the empty string. The printer treats
+    // both as "hide this line" — see `receiptShopOf` — so the two spellings of
+    // blank cannot disagree about what ends up on the paper.
+    const blankToNull = (value: string): string | null =>
+      value.trim() === '' ? null : value.trim()
+    deps.shop.save({
+      name,
+      tagline: blankToNull(profile.tagline),
+      ownerName: profile.ownerName.trim(),
+      secondOwnerName: blankToNull(profile.secondOwnerName),
+      phone1: profile.phone1.trim(),
+      phone2: blankToNull(profile.phone2),
+      phone3: blankToNull(profile.phone3),
+      address: profile.address.trim(),
+      logoPath: null,
+    })
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, message: messageOf(error) }
+  }
+}
+
+export function printSettings(deps: RetailHandlerDeps): PrintSettingsDto {
+  return deps.settings.printSettings()
+}
+
+export function setPrintSettings(
+  deps: RetailHandlerDeps,
+  changes: Partial<PrintSettingsDto>,
+): { ok: true } | { ok: false; message: string } {
+  try {
+    requirePermission(deps, 'canSetGoldRate')
+    deps.settings.setPrintSettings(changes)
     return { ok: true }
   } catch (error) {
     return { ok: false, message: messageOf(error) }

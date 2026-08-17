@@ -36,10 +36,43 @@ export type AuditAction =
    */
   | 'TRANSACTION_HELD'
   | 'TRANSACTION_REVERSED'
+  /**
+   * A posted purchase taken back off the books.
+   *
+   * Distinct from REVERSED because the mechanics differ: a wholesale reversal
+   * is a second slip carrying the original's number, while a cancelled
+   * purchase keeps its one row, flips status, and writes reversing STOCK rows.
+   * The question this answers later is "who cancelled it, and why".
+   */
+  | 'TRANSACTION_CANCELLED'
+  /**
+   * A manual stock correction. Physical counts differ from books, and the
+   * correction must be as visible as everything else — which starts with who
+   * made it and the reason they were required to give.
+   */
+  | 'STOCK_ADJUSTED'
   | 'OVER_RETURN_CONFIRMED'
   | 'PARTY_CREATED'
   | 'PARTY_UPDATED'
   | 'PARTY_DEACTIVATED'
+  | 'ITEM_CREATED'
+  | 'ITEM_UPDATED'
+  | 'ITEM_DEACTIVATED'
+  /**
+   * A category or location was added, renamed, or (de)activated. One action
+   * per table rather than nine members: the entity and detail JSON carry what
+   * changed, and the question asked later is "who touched the setup", not
+   * "which of nine flavours of touching".
+   */
+  | 'CATEGORY_CHANGED'
+  | 'LOCATION_CHANGED'
+  /**
+   * Existing pieces entered at go-live. Distinct from TRANSACTION_POSTED
+   * because it is a different event: nothing was bought and nobody was paid —
+   * the shop is telling the software what it already holds.
+   */
+  | 'OPENING_STOCK_POSTED'
+  | 'PIECE_MOVED'
 
 export interface AuditEntry {
   readonly id: string

@@ -1,4 +1,11 @@
-import { Money, Weight, fixedClock, toIsoTimestamp, type PublicUser } from '@jewellery/domain'
+import {
+  Money,
+  Weight,
+  fixedClock,
+  toIsoTimestamp,
+  type PublicUser,
+  type ShopProfile,
+} from '@jewellery/domain'
 import {
   CustomerService,
   FakeAuditRepository,
@@ -82,12 +89,26 @@ const admin: PublicUser = {
 const salesman: PublicUser = { ...admin, id: 'user-2', name: 'Bilal', role: 'SALESMAN' }
 
 let deps: RetailHandlerDeps
+/** The one shop row, held in memory so the Settings handlers can write to it. */
+let shopRow: ShopProfile
 let rates: FakeGoldRateRepository
 let customers: FakeCustomerRepository
 let settingsRepo: FakeSettingsRepository
 let drafts: FakeRetailDraftRepository
 
 function build(user: PublicUser | null): RetailHandlerDeps {
+  shopRow = {
+    name: 'AL-HARAM GOLD JEWELLERS',
+    tagline: 'Trust in Purity',
+    ownerName: 'Haji Abdul Rehman',
+    secondOwnerName: null,
+    phone1: '0300-7779999',
+    phone2: null,
+    phone3: null,
+    address: 'Sona Bazaar, Lahore',
+    logoPath: null,
+    updatedAt: toIsoTimestamp(new Date('2026-08-01T00:00:00.000Z')),
+  }
   const audit = new FakeAuditRepository(clock)
   rates = new FakeGoldRateRepository(clock)
   customers = new FakeCustomerRepository()
@@ -112,18 +133,17 @@ function build(user: PublicUser | null): RetailHandlerDeps {
     }),
     customers: new CustomerService({ customers, audit }),
     settings,
-    shopProfile: () => ({
-      name: 'AL-HARAM GOLD JEWELLERS',
-      tagline: 'Trust in Purity',
-      ownerName: 'Haji Abdul Rehman',
-      secondOwnerName: null,
-      phone1: '0300-7779999',
-      phone2: null,
-      phone3: null,
-      address: 'Sona Bazaar, Lahore',
-      logoPath: null,
-      updatedAt: toIsoTimestamp(new Date('2026-08-01T00:00:00.000Z')),
-    }),
+    shopProfile: () => shopRow,
+    // A shop profile the Settings card can write to. In-memory: this suite runs
+    // with no database, which is the whole reason the handlers live apart from
+    // `ipcMain.handle`.
+    shop: {
+      get: () => shopRow,
+      save: (profile) => {
+        shopRow = { ...profile, updatedAt: toIsoTimestamp(clock.now()) }
+        return shopRow
+      },
+    },
     session: { user },
   }
 }

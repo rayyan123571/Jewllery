@@ -6,6 +6,8 @@ import { createContainer, type Container } from './container.js'
 import { registerIpcHandlers, type Session } from './ipc.js'
 import { registerWholesaleHandlers } from './wholesaleIpc.js'
 import { registerRetailHandlers } from './retailIpc.js'
+import { registerPurchaseHandlers } from './purchaseIpc.js'
+import { registerInventoryHandlers } from './inventoryIpc.js'
 import { IPC_M2 } from '../shared/ipc.js'
 
 /**
@@ -187,6 +189,8 @@ app.whenReady().then(
     registerIpcHandlers(container, session, () => app.quit())
     registerWholesaleHandlers(container, session)
     registerRetailHandlers(container, session)
+    registerPurchaseHandlers(container, session)
+    registerInventoryHandlers(container, session)
     registerWindowControls()
 
     createWindow()

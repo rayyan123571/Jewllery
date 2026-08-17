@@ -1,8 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   IPC,
+  IPC_INVENTORY,
   IPC_M2,
+  IPC_PIECES,
+  IPC_PURCHASE,
   IPC_RETAIL,
+  IPC_STOCK,
   type BackupStatusDto,
   type BootstrapDto,
   type CustomerDto,
@@ -37,6 +41,33 @@ import {
   type SettleRequest,
   type WastageRuleChoice,
   type WastageRuleDto,
+  type CategoryNodeDto,
+  type InventorySetupResult,
+  type InventorySummaryDto,
+  type ItemDto,
+  type LocationDto,
+  type OpeningPostRequest,
+  type OpeningPostResult,
+  type OpeningPreviewDto,
+  type PieceDto,
+  type PieceHistoryDto,
+  type PieceListRequest,
+  type SaveItemRequest,
+  type SaveItemResult,
+  type PrintSettingsDto,
+  type PurchaseEntryDto,
+  type PurchaseNeighboursDto,
+  type PurchasePreviewDto,
+  type PurchaseSaveResult,
+  type SavePurchaseRequest,
+  type ShopProfileDto,
+  type StockAdjustRequest,
+  type StockAdjustResult,
+  type StockLedgerRequest,
+  type StockLedgerRowDto,
+  type StockSummaryDto,
+  type WholesaleEntryDto,
+  type WholesaleNeighboursDto,
 } from '../shared/ipc.js'
 
 /**
@@ -84,6 +115,17 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_M2.wholesaleSettle, request) as Promise<PostResult>,
   partyLedger: (partyId: string) =>
     ipcRenderer.invoke(IPC_M2.wholesaleLedger, partyId) as Promise<readonly LedgerRowDto[]>,
+  wholesaleNeighbours: (current: number | null, includeReversed: boolean) =>
+    ipcRenderer.invoke(
+      IPC_M2.wholesaleNeighbours,
+      current,
+      includeReversed,
+    ) as Promise<WholesaleNeighboursDto>,
+  wholesaleLoadAsDraft: (invoiceNumber: number) =>
+    ipcRenderer.invoke(
+      IPC_M2.wholesaleLoadAsDraft,
+      invoiceNumber,
+    ) as Promise<WholesaleEntryDto | null>,
   setRate: (request: SetRateRequest) =>
     ipcRenderer.invoke(IPC_M2.rateSet, request) as ReturnType<RendererApi['setRate']>,
   rateHistory: () =>
@@ -92,6 +134,121 @@ const api: RendererApi = {
     ipcRenderer.invoke(IPC_M2.changePassword, current, next) as ReturnType<
       RendererApi['changePassword']
     >,
+
+  // M6 — Purchase. Forwarding only, like everything else here.
+  purchaseNextInvoiceNo: () =>
+    ipcRenderer.invoke(IPC_PURCHASE.nextInvoiceNo) as Promise<string>,
+  purchasePreview: (request: SavePurchaseRequest) =>
+    ipcRenderer.invoke(IPC_PURCHASE.preview, request) as Promise<PurchasePreviewDto>,
+  purchaseSave: (request: SavePurchaseRequest) =>
+    ipcRenderer.invoke(IPC_PURCHASE.save, request) as Promise<PurchaseSaveResult>,
+  purchaseHold: (request: SavePurchaseRequest) =>
+    ipcRenderer.invoke(IPC_PURCHASE.hold, request) as Promise<PurchaseSaveResult>,
+  purchaseCancel: (entryId: string, reason: string) =>
+    ipcRenderer.invoke(IPC_PURCHASE.cancel, entryId, reason) as ReturnType<
+      RendererApi['purchaseCancel']
+    >,
+  purchaseNeighbours: (current: number | null, includeCancelled: boolean) =>
+    ipcRenderer.invoke(
+      IPC_PURCHASE.neighbours,
+      current,
+      includeCancelled,
+    ) as Promise<PurchaseNeighboursDto>,
+  purchaseLoadAsDraft: (invoiceNumber: number) =>
+    ipcRenderer.invoke(
+      IPC_PURCHASE.loadAsDraft,
+      invoiceNumber,
+    ) as Promise<PurchaseEntryDto | null>,
+  purchaseRateFor: (date: string) =>
+    ipcRenderer.invoke(IPC_PURCHASE.rateFor, date) as ReturnType<
+      RendererApi['purchaseRateFor']
+    >,
+
+  // M4 — Stock.
+  stockSummary: () => ipcRenderer.invoke(IPC_STOCK.summary) as Promise<StockSummaryDto>,
+  stockLedger: (filter: StockLedgerRequest) =>
+    ipcRenderer.invoke(IPC_STOCK.ledger, filter) as Promise<readonly StockLedgerRowDto[]>,
+  stockAdjust: (request: StockAdjustRequest) =>
+    ipcRenderer.invoke(IPC_STOCK.adjust, request) as Promise<StockAdjustResult>,
+
+  // M4 stage 1 — the item master, categories and locations.
+  inventoryItems: (query: string, includeInactive: boolean) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.itemSearch,
+      query,
+      includeInactive,
+    ) as Promise<readonly ItemDto[]>,
+  inventoryItemCreate: (request: SaveItemRequest) =>
+    ipcRenderer.invoke(IPC_INVENTORY.itemCreate, request) as Promise<SaveItemResult>,
+  inventoryItemUpdate: (itemId: string, request: SaveItemRequest) =>
+    ipcRenderer.invoke(IPC_INVENTORY.itemUpdate, itemId, request) as Promise<SaveItemResult>,
+  inventoryItemSetActive: (itemId: string, isActive: boolean) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.itemSetActive,
+      itemId,
+      isActive,
+    ) as Promise<InventorySetupResult>,
+  inventoryCategoryTree: (includeInactive: boolean) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.categoryTree,
+      includeInactive,
+    ) as Promise<readonly CategoryNodeDto[]>,
+  inventoryCategoryCreate: (parentId: string | null, name: string) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.categoryCreate,
+      parentId,
+      name,
+    ) as Promise<InventorySetupResult>,
+  inventoryCategoryRename: (categoryId: string, name: string) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.categoryRename,
+      categoryId,
+      name,
+    ) as Promise<InventorySetupResult>,
+  inventoryCategorySetActive: (categoryId: string, isActive: boolean) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.categorySetActive,
+      categoryId,
+      isActive,
+    ) as Promise<InventorySetupResult>,
+  inventoryLocations: (includeInactive: boolean) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.locationList,
+      includeInactive,
+    ) as Promise<readonly LocationDto[]>,
+  inventoryLocationCreate: (name: string) =>
+    ipcRenderer.invoke(IPC_INVENTORY.locationCreate, name) as Promise<InventorySetupResult>,
+  inventoryLocationRename: (locationId: string, name: string) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.locationRename,
+      locationId,
+      name,
+    ) as Promise<InventorySetupResult>,
+  inventoryLocationSetActive: (locationId: string, isActive: boolean) =>
+    ipcRenderer.invoke(
+      IPC_INVENTORY.locationSetActive,
+      locationId,
+      isActive,
+    ) as Promise<InventorySetupResult>,
+
+  // M4 stage 2 — the pieces.
+  inventorySummary: (groupBy: string) =>
+    ipcRenderer.invoke(IPC_PIECES.summary, groupBy) as Promise<InventorySummaryDto>,
+  pieceList: (filter: PieceListRequest) =>
+    ipcRenderer.invoke(IPC_PIECES.list, filter) as Promise<readonly PieceDto[]>,
+  pieceHistory: (pieceId: string) =>
+    ipcRenderer.invoke(IPC_PIECES.history, pieceId) as Promise<PieceHistoryDto | null>,
+  pieceMove: (pieceId: string, locationId: string | null) =>
+    ipcRenderer.invoke(
+      IPC_PIECES.move,
+      pieceId,
+      locationId,
+    ) as Promise<InventorySetupResult>,
+  openingNextTag: () => ipcRenderer.invoke(IPC_PIECES.nextTag) as Promise<string>,
+  openingPreview: (request: OpeningPostRequest) =>
+    ipcRenderer.invoke(IPC_PIECES.openingPreview, request) as Promise<OpeningPreviewDto>,
+  openingPost: (request: OpeningPostRequest) =>
+    ipcRenderer.invoke(IPC_PIECES.openingPost, request) as Promise<OpeningPostResult>,
 
   // M5 — Sale (Retail). Every one of these forwards and nothing else: the
   // arithmetic, the validation and the formatting all happen on the far side.
@@ -155,6 +312,18 @@ const api: RendererApi = {
   setRetailRounding: (step: number) =>
     ipcRenderer.invoke(IPC_RETAIL.roundingSet, step) as ReturnType<
       RendererApi['setRetailRounding']
+    >,
+  shopProfile: () =>
+    ipcRenderer.invoke(IPC_RETAIL.shopProfile) as Promise<ShopProfileDto>,
+  setShopProfile: (profile: ShopProfileDto) =>
+    ipcRenderer.invoke(IPC_RETAIL.shopProfileSet, profile) as ReturnType<
+      RendererApi['setShopProfile']
+    >,
+  printSettings: () =>
+    ipcRenderer.invoke(IPC_RETAIL.printSettings) as Promise<PrintSettingsDto>,
+  setPrintSettings: (changes: Partial<PrintSettingsDto>) =>
+    ipcRenderer.invoke(IPC_RETAIL.printSettingsSet, changes) as ReturnType<
+      RendererApi['setPrintSettings']
     >,
   openExternal: (url: string) =>
     ipcRenderer.invoke(IPC_RETAIL.openExternal, url) as ReturnType<

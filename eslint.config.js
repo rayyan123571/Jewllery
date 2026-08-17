@@ -214,8 +214,12 @@ export default tseslint.config(
   },
 
   // Tests may reach for fixtures freely; they are not part of the shipped graph.
+  // `.test.tsx` is included for the same reason `.test.ts` is: the purchase
+  // screen's suite drives the REAL main-process handlers over in-memory fakes,
+  // which is an import the shipped renderer never makes and the sandbox could
+  // not execute anyway.
   {
-    files: ['**/*.test.ts', '**/*.spec.ts', '**/test/**/*.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/test/**/*.ts'],
     rules: {
       'boundaries/element-types': 'off',
       'boundaries/external': 'off',

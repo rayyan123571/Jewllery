@@ -105,6 +105,59 @@ export type {
   WholesaleLineItem,
 } from './wholesale/WholesaleEntry.js'
 
+// ── purchase ───────────────────────────────────────────────────────────────
+export {
+  PURCHASE_STATUSES,
+  isPurchaseStatus,
+  type PurchaseEntry,
+  type PurchaseEntryWithLines,
+  type PurchaseLineItem,
+  type PurchaseStatus,
+} from './purchase/PurchaseEntry.js'
+export {
+  checkStoredFigures,
+  computePurchaseLine,
+  totalsOfPurchase,
+  type PurchaseLineComputed,
+  type PurchaseLineInput,
+  type PurchaseTotals,
+  type StoredFigureCheck,
+} from './purchase/purchaseMath.js'
+
+// ── inventory ──────────────────────────────────────────────────────────────
+export {
+  MAKING_CHARGE_BASES,
+  isMakingChargeBasis,
+  type Item,
+  type ItemCategory,
+  type MakingChargeBasis,
+  type StockLocation,
+} from './inventory/Item.js'
+export {
+  PIECE_EVENT_KINDS,
+  PIECE_SOURCES,
+  PIECE_STATUSES,
+  isPieceStatus,
+  type Piece,
+  type PieceEvent,
+  type PieceEventKind,
+  type PieceSource,
+  type PieceStatus,
+} from './inventory/Piece.js'
+export { computePieceFigures, type PieceFigures } from './inventory/pieceMath.js'
+
+// ── stock ──────────────────────────────────────────────────────────────────
+export {
+  STOCK_BUCKETS,
+  STOCK_MOVEMENT_KINDS,
+  isStockBucket,
+  isStockMovementKind,
+  type StockBucket,
+  type StockBucketTotals,
+  type StockMovement,
+  type StockMovementKind,
+} from './stock/StockLedger.js'
+
 // ── retail ─────────────────────────────────────────────────────────────────
 export {
   DEFAULT_SLIP_LABEL,

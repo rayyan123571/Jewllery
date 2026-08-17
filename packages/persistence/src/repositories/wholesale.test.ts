@@ -43,7 +43,6 @@ function issueEntry(overrides: Partial<NewWholesaleEntry> = {}): NewWholesaleEnt
     branchId: BRANCH,
     partyId,
     kind: 'ISSUE',
-    invoiceNo: repos.wholesale.nextInvoiceNo(BRANCH, 'WS-'),
     entryDate: toIsoDate('2026-08-30'),
     ratePerTola: RATE,
     totalGross: totals.grossTotal,
@@ -101,7 +100,7 @@ beforeEach(() => {
     openingGold: Weight.ZERO,
     openingCash: Money.ZERO,
     notes: null,
-  }).id
+  }, userId).id
 })
 
 afterEach(() => db.close())
@@ -147,11 +146,27 @@ describe('posting the real slip', () => {
   })
 
   it('writes the header and the lines atomically', () => {
-    // A duplicate invoice number fails the unique index mid-transaction; the
-    // lines from the failed attempt must not survive.
-    const first = issueEntry()
-    repos.wholesale.post(first)
-    expect(() => repos.wholesale.post({ ...issueEntry(), invoiceNo: first.invoiceNo })).toThrow()
+    // A row that fails mid-transaction — here a line priced at nothing, refused
+    // by the rate CHECK — must take its lines with it.
+    repos.wholesale.post(issueEntry())
+    expect(() =>
+      repos.wholesale.post(
+        issueEntry({
+          lines: [
+            {
+              lineNo: 1,
+              itemName: 'BAD',
+              gross: Weight.parse('1'),
+              katt: Katt.parse('13'),
+              khalis: Weight.parse('1'),
+              ratePerTola: Money.ZERO,
+              amount: Money.ZERO,
+              remarks: null,
+            },
+          ],
+        }),
+      ),
+    ).toThrow()
 
     const lineCount = db
       .prepare('SELECT COUNT(*) AS n FROM wholesale_line_items')
@@ -159,18 +174,42 @@ describe('posting the real slip', () => {
     expect(lineCount.n).toBe(3)
   })
 
-  it('numbers slips sequentially', () => {
+  it('numbers slips from 1, in its own book', () => {
     const a = repos.wholesale.post(issueEntry())
     const b = repos.wholesale.post(issueEntry())
-    expect(a.entry.invoiceNo).toBe('WS-10001')
-    expect(b.entry.invoiceNo).toBe('WS-10002')
+    expect(a.entry.invoiceNumber).toBe(1)
+    expect(b.entry.invoiceNumber).toBe(2)
   })
 
-  it('finds a slip by its number', () => {
+  /**
+   * Two books, and both hold a slip 1.
+   *
+   * An issue and a settlement are different documents; sharing one counter
+   * would leave both books full of the gaps the other one took.
+   */
+  it('numbers settlements from their own 1', () => {
+    repos.wholesale.post(issueEntry())
+    const settlement = repos.wholesale.post(
+      issueEntry({
+        kind: 'SETTLEMENT',
+        settledGold: Weight.parse('100'),
+        goldDelta: Weight.parse('-100'),
+        lines: [],
+      }),
+    )
+    expect(settlement.entry.invoiceNumber).toBe(1)
+    expect(repos.wholesale.peekNextNumber('ISSUE')).toBe(2)
+    expect(repos.wholesale.peekNextNumber('SETTLEMENT')).toBe(2)
+  })
+
+  it('finds a slip by its number, in the book it belongs to', () => {
     const posted = repos.wholesale.post(issueEntry())
-    const found = repos.wholesale.findByInvoiceNo(BRANCH, posted.entry.invoiceNo)
+    const found = repos.wholesale.findByNumber(BRANCH, 'ISSUE', posted.entry.invoiceNumber)
     expect(found?.entry.id).toBe(posted.entry.id)
     expect(found?.lines).toHaveLength(3)
+    // The settlement book has no slip 1 yet, and answering with the issue would
+    // put the wrong document on screen.
+    expect(repos.wholesale.findByNumber(BRANCH, 'SETTLEMENT', 1)).toBeNull()
   })
 })
 
@@ -189,7 +228,6 @@ describe('balances come out of the entries', () => {
     repos.wholesale.post(
       issueEntry({
         kind: 'SETTLEMENT',
-        invoiceNo: 'RT-10001',
         settledGold: Weight.parse('100'),
         settledCash: Money.ZERO,
         settledCashAsGold: Weight.ZERO,
@@ -209,7 +247,6 @@ describe('balances come out of the entries', () => {
     repos.wholesale.post(
       issueEntry({
         kind: 'SETTLEMENT',
-        invoiceNo: 'RT-10002',
         settledGold: Weight.ZERO,
         settledCash: cash,
         settledCashAsGold: asGold,
@@ -247,7 +284,6 @@ describe('reversal, never edit', () => {
     const original = repos.wholesale.post(issueEntry())
     const reversal = repos.wholesale.post(
       issueEntry({
-        invoiceNo: 'WS-REV-1',
         goldDelta: original.entry.totalKhalis.negated(),
         reversesEntryId: original.entry.id,
         lines: [],
@@ -270,5 +306,153 @@ describe('the party ledger ordering', () => {
     repos.wholesale.post(issueEntry({ entryDate: toIsoDate('2026-07-15') }))
     const dates = repos.wholesale.listForParty(partyId, 10).map((e) => e.entryDate)
     expect(dates).toEqual(['2026-07-15', '2026-08-30'])
+  })
+})
+
+/**
+ * Walking the book, in SQL.
+ *
+ * The number lives in the table as TEXT — "WS-10001" — and everything that
+ * navigates uses the integer at the end of it. That conversion happens in a
+ * `CAST(SUBSTR(...))`, which is exactly the sort of expression that is right in
+ * the four cases somebody thought of and wrong in the fifth. So the fifth cases
+ * are here: the ends, a reversal, and the numbers where text ordering and
+ * numeric ordering disagree.
+ */
+describe('where the four navigation controls can go', () => {
+  it('has nowhere to go while the book is empty', () => {
+    expect(repos.wholesale.neighbours(BRANCH, null, false)).toEqual({
+      first: null,
+      previous: null,
+      next: null,
+      last: null,
+    })
+  })
+
+  it('puts a slip that has not been posted one PAST the end of the book', () => {
+    repos.wholesale.post(issueEntry())
+    repos.wholesale.post(issueEntry())
+
+    const where = repos.wholesale.neighbours(BRANCH, null, false)
+    expect(where.previous).toBe(2)
+    expect(where.next).toBeNull()
+    expect(where.last).toBe(2)
+  })
+
+  it('goes dead at the ends rather than wrapping round', () => {
+    repos.wholesale.post(issueEntry())
+    repos.wholesale.post(issueEntry())
+    repos.wholesale.post(issueEntry())
+
+    expect(repos.wholesale.neighbours(BRANCH, 1, false)).toEqual({
+      first: 1,
+      previous: null,
+      next: 2,
+      last: 3,
+    })
+    expect(repos.wholesale.neighbours(BRANCH, 3, false)).toEqual({
+      first: 1,
+      previous: 2,
+      next: null,
+      last: 3,
+    })
+  })
+
+  /**
+   * Nine, ten, eleven — the boundary where a TEXT column used to go wrong.
+   *
+   * As text, '10' sorts before '9', so NEXT from the ninth slip would land on
+   * the tenth only by accident and PREV from the tenth would go somewhere else
+   * entirely. The column is an INTEGER now, and this walks that boundary to
+   * prove it stayed one.
+   */
+  it('steps in numeric order across the two-digit boundary', () => {
+    for (let i = 0; i < 11; i++) repos.wholesale.post(issueEntry())
+
+    expect(repos.wholesale.neighbours(BRANCH, 9, false).next).toBe(10)
+    expect(repos.wholesale.neighbours(BRANCH, 10, false).previous).toBe(9)
+    expect(repos.wholesale.neighbours(BRANCH, 10, false).next).toBe(11)
+    expect(repos.wholesale.neighbours(BRANCH, null, false).last).toBe(11)
+  })
+
+  it('skips a reversed slip unless asked, leaving a visible gap in the numbers', () => {
+    repos.wholesale.post(issueEntry())
+    const middle = repos.wholesale.post(issueEntry())
+    repos.wholesale.post(issueEntry())
+    const reversal = repos.wholesale.post(
+      issueEntry({
+        goldDelta: middle.entry.totalKhalis.negated(),
+        reversesEntryId: middle.entry.id,
+        lines: [],
+      }),
+    )
+    repos.wholesale.markReversed(middle.entry.id, reversal.entry.id)
+
+    expect(repos.wholesale.neighbours(BRANCH, 1, false).next).toBe(3)
+    expect(repos.wholesale.neighbours(BRANCH, 1, true).next).toBe(2)
+  })
+
+  /**
+   * The `-REV` row carries its original's number with a suffix glued on, so a
+   * naive CAST reads it as a SECOND slip claiming to be WS-10002 — and the book
+   * then has a duplicate the arrows can step onto.
+   */
+  it('never reads a reversal row as a slip of its own', () => {
+    const original = repos.wholesale.post(issueEntry())
+    repos.wholesale.post(
+      issueEntry({
+        goldDelta: original.entry.totalKhalis.negated(),
+        reversesEntryId: original.entry.id,
+        lines: [],
+      }),
+    )
+
+    // The original is the only thing in the book, whichever way it is asked.
+    expect(repos.wholesale.neighbours(BRANCH, null, true)).toMatchObject({
+      first: 1,
+      last: 1,
+    })
+    expect(repos.wholesale.neighbours(BRANCH, 1, true).next).toBeNull()
+  })
+
+  /**
+   * A settlement is numbered from its own sequence (RT-). It is a real entry on
+   * the party's ledger and it is deliberately NOT in the book these arrows walk:
+   * this screen edits issues, and stepping onto a settlement would put a slip on
+   * screen the grid cannot represent.
+   */
+  it('walks the issue book only, leaving settlements to the ledger', () => {
+    repos.wholesale.post(issueEntry())
+    repos.wholesale.post(
+      issueEntry({
+        kind: 'SETTLEMENT',
+        goldDelta: Weight.ZERO,
+        lines: [],
+      }),
+    )
+
+    expect(repos.wholesale.neighbours(BRANCH, null, false)).toMatchObject({
+      first: 1,
+      last: 1,
+    })
+  })
+
+  it('finds a slip by the integer the screen navigates with', () => {
+    const posted = repos.wholesale.post(issueEntry())
+    const found = repos.wholesale.findByNumber(BRANCH, 'ISSUE', 1)
+    expect(found?.entry.id).toBe(posted.entry.id)
+    expect(found?.lines).toHaveLength(SLIP.length)
+    expect(repos.wholesale.findByNumber(BRANCH, 'ISSUE', 99_999)).toBeNull()
+  })
+
+  /** A branch with no slips has an empty book, not the other branch's. */
+  it('answers for the branch it was asked about', () => {
+    repos.wholesale.post(issueEntry())
+    expect(repos.wholesale.neighbours('branch-2', null, false)).toEqual({
+      first: null,
+      previous: null,
+      next: null,
+      last: null,
+    })
   })
 })

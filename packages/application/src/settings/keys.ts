@@ -15,9 +15,30 @@ export const SETTING_KEYS = {
   kattCheckEnabled: 'wholesale.kattCheckEnabled',
   kattMinMilliRatti: 'wholesale.kattMinMilliRatti',
   kattMaxMilliRatti: 'wholesale.kattMaxMilliRatti',
-  /** Prefix for wholesale slip numbers, e.g. "WS-". */
+  /**
+   * DEAD. These fed the old slip-number GENERATOR, which produced 'WS-10001'.
+   *
+   * Migration 015 made the slip number a plain integer and moved the prefix to
+   * display time, so nothing reads these any more. They are emptied by that
+   * migration rather than left holding 'WS-', because a stale value in a row
+   * nothing reads is one somebody wires back up a year from now.
+   */
   wholesaleInvoicePrefix: 'wholesale.invoicePrefix',
   settlementInvoicePrefix: 'wholesale.settlementPrefix',
+  /**
+   * What is shown in front of a slip number. Default EMPTY — a bare 1, 2, 3.
+   *
+   * The wholesale twin of `invoice.display.prefix`, and display-only for the
+   * same reason: the stored number is an integer, so a shop that wants 'WS-'
+   * back sets this key and every screen and slip picks it up with no migration.
+   */
+  wholesaleDisplayPrefix: 'wholesale.display.prefix',
+  /** The settlement book's own display prefix. Empty by default. */
+  settlementDisplayPrefix: 'wholesale.settlement.display.prefix',
+
+  // ── purchase ──────────────────────────────────────────────────────────────
+  /** The purchase book's display prefix. Empty by default, same rule as above. */
+  purchaseDisplayPrefix: 'purchase.display.prefix',
 
   // ── retail ────────────────────────────────────────────────────────────────
   /** See RETAIL_WASTAGE_* below. Both ship as a decision the shop must make. */
@@ -43,6 +64,27 @@ export const SETTING_KEYS = {
   retailBillPrefix: 'retail.billPrefix',
   /** 1 | 100 | 1000 whole rupees. See RETAIL_ROUNDING_STEPS below. */
   retailRoundingNearest: 'retail.rounding.nearest',
+
+  // ── printing, and what goes on the paper ──────────────────────────────────
+  //
+  // These are the shop's, not the software's. Every one of them ships with a
+  // default that prints a usable slip, and every one of them is editable from
+  // Settings — because the paper is the half of this application the customer
+  // actually keeps, and a shop that cannot change its own name on it is a shop
+  // running somebody else's stationery.
+  /** '80' or '58' — the thermal roll's width in millimetres. */
+  printPaperWidthMm: 'print.paperWidthMm',
+  /** How many copies of a slip go to the printer on each print. */
+  printCopies: 'print.copies',
+  /** Whether SAVE sends the slip to the printer without being asked. */
+  printAfterSave: 'print.afterSave',
+  /**
+   * The terms box printed under the items. Blank prints NO BOX at all, rather
+   * than an empty rectangle — a cleared field means the shop does not want it.
+   */
+  receiptTerms: 'receipt.terms',
+  /** The line at the foot of the slip. Blank prints nothing. */
+  receiptFooter: 'receipt.footer',
 
   // ── the shell's own state ─────────────────────────────────────────────────
   //
@@ -167,12 +209,108 @@ export class Settings {
     }
   }
 
-  wholesaleInvoicePrefix(): string {
-    return this.repo.get(SETTING_KEYS.wholesaleInvoicePrefix)?.trim() || 'WS-'
+  /**
+   * The prefix shown in front of a slip number. Empty by default.
+   *
+   * `?? ''` rather than `|| 'WS-'`, exactly as the retail one: empty IS the
+   * default here, not a missing value waiting to be filled in. A shop that
+   * wants 'WS-' back types it into Settings and every screen and printed slip
+   * picks it up — nothing in the database moves.
+   */
+  wholesaleDisplayPrefix(): string {
+    return this.repo.get(SETTING_KEYS.wholesaleDisplayPrefix)?.trim() ?? ''
   }
 
-  settlementInvoicePrefix(): string {
-    return this.repo.get(SETTING_KEYS.settlementInvoicePrefix)?.trim() || 'RT-'
+  settlementDisplayPrefix(): string {
+    return this.repo.get(SETTING_KEYS.settlementDisplayPrefix)?.trim() ?? ''
+  }
+
+  purchaseDisplayPrefix(): string {
+    return this.repo.get(SETTING_KEYS.purchaseDisplayPrefix)?.trim() ?? ''
+  }
+
+  /** 80mm unless the shop says otherwise. 58 is the only other roll sold. */
+  printPaperWidthMm(): number {
+    const stored = this.readInteger(SETTING_KEYS.printPaperWidthMm, 80)
+    return stored === 58 ? 58 : 80
+  }
+
+  /** Clamped: a slip printed forty times is a jammed printer, not a setting. */
+  printCopies(): number {
+    return Math.min(Math.max(this.readInteger(SETTING_KEYS.printCopies, 1), 1), 5)
+  }
+
+  printAfterSave(): boolean {
+    return this.repo.get(SETTING_KEYS.printAfterSave) === 'true'
+  }
+
+  /**
+   * The terms box, exactly as typed. Blank means the shop cleared it.
+   *
+   * Not trimmed to a default: a shop that empties this field is saying "print
+   * no terms", and filling it back in with something we chose would be the
+   * software overruling them on their own paper.
+   */
+  receiptTerms(): string {
+    return this.repo.get(SETTING_KEYS.receiptTerms)?.trim() ?? ''
+  }
+
+  receiptFooter(): string {
+    return this.repo.get(SETTING_KEYS.receiptFooter) ?? 'Thank you — please visit again'
+  }
+
+  /** Everything the print and receipt cards edit, as one read. */
+  printSettings(): {
+    paperWidthMm: number
+    copies: number
+    printAfterSave: boolean
+    terms: string
+    footer: string
+    retailPrefix: string
+    wholesalePrefix: string
+    settlementPrefix: string
+    purchasePrefix: string
+  } {
+    return {
+      paperWidthMm: this.printPaperWidthMm(),
+      copies: this.printCopies(),
+      printAfterSave: this.printAfterSave(),
+      terms: this.receiptTerms(),
+      footer: this.receiptFooter(),
+      retailPrefix: this.invoiceDisplayPrefix(),
+      wholesalePrefix: this.wholesaleDisplayPrefix(),
+      settlementPrefix: this.settlementDisplayPrefix(),
+      purchasePrefix: this.purchaseDisplayPrefix(),
+    }
+  }
+
+  /**
+   * Writes them back. Every field is optional, so a card can save its own
+   * section without having to know the others' current values.
+   */
+  setPrintSettings(changes: {
+    paperWidthMm?: number
+    copies?: number
+    printAfterSave?: boolean
+    terms?: string
+    footer?: string
+    retailPrefix?: string
+    wholesalePrefix?: string
+    settlementPrefix?: string
+    purchasePrefix?: string
+  }): void {
+    const write = (key: string, value: string | undefined): void => {
+      if (value !== undefined) this.repo.set(key, value)
+    }
+    write(SETTING_KEYS.printPaperWidthMm, changes.paperWidthMm?.toString())
+    write(SETTING_KEYS.printCopies, changes.copies?.toString())
+    write(SETTING_KEYS.printAfterSave, changes.printAfterSave?.toString())
+    write(SETTING_KEYS.receiptTerms, changes.terms)
+    write(SETTING_KEYS.receiptFooter, changes.footer)
+    write(SETTING_KEYS.invoiceDisplayPrefix, changes.retailPrefix)
+    write(SETTING_KEYS.wholesaleDisplayPrefix, changes.wholesalePrefix)
+    write(SETTING_KEYS.settlementDisplayPrefix, changes.settlementPrefix)
+    write(SETTING_KEYS.purchaseDisplayPrefix, changes.purchasePrefix)
   }
 
   /**

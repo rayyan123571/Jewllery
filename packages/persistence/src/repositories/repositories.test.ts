@@ -1,4 +1,4 @@
-import { Money, toIsoDate } from '@jewellery/domain'
+import { Money, Weight, toIsoDate } from '@jewellery/domain'
 import type { Repositories } from '@jewellery/application'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openInMemoryDatabase, type SqliteDatabase } from '../Database.js'
@@ -308,6 +308,123 @@ describe('settings', () => {
   })
 })
 
+/**
+ * One directory, two doors.
+ *
+ * `parties` and `customers` are two views of ONE table now (migration 015), and
+ * these are the assertions that say so. The failure they exist to prevent is
+ * the one the shop actually hits: a jeweller typed in at the retail counter on
+ * Monday, not found on the wholesale screen on Friday, typed in again — and now
+ * one person has two rows, two codes and two balances that disagree.
+ */
+describe('customers and parties are one directory', () => {
+  beforeEach(() => {
+    seedBranchAndUser()
+  })
+
+  it('finds a name added at the retail counter on the wholesale screen', () => {
+    repos.customers.create(
+      {
+        code: 'C-0001',
+        name: 'CHAUDHARY JEWELLER',
+        mobile: '03067380000',
+        address: null,
+        city: 'Lahore',
+        cnic: null,
+        isWalkIn: false,
+        openingGold: Weight.ZERO,
+        openingCash: Money.ZERO,
+      },
+      'user-1',
+    )
+
+    const found = repos.parties.search(BRANCH, 'CHAUD', 10)
+    expect(found.map((p) => p.name)).toEqual(['CHAUDHARY JEWELLER'])
+  })
+
+  it('finds a party added on the wholesale screen at the retail counter', () => {
+    repos.parties.create(
+      {
+        branchId: BRANCH,
+        code: 'CHJ',
+        name: 'CHAUDHARY JEWELLER',
+        mobile: '03067380000',
+        city: 'Lahore',
+        openingGold: Weight.ZERO,
+        openingCash: Money.ZERO,
+        notes: null,
+      },
+      'user-1',
+    )
+
+    expect(repos.customers.search('CHAUD', 10).map((c) => c.name)).toEqual([
+      'CHAUDHARY JEWELLER',
+    ])
+    // The same row, reachable by either door — so one balance, not two.
+    expect(repos.customers.findByCode('CHJ')?.name).toBe('CHAUDHARY JEWELLER')
+  })
+
+  /**
+   * The one name that does NOT cross.
+   *
+   * A walk-in is somebody with no account at all, so there is no ledger for a
+   * wholesale balance to sit on. Offering one as a party would let a slip be
+   * posted against an account that does not exist.
+   */
+  it('keeps a walk-in out of the party list, and only a walk-in', () => {
+    repos.customers.create(
+      {
+        code: 'W-0001',
+        name: 'WALK IN AHMED',
+        mobile: null,
+        address: null,
+        city: null,
+        cnic: null,
+        isWalkIn: true,
+        openingGold: Weight.ZERO,
+        openingCash: Money.ZERO,
+      },
+      'user-1',
+    )
+
+    expect(repos.customers.search('WALK', 10)).toHaveLength(1)
+    expect(repos.parties.search(BRANCH, 'WALK', 10)).toEqual([])
+  })
+
+  it('refuses one code to two people, whatever case it was typed in', () => {
+    repos.parties.create(
+      {
+        branchId: BRANCH,
+        code: 'CHJ',
+        name: 'CHAUDHARY JEWELLER',
+        mobile: null,
+        city: null,
+        openingGold: Weight.ZERO,
+        openingCash: Money.ZERO,
+        notes: null,
+      },
+      'user-1',
+    )
+
+    expect(() =>
+      repos.customers.create(
+        {
+          code: 'chj',
+          name: 'SOMEBODY ELSE',
+          mobile: null,
+          address: null,
+          city: null,
+          cnic: null,
+          isWalkIn: false,
+          openingGold: Weight.ZERO,
+          openingCash: Money.ZERO,
+        },
+        'user-1',
+      ),
+    ).toThrow()
+  })
+})
+
 describe('the repository seam', () => {
   it('exposes exactly the repositories the application layer declares', () => {
     expect(Object.keys(repos).sort()).toEqual([
@@ -316,13 +433,19 @@ describe('the repository seam', () => {
       'branches',
       'customers',
       'goldRates',
+      'itemCategories',
+      'items',
+      'locations',
       'parties',
+      'pieces',
+      'purchases',
       'retailBills',
       'retailDrafts',
       'retailSales',
       'salesmen',
       'settings',
       'shop',
+      'stockLedger',
       'users',
       'wholesale',
     ])

@@ -924,7 +924,10 @@ export function RetailScreen({
         merged here, because finding an old bill fast is the reason the box is
         worth a place on the toolbar at all.
       */}
-      <div className="retail__toolbar">
+      {/* `invoice-toolbar` carries the LOOK — ink ground, brass primary, the
+          hairline rules — and the wholesale slip toolbar wears the same class.
+          `retail__toolbar` is left for this screen's own column layout. */}
+      <div className="retail__toolbar invoice-toolbar">
         <Action
           id="retail.customer.add"
           variant="primary"

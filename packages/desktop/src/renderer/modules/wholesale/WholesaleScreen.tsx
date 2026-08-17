@@ -4,6 +4,7 @@ import { Icon } from '../../shell/Icon.js'
 import { DateField } from '../../components/DateField.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import { useMessages } from '../../components/Messages.js'
+import { Modal } from '../../components/Modal.js'
 import { RateCard } from '../../components/RateCard.js'
 import { toDisplayDate } from '../../format/dates.js'
 import { PartySelector } from './PartySelector.js'
@@ -15,6 +16,9 @@ import type {
   PartyDto,
   PreviewDto,
   RateDto,
+  ShopProfileDto,
+  WholesaleEntryDto,
+  WholesaleNeighboursDto,
 } from '../../../shared/ipc.js'
 
 /**
@@ -60,14 +64,57 @@ function isSignificant(display: string | undefined): boolean {
 
 type Tab = 'new' | 'ledger' | 'settle' | 'history'
 
+/** Nowhere to go, which is what four disabled arrows look like. */
+const NOWHERE: WholesaleNeighboursDto = {
+  first: null,
+  previous: null,
+  next: null,
+  last: null,
+}
+
+/**
+ * A navigation the operator has been asked about but not yet answered.
+ *
+ * `what` is shown in the dialog so the question names the destination — "go to
+ * slip WS-10004", not "leave this page". `run` is the move itself, held until an
+ * answer arrives, so nothing about the destination has to be recomputed after.
+ */
+interface Guarded {
+  readonly what: string
+  readonly run: () => void | Promise<void>
+}
+
+/**
+ * The party a stored slip was posted against, as the selector wants it.
+ *
+ * A slip carries the party's id, name and code; mobile and city are not part of
+ * what was posted and are not invented here. The box shows who the slip is for,
+ * which is the whole of what it is being asked to do.
+ */
+function partyOf(entry: WholesaleEntryDto): PartyDto | null {
+  if (!entry.draft.partyId) return null
+  return {
+    id: entry.draft.partyId,
+    code: entry.draft.partyCode,
+    name: entry.draft.partyName,
+    mobile: null,
+    city: null,
+  }
+}
+
 export function WholesaleScreen({
   today,
   rates,
+  shop,
+  receiptFooter,
   onRateSaved,
   onPosted,
 }: {
   today: string
   rates: readonly RateDto[]
+  /** The shop's own details, from Settings. Printed at the top of the slip. */
+  shop: ShopProfileDto
+  receiptFooter: string
   onRateSaved: () => void
   onPosted: () => void
 }) {
@@ -83,6 +130,46 @@ export function WholesaleScreen({
   const [ledger, setLedger] = useState<readonly LedgerRowDto[]>([])
   const [busy, setBusy] = useState(false)
   const { push } = useMessages()
+
+  // ── the book, and where the screen is in it ───────────────────────────────
+  /**
+   * The stored slip on screen, or null when this is a new one.
+   *
+   * Null is not "slip zero" — it is the slip being typed, which sits one PAST
+   * the end of the book. That is why `neighbours` is asked with null and answers
+   * with PREV pointing at the newest slip and NEXT pointing nowhere.
+   */
+  const [stored, setStored] = useState<WholesaleEntryDto | null>(null)
+  const [neighbours, setNeighbours] = useState<WholesaleNeighboursDto>(NOWHERE)
+  const [showReversed, setShowReversed] = useState(false)
+  /**
+   * A posted slip is shown locked. EDIT unlocks it for a CORRECTION, which saves
+   * as a NEW slip — a posted row is never amended in place, here or anywhere
+   * else (DECISIONS §6). `correcting` is what puts the note on screen saying so,
+   * so nobody believes they are editing WS-10002.
+   */
+  const [correcting, setCorrecting] = useState(false)
+  /** The navigation waiting on the operator's answer. Null when nothing is. */
+  const [guard, setGuard] = useState<Guarded | null>(null)
+  const [jumpText, setJumpText] = useState('')
+  const [jumpError, setJumpError] = useState<string | null>(null)
+  /**
+   * Bumped whenever the SCREEN drops or replaces the party.
+   *
+   * The selector holds the typed text itself, so clearing it from out here means
+   * remounting it. A key change cannot race with what is being typed, which an
+   * effect that followed the selection back to null would.
+   */
+  const [partyKey, setPartyKey] = useState(0)
+  /**
+   * The slip as it was when it was loaded or started, serialized.
+   *
+   * `dirty` is a comparison against this rather than a flag set by every
+   * handler, because a flag has to be remembered in a dozen places and is wrong
+   * the first time somebody forgets one. Typing a character and deleting it
+   * again correctly leaves the slip clean.
+   */
+  const [baseline, setBaseline] = useState('')
 
   // Cell focus, for the two keyboard behaviours that matter at a counter.
   const cells = useRef(new Map<string, HTMLInputElement | null>())
@@ -107,18 +194,29 @@ export function WholesaleScreen({
     void refreshParty(party?.id ?? null)
   }, [party, refreshParty])
 
-  // Live preview. The main process runs the same computeLine/totalsOf the post
-  // path runs, so this is not an approximation of what will be saved — it is it.
-  useEffect(() => {
-    const request = {
+  /**
+   * The slip being typed, as ONE value.
+   *
+   * The preview asks with it, the save posts it and `dirty` compares against it,
+   * so the three cannot disagree about what is on screen — which is what a guard
+   * comparing a separately-assembled object would eventually do.
+   */
+  const draft = useMemo(
+    () => ({
       partyId: party?.id ?? '',
       entryDate,
       lines: rows,
       notes: null,
       ratePerTolaOverride: rateOverride,
-    }
-    void window.api.previewWholesale(request).then(setPreview)
-  }, [rows, entryDate, party, rateOverride])
+    }),
+    [party, entryDate, rows, rateOverride],
+  )
+
+  // Live preview. The main process runs the same computeLine/totalsOf the post
+  // path runs, so this is not an approximation of what will be saved — it is it.
+  useEffect(() => {
+    void window.api.previewWholesale(draft).then(setPreview)
+  }, [draft])
 
   // A row added by Tab has to exist before it can be focused, so the focus is
   // deferred to the render that contains it.
@@ -137,6 +235,187 @@ export function WholesaleScreen({
     setRows((current) =>
       current.length <= 1 ? [{ ...EMPTY_ROW }] : current.filter((_, i) => i !== index),
     )
+
+  // ── walking the book ──────────────────────────────────────────────────────
+
+  /**
+   * A stored slip that has not been unlocked. Nothing on it can be typed into,
+   * and its controls are disabled rather than hidden.
+   */
+  const isLocked = stored !== null && !correcting
+
+  /** Marks whatever is on screen as the clean state to compare against. */
+  const markClean = useCallback((of: unknown) => {
+    setBaseline(JSON.stringify(of))
+  }, [])
+
+  /**
+   * Has the operator changed anything since this slip was loaded or started?
+   *
+   * A locked slip is never dirty: nothing on it can be typed into, so the guard
+   * must not stop the operator simply paging through the book.
+   */
+  const dirty = useMemo(
+    () => !isLocked && baseline !== '' && JSON.stringify(draft) !== baseline,
+    [draft, isLocked, baseline],
+  )
+
+  /**
+   * Seeds the clean baseline the first time a slip exists.
+   *
+   * Without this an untouched screen compares its draft against the empty
+   * string, reads as dirty, and the guard fires on the very first press of an
+   * arrow — training the operator to click through the question that exists to
+   * protect them. An empty baseline is the signal to re-seed, which is how
+   * `startNewSlip` gets a clean slate too.
+   */
+  useEffect(() => {
+    setBaseline((current) => (current === '' ? JSON.stringify(draft) : current))
+  }, [draft])
+
+  useEffect(() => {
+    void window.api
+      .wholesaleNeighbours(stored?.invoiceNumber ?? null, showReversed)
+      .then(setNeighbours)
+  }, [stored, showReversed, invoiceNo])
+
+  /**
+   * The jump box shows the slip on screen, and is typed over to leave it.
+   *
+   * Seeded rather than falling back to a display value when empty: a box whose
+   * displayed value reappears the moment it is cleared cannot be cleared, and
+   * typing into it appends to a number the operator thought they had deleted.
+   */
+  useEffect(() => {
+    setJumpText(stored?.invoiceNo ?? invoiceNo)
+    setJumpError(null)
+  }, [stored, invoiceNo])
+
+  /** Puts a stored slip on screen, locked. Returns false if there is none. */
+  const openSlip = useCallback(
+    async (invoiceNumber: number): Promise<boolean> => {
+      const loaded = await window.api.wholesaleLoadAsDraft(invoiceNumber)
+      if (!loaded) return false
+
+      const next = loaded.draft
+      setParty(partyOf(loaded))
+      // A posted slip always has rows; the fallback is for a settlement or a
+      // corrupted row, which must not leave the grid with nothing to render.
+      setRows(next.lines.length > 0 ? next.lines.map((line) => ({ ...line })) : [{ ...EMPTY_ROW }])
+      setEntryDate(next.entryDate)
+      // The rate this slip was PRICED at, pinned as an override. Without it a
+      // slip from last week reprices itself at today's rate the moment it is
+      // opened, and the screen disagrees with the paper.
+      setRateOverride(next.ratePerTolaOverride)
+      setStored(loaded)
+      setCorrecting(false)
+      setPartyKey((key) => key + 1)
+      setTab('new')
+      setJumpError(null)
+      markClean({
+        partyId: next.partyId ?? '',
+        entryDate: next.entryDate,
+        lines: next.lines.length > 0 ? next.lines : [{ ...EMPTY_ROW }],
+        notes: null,
+        ratePerTolaOverride: next.ratePerTolaOverride,
+      })
+      return true
+    },
+    [markClean],
+  )
+
+  /**
+   * Runs a navigation, or stops and asks first.
+   *
+   * EVERY way off this slip goes through here — the four arrows, the number box
+   * and NEW — because a guard with one exception is a guard that loses work
+   * through that exception.
+   */
+  const guarded = useCallback(
+    (what: string, run: () => void | Promise<void>) => {
+      if (!dirty) {
+        void run()
+        return
+      }
+      setGuard({ what, run })
+    },
+    [dirty],
+  )
+
+  const goTo = useCallback(
+    (target: number | null, what: string) => {
+      if (target === null) return
+      guarded(what, async () => {
+        const opened = await openSlip(target)
+        if (!opened) push('bad', `Slip ${target} could not be opened.`)
+      })
+    },
+    [guarded, openSlip, push],
+  )
+
+  /**
+   * Starts a fresh slip.
+   *
+   * Back to the end of the book: a new slip is not a stored one, so nothing is
+   * locked and PREV points at the newest posted slip again.
+   */
+  const startNewSlip = useCallback(() => {
+    clearRows()
+    setParty(null)
+    setPartyKey((key) => key + 1)
+    setRateOverride('')
+    setStored(null)
+    setCorrecting(false)
+    setJumpError(null)
+    setBaseline('')
+    void window.api.nextInvoiceNo().then(setInvoiceNo)
+  }, [clearRows])
+
+  /**
+   * The slip-number box: type a number, press Enter, go straight there.
+   *
+   * How the counter finds an old slip fast. An unknown number says so beside the
+   * box and does NOT navigate — moving to something else would leave the
+   * operator looking at a slip they did not ask for and did not notice arriving.
+   * The prefix is not typed: "WS-" is on every number in the book, so requiring
+   * it would only be a way to get the lookup wrong.
+   */
+  const jumpToTyped = useCallback(() => {
+    const typed = jumpText.trim().replace(/^[A-Za-z]+-?/, '')
+    if (typed === '') {
+      setJumpError(null)
+      return
+    }
+    if (!/^\d+$/.test(typed)) {
+      setJumpError('Numbers only.')
+      return
+    }
+    const wanted = Number(typed)
+    guarded(`slip ${wanted}`, async () => {
+      const opened = await openSlip(wanted)
+      if (!opened) setJumpError(`No slip ${wanted}.`)
+    })
+  }, [jumpText, guarded, openSlip])
+
+  /**
+   * Unlocks a posted slip — for a CORRECTION, not an amendment.
+   *
+   * A posted row is never edited in place: `postIssue` only ever inserts, and it
+   * deliberately never will do anything else. Saving from here writes a NEW slip
+   * with a new number, and the original stands until it is reversed. The banner
+   * says exactly that while the screen is unlocked, because an operator who
+   * believes they are amending WS-10002 will not think to reverse it.
+   */
+  const startCorrection = useCallback(() => {
+    if (!stored) return
+    setCorrecting(true)
+    push(
+      'ok',
+      `${stored.invoiceNo} is unlocked for a correction. Saving writes a NEW slip — ` +
+        `${stored.invoiceNo} stands, and its gold is still on the party's ledger, ` +
+        `until you reverse it.`,
+    )
+  }, [stored, push])
 
   /**
    * The two keyboard behaviours a counter operator actually uses.
@@ -167,43 +446,74 @@ export function WholesaleScreen({
     }
   }
 
+  /**
+   * Posts the slip. Answers whether it actually went.
+   *
+   * The boolean is what the guard's "Save, then go" needs: a save that was
+   * REFUSED — no party, no rate for the date, a row with no weight — must not be
+   * followed by the navigation, or the dialog that exists to protect the
+   * operator's rows is the thing that throws them away.
+   */
   const save = useCallback(
-    async (thenPrint: boolean) => {
-      if (busy) return
+    async (thenPrint: boolean): Promise<boolean> => {
+      if (busy) return false
+      // A locked slip is being READ. SAVE is disabled on screen, but F5 and
+      // Ctrl+S reach this directly, and a keyboard path that posts a copy of the
+      // slip somebody is only looking at is the worst kind of accident here.
+      if (isLocked) {
+        push('bad', `${stored?.invoiceNo ?? 'This slip'} is posted. Press EDIT to correct it.`)
+        return false
+      }
       setBusy(true)
       try {
         if (!party) {
           push('bad', 'Choose a party before saving.')
-          return
+          return false
         }
-        const result = await window.api.postIssue({
-          partyId: party.id,
-          entryDate,
-          lines: rows,
-          notes: null,
-          ratePerTolaOverride: rateOverride,
-        })
+        const correctionOf = correcting ? stored?.invoiceNo : null
+        const result = await window.api.postIssue({ ...draft, partyId: party.id })
         if (!result.ok) {
           push('bad', result.message)
-          return
+          return false
         }
         push(
           'ok',
           `Saved ${result.invoiceNo}. ${party.name} now ${result.balanceAfter.text}.` +
+            (correctionOf
+              ? ` ${correctionOf} still stands — reverse it from the ledger if it was wrong.`
+              : '') +
             (thenPrint ? ' Sent to printer.' : ''),
         )
         clearRows()
         setRateOverride('')
+        // Back to the end of the book. Without this a correction would leave the
+        // ORIGINAL still on screen and still locked, with the arrows pointing
+        // from a slip the operator has already replaced.
+        setStored(null)
+        setCorrecting(false)
+        setBaseline('')
         await Promise.all([
           refreshParty(party.id),
           window.api.nextInvoiceNo().then(setInvoiceNo),
         ])
         onPosted()
+        return true
       } finally {
         setBusy(false)
       }
     },
-    [busy, party, entryDate, rows, rateOverride, clearRows, refreshParty, onPosted, push],
+    [
+      busy,
+      isLocked,
+      stored,
+      correcting,
+      party,
+      draft,
+      clearRows,
+      refreshParty,
+      onPosted,
+      push,
+    ],
   )
 
   // Published so the shell's action registry can drive these buttons.
@@ -225,6 +535,20 @@ export function WholesaleScreen({
       'wholesale.tab.return': () => setTab('settle'),
       'wholesale.tab.history': () => setTab('history'),
       'wholesale.ledger.view-full': () => setTab('ledger'),
+      // ── the toolbar ─────────────────────────────────────────────────────
+      'wholesale.new': () => guarded('a new slip', startNewSlip),
+      'wholesale.nav.first': () =>
+        goTo(neighbours.first?.number ?? null, `slip ${neighbours.first?.display}`),
+      'wholesale.nav.prev': () =>
+        goTo(neighbours.previous?.number ?? null, `slip ${neighbours.previous?.display}`),
+      'wholesale.nav.next': () =>
+        goTo(neighbours.next?.number ?? null, `slip ${neighbours.next?.display}`),
+      'wholesale.nav.last': () =>
+        goTo(neighbours.last?.number ?? null, `slip ${neighbours.last?.display}`),
+      'wholesale.invoice.jump': jumpToTyped,
+      'wholesale.invoice.search': jumpToTyped,
+      'wholesale.edit': startCorrection,
+      'wholesale.reversed.toggle': () => setShowReversed((current) => !current),
     }
     const listener = (event: Event): void => {
       const id = (event as CustomEvent<string>).detail
@@ -232,7 +556,65 @@ export function WholesaleScreen({
     }
     window.addEventListener('jewellery:action', listener)
     return () => window.removeEventListener('jewellery:action', listener)
-  }, [addRow, clearRows, save])
+  }, [
+    addRow,
+    clearRows,
+    save,
+    guarded,
+    goTo,
+    neighbours,
+    jumpToTyped,
+    startCorrection,
+    startNewSlip,
+  ])
+
+  /**
+   * The keys a counter operator actually reaches for.
+   *
+   * The same chords the retail screen answers, over the same kind of book: it is
+   * one pair of hands moving between two screens, and a shortcut that means
+   * "previous invoice" on one and nothing on the other is worse than no shortcut
+   * at all.
+   */
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent): void => {
+      // A dialog owns the keyboard while it is open. Checked FIRST, so the
+      // guard's own question cannot be answered by a shortcut behind it.
+      if (document.querySelector('.modal')) return
+
+      if (event.ctrlKey && !event.altKey) {
+        const chords: Record<string, () => void> = {
+          Home: () =>
+            goTo(neighbours.first?.number ?? null, `slip ${neighbours.first?.display}`),
+          End: () => goTo(neighbours.last?.number ?? null, `slip ${neighbours.last?.display}`),
+          ArrowLeft: () =>
+            goTo(neighbours.previous?.number ?? null, `slip ${neighbours.previous?.display}`),
+          ArrowRight: () =>
+            goTo(neighbours.next?.number ?? null, `slip ${neighbours.next?.display}`),
+          s: () => void save(false),
+          S: () => void save(false),
+        }
+        const chord = chords[event.key]
+        if (!chord) return
+        event.preventDefault()
+        chord()
+        return
+      }
+
+      const keys: Record<string, () => void> = {
+        F2: addRow,
+        F5: () => void save(false),
+        F6: () => void save(true),
+        F9: () => guarded('a new slip', startNewSlip),
+      }
+      const handler = keys[event.key]
+      if (!handler) return
+      event.preventDefault()
+      handler()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [save, addRow, guarded, goTo, neighbours, startNewSlip])
 
   const totals = useMemo(
     () => ({
@@ -244,7 +626,147 @@ export function WholesaleScreen({
   )
 
   return (
-    <div className="screen">
+    <div className="screen wholesale">
+      {/*
+        ── the toolbar ──────────────────────────────────────────────────────
+        The retail toolbar, over the wholesale book: party · NEW | the four
+        navigation controls | SAVE | the slip-number box. One component
+        vocabulary across the two screens, because it is one pair of hands.
+
+        The party combo and the slip number moved UP here out of the ENTRY
+        DETAILS card. They were the two things on that card that say WHICH slip
+        this is rather than what is on it, and repeating them in both places
+        cost the item table a row of height to tell the operator nothing twice.
+      */}
+      <div className="invoice-toolbar wholesale__toolbar">
+        <PartySelector
+          key={partyKey}
+          selected={party}
+          onSelect={setParty}
+          disabled={isLocked}
+          variant="toolbar"
+        />
+
+        <Action
+          id="wholesale.new"
+          variant="outline"
+          className="toolbar__new"
+          onActivate={() => guarded('a new slip', startNewSlip)}
+        >
+          NEW
+        </Action>
+
+        <span className="toolbar__rule" aria-hidden="true" />
+
+        {/* FIRST and LAST are dead only when the book is empty. PREV and NEXT
+            go dead at the ends, which is what tells the operator where they
+            are — disabled, never hidden. */}
+        <div className="toolbar__nav" role="group" aria-label="Move between slips">
+          <Action
+            id="wholesale.nav.first"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={
+              neighbours.first === null ||
+              neighbours.first.number === stored?.invoiceNumber
+            }
+            onActivate={() =>
+              goTo(neighbours.first?.number ?? null, `slip ${neighbours.first?.display}`)
+            }
+          >
+            <span aria-hidden="true">|◀</span>
+            <span>FIRST</span>
+          </Action>
+          <Action
+            id="wholesale.nav.prev"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={neighbours.previous === null}
+            onActivate={() =>
+              goTo(
+                neighbours.previous?.number ?? null,
+                `slip ${neighbours.previous?.display}`,
+              )
+            }
+          >
+            <span aria-hidden="true">◀</span>
+            <span>PREV</span>
+          </Action>
+          <Action
+            id="wholesale.nav.next"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={neighbours.next === null}
+            onActivate={() =>
+              goTo(neighbours.next?.number ?? null, `slip ${neighbours.next?.display}`)
+            }
+          >
+            <span>NEXT</span>
+            <span aria-hidden="true">▶</span>
+          </Action>
+          <Action
+            id="wholesale.nav.last"
+            variant="outline"
+            className="toolbar__step"
+            unavailable={
+              neighbours.last === null || neighbours.last.number === stored?.invoiceNumber
+            }
+            onActivate={() =>
+              goTo(neighbours.last?.number ?? null, `slip ${neighbours.last?.display}`)
+            }
+          >
+            <span>LAST</span>
+            <span aria-hidden="true">▶|</span>
+          </Action>
+        </div>
+
+        <Action
+          id="wholesale.save"
+          variant="primary"
+          className="toolbar__save"
+          busy={busy}
+          unavailable={isLocked}
+        >
+          SAVE
+        </Action>
+
+        <span className="toolbar__rule" aria-hidden="true" />
+
+        {/* Editable, and that is the point: this is how the counter finds an old
+            slip fast. An unknown number says so beside the box and does not
+            move — landing somewhere unasked-for is worse than not moving. */}
+        <label className="toolbar__jump">
+          <span className="toolbar__jump-label">Invoice No :</span>
+          <input
+            className="input toolbar__jump-input"
+            value={jumpText}
+            onChange={(e) => {
+              setJumpText(e.target.value)
+              setJumpError(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                jumpToTyped()
+              }
+              if (e.key === 'Escape') {
+                setJumpText('')
+                setJumpError(null)
+              }
+            }}
+            aria-label="Slip number — type one and press Enter to open it"
+          />
+          <Action id="wholesale.invoice.search" variant="segment" ariaLabel="Find slip">
+            <Icon name="search" size={16} />
+          </Action>
+        </label>
+        {jumpError ? (
+          <span className="toolbar__jump-error" role="alert">
+            {jumpError}
+          </span>
+        ) : null}
+      </div>
+
       <div className="screen__head">
         {/* Wholesale does not lose its rate control when the top bar goes. It
             mounts the same card retail does — one component, one setRate IPC,
@@ -259,6 +781,41 @@ export function WholesaleScreen({
           </div>
         ) : null}
       </div>
+
+      {/* What the operator is looking at, whenever it is not a new slip. */}
+      {stored ? (
+        <div className={`record-state${stored.isReversed ? ' is-void' : ''}`}>
+          <span className="record-state__what">
+            {stored.invoiceNo} · {stored.isReversed ? 'REVERSED' : 'POSTED'}
+            {isLocked ? ' · read-only' : ' · correcting'}
+          </span>
+          {isLocked ? (
+            <Action
+              id="wholesale.edit"
+              variant="outline"
+              className="record-state__edit"
+              onActivate={startCorrection}
+            >
+              EDIT
+            </Action>
+          ) : (
+            <span className="record-state__why">
+              Saving writes a NEW slip with a new number. {stored.invoiceNo} stands, and its
+              gold stays on the party&apos;s ledger, until you reverse it — a posted slip is
+              never amended in place.
+            </span>
+          )}
+          <Action
+            id="wholesale.reversed.toggle"
+            variant="ghost"
+            className="record-state__voided"
+            active={showReversed}
+            onActivate={() => setShowReversed((current) => !current)}
+          >
+            {showReversed ? 'Hiding nothing' : 'Show reversed'}
+          </Action>
+        </div>
+      ) : null}
 
       <div className="workspace__split screen__body">
         <div className="entry-column">
@@ -280,17 +837,23 @@ export function WholesaleScreen({
 
             <div className="panel__title">ENTRY DETAILS</div>
 
+            {/* The party and the slip number are on the toolbar now. What is
+                left here is what belongs to THIS slip's pricing: who it is for
+                by code, when it is dated, and what rate it is priced at. */}
             <div className="field-row">
-              <PartySelector selected={party} onSelect={setParty} />
-
+              {/* Derived, not broken. It fills itself in from the party on the
+                  toolbar, so it shows a dash and a dashed, flat ground rather
+                  than the same grey an unavailable control uses. */}
               <label className="field">
-                <span className="field__label">Invoice No.</span>
-                <span className="input-group">
-                  <input className="input" value={invoiceNo} readOnly aria-label="Invoice number" />
-                  <Action id="wholesale.invoice.search" variant="segment" ariaLabel="Find invoice">
-                    <Icon name="search" size={16} />
-                  </Action>
-                </span>
+                <span className="field__label">Code</span>
+                <input
+                  className="input input--derived"
+                  value={party?.code ?? ''}
+                  readOnly
+                  disabled
+                  placeholder="—"
+                  aria-label="Party code"
+                />
               </label>
 
               <DateField
@@ -314,6 +877,7 @@ export function WholesaleScreen({
                     placeholder={preview?.rateDisplay ?? 'No rate set'}
                     inputMode="decimal"
                     aria-label="Gold rate per tola"
+                    disabled={isLocked}
                   />
                   <Action id="rate.refresh" variant="segment" ariaLabel="Refresh rate">
                     <Icon name="refresh" size={16} />
@@ -322,7 +886,7 @@ export function WholesaleScreen({
               </label>
             </div>
 
-            {tab === 'new' ? <ActionBar busy={busy} /> : null}
+            {tab === 'new' ? <ActionBar busy={busy} locked={isLocked} /> : null}
           </div>
 
           {tab === 'new' ? (
@@ -334,10 +898,10 @@ export function WholesaleScreen({
                       table. Below it they cost 56px of table height on every
                       screen size, and they are used once per slip. */}
                   <span className="toolbar__end">
-                    <Action id="wholesale.row.add" variant="toolbar">
+                    <Action id="wholesale.row.add" variant="toolbar" unavailable={isLocked}>
                       <Icon name="plus" size={16} /> Add Row
                     </Action>
-                    <Action id="wholesale.row.clear" variant="toolbar">
+                    <Action id="wholesale.row.clear" variant="toolbar" unavailable={isLocked}>
                       <Icon name="cross" size={16} /> Clear Row
                     </Action>
                     <Action id="wholesale.import-from-stock" variant="toolbar">
@@ -399,6 +963,7 @@ export function WholesaleScreen({
                                   onChange={(e) => setRow(index, { itemName: e.target.value })}
                                   placeholder="Item name"
                                   aria-label={`Item name row ${index + 1}`}
+                                  disabled={isLocked}
                                   {...cell(0)}
                                 />
                               </td>
@@ -410,6 +975,7 @@ export function WholesaleScreen({
                                   placeholder="0.000"
                                   inputMode="decimal"
                                   aria-label={`Gross weight row ${index + 1}`}
+                                  disabled={isLocked}
                                   {...cell(1)}
                                 />
                               </td>
@@ -421,6 +987,7 @@ export function WholesaleScreen({
                                   placeholder="0.000"
                                   inputMode="decimal"
                                   aria-label={`Katt row ${index + 1}`}
+                                  disabled={isLocked}
                                   {...cell(2)}
                                 />
                               </td>
@@ -441,6 +1008,7 @@ export function WholesaleScreen({
                                   onChange={(e) => setRow(index, { remarks: e.target.value })}
                                   placeholder="—"
                                   aria-label={`Remarks row ${index + 1}`}
+                                  disabled={isLocked}
                                   {...cell(3)}
                                 />
                               </td>
@@ -450,6 +1018,7 @@ export function WholesaleScreen({
                                   variant="icon"
                                   className="is-danger"
                                   ariaLabel={`Delete row ${index + 1}`}
+                                  unavailable={isLocked}
                                   onActivate={() => deleteRow(index)}
                                 >
                                   <Icon name="trash" size={16} />
@@ -549,6 +1118,8 @@ export function WholesaleScreen({
             date={entryDate}
             party={party}
             preview={preview}
+            shop={shop}
+            footer={receiptFooter}
           />
 
           <div className="panel">
@@ -605,6 +1176,62 @@ export function WholesaleScreen({
           </div>
         </aside>
       </div>
+
+      {guard ? (
+        <Modal label="This slip has unsaved changes" onClose={() => setGuard(null)}>
+          <h2 className="modal__title">Save this slip first?</h2>
+          <p className="hint">
+            This slip has rows that have not been posted. Going to {guard.what} now would
+            leave them behind — the screen holds one slip at a time, so it cannot be parked
+            and come back to later.
+          </p>
+          <div className="confirm__actions">
+            {/* Three real answers. Cancel is a control the operator presses on
+                purpose: if the safe answer were only reachable by pressing
+                Escape and hoping, it would be the one nobody chose. */}
+            <Action
+              id="wholesale.guard.cancel"
+              variant="ghost"
+              onActivate={() => setGuard(null)}
+            >
+              Stay here
+            </Action>
+            <Action
+              id="wholesale.guard.discard"
+              variant="outline"
+              className="is-cancel"
+              onActivate={() => {
+                const go = guard.run
+                setGuard(null)
+                // Nothing to discard on disk — a wholesale slip is not autosaved
+                // — so the rows are simply dropped and the destination opened.
+                setBaseline('')
+                void go()
+              }}
+            >
+              Discard changes
+            </Action>
+            <Action
+              id="wholesale.guard.save"
+              variant="primary"
+              busy={busy}
+              onActivate={() => {
+                const go = guard.run
+                setGuard(null)
+                // Only on a save that actually WENT. A refused post — no party,
+                // no rate for the date, a row with no weight — leaves the rows
+                // exactly where they are, because navigating after a failure
+                // would make this dialog the thing that loses them.
+                void save(false).then((saved) => {
+                  if (saved) void go()
+                })
+              }}
+            >
+              Save, then go
+            </Action>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
@@ -617,10 +1244,20 @@ export function WholesaleScreen({
  * answer. Save is the answer; the rest keep their semantic colour on the border
  * and the label, which is enough to tell them apart without competing.
  */
-function ActionBar({ busy }: { busy: boolean }) {
+function ActionBar({ busy, locked }: { busy: boolean; locked: boolean }) {
   return (
     <div className="action-bar">
-      <Action id="wholesale.save" variant="primary" className="is-save" busy={busy}>
+      {/* The three that WRITE go unavailable on a posted slip, and stay visible
+          while they do. A control that disappears when a stored slip is opened
+          is one the operator stops expecting to be there. PRINT does not: a
+          posted slip is exactly the thing you print. */}
+      <Action
+        id="wholesale.save"
+        variant="primary"
+        className="is-save"
+        busy={busy}
+        unavailable={locked}
+      >
         <Icon name="save" size={18} />
         <span>SAVE (F5)</span>
       </Action>
@@ -629,6 +1266,7 @@ function ActionBar({ busy }: { busy: boolean }) {
         variant="outline"
         className="is-save-print"
         busy={busy}
+        unavailable={locked}
       >
         <Icon name="print" size={18} />
         <span>SAVE &amp; PRINT (F6)</span>
@@ -637,7 +1275,7 @@ function ActionBar({ busy }: { busy: boolean }) {
         <Icon name="print" size={18} />
         <span>PRINT (F7)</span>
       </Action>
-      <Action id="wholesale.hold" variant="outline" className="is-hold">
+      <Action id="wholesale.hold" variant="outline" className="is-hold" unavailable={locked}>
         <Icon name="pause" size={18} />
         <span>HOLD (F8)</span>
       </Action>
@@ -655,23 +1293,29 @@ function InvoicePreview({
   date,
   party,
   preview,
+  shop,
+  footer,
 }: {
   invoiceNo: string
   date: string
   party: PartyDto | null
   preview: PreviewDto | null
+  shop: ShopProfileDto
+  footer: string
 }) {
   const items = (preview?.lines ?? []).filter((line) => !line.error)
   return (
     <div className="panel">
       <div className="panel__title">INVOICE PREVIEW (80MM)</div>
       <div className="panel__body slip">
-        <div className="slip__brand">
-          AL-HARAM
-          <br />
-          GOLD JEWELLERS
-        </div>
-        <div className="slip__tagline">Trust in Purity</div>
+        {/* The shop's own, from Settings. This was typed in, so the preview
+            promised AL-HARAM at the top of every slip whoever the shop was —
+            and the paper it is a facsimile of has said something else since the
+            details became editable. A blank tagline takes its line with it. */}
+        <div className="slip__brand">{shop.name.trim() || 'GOLD JEWELLERS'}</div>
+        {shop.tagline.trim() ? (
+          <div className="slip__tagline">{shop.tagline}</div>
+        ) : null}
         <div className="slip__rule" />
         <div className="slip__row">
           <span>Invoice No.</span>
@@ -738,7 +1382,7 @@ function InvoicePreview({
           </span>
         </div>
         <div className="slip__rule" />
-        <div className="slip__centre">Thank You! Visit Again</div>
+        {footer.trim() ? <div className="slip__centre">{footer}</div> : null}
       </div>
     </div>
   )

@@ -81,10 +81,97 @@ export type ActionId =
   | 'wholesale.cancel'
   | 'wholesale.ledger.view-full'
   | 'wholesale.ledger.view-entry'
+  // ── the toolbar: walking the slip book, and finding one slip fast ─────────
+  // The retail toolbar's four controls, over the wholesale ISSUE book. Same
+  // rule about the ends: FIRST and LAST are dead only when the book is empty,
+  // PREV and NEXT go dead at the edges, and none of them is ever hidden.
+  | 'wholesale.nav.first'
+  | 'wholesale.nav.prev'
+  | 'wholesale.nav.next'
+  | 'wholesale.nav.last'
+  | 'wholesale.invoice.jump'
+  | 'wholesale.new'
+  /** Unlocks a posted slip for a correction, which saves as a NEW slip. */
+  | 'wholesale.edit'
+  | 'wholesale.reversed.toggle'
+  // The unsaved-changes guard: three real answers, never two and a dismiss.
+  | 'wholesale.guard.save'
+  | 'wholesale.guard.discard'
+  | 'wholesale.guard.cancel'
   // ── settling a gold debt ──────────────────────────────────────────────────
   | 'wholesale.settle'
   | 'wholesale.settle.confirm'
   | 'wholesale.settle.back'
+  // ── purchase (M6) ─────────────────────────────────────────────────────────
+  // The wholesale toolbar and grid vocabulary, over the purchase book. Same
+  // shapes on purpose: it is one pair of hands moving between the screens.
+  | 'purchase.invoice.search'
+  | 'purchase.invoice.jump'
+  | 'purchase.row.add'
+  | 'purchase.row.clear'
+  | 'purchase.row.delete'
+  | 'purchase.import-from-stock'
+  | 'purchase.scan-barcode'
+  | 'purchase.save'
+  | 'purchase.save-and-print'
+  | 'purchase.print'
+  | 'purchase.hold'
+  | 'purchase.cancel'
+  | 'purchase.new'
+  | 'purchase.nav.first'
+  | 'purchase.nav.prev'
+  | 'purchase.nav.next'
+  | 'purchase.nav.last'
+  /** Cancels a POSTED purchase: reversing stock rows, status flip, reason kept. */
+  | 'purchase.void'
+  | 'purchase.void.confirm'
+  | 'purchase.void.back'
+  | 'purchase.cancelled.toggle'
+  | 'purchase.guard.save'
+  | 'purchase.guard.discard'
+  | 'purchase.guard.cancel'
+  // ── stock (M4) ────────────────────────────────────────────────────────────
+  | 'stock.tab.summary'
+  | 'stock.tab.ledger'
+  | 'stock.tab.adjust'
+  | 'stock.tab.items'
+  | 'stock.tab.setup'
+  | 'stock.tab.inventory'
+  | 'stock.tab.opening'
+  | 'stock.refresh'
+  // ── the piece register (M4 stage 2) ───────────────────────────────────────
+  /** The three groupings; each instance supplies its own onActivate. */
+  | 'inventory.regroup'
+  /** Rendered once per summary row / piece row; each supplies onActivate. */
+  | 'inventory.drill'
+  | 'inventory.back'
+  | 'piece.open'
+  | 'piece.move.save'
+  | 'piece.close'
+  | 'opening.row.add'
+  | 'opening.row.clear'
+  | 'opening.row.delete'
+  | 'opening.save'
+  | 'stock.adjust.save'
+  /** Rendered once per ledger row with a reference; each supplies onActivate. */
+  | 'stock.ledger.open-ref'
+  // ── the item master (M4 stage 1) ──────────────────────────────────────────
+  | 'item.add'
+  | 'item.save'
+  | 'item.cancel'
+  /** Rendered once per row; each supplies its own onActivate. */
+  | 'item.edit'
+  | 'item.active.toggle'
+  | 'item.inactive.show'
+  | 'category.add'
+  | 'category.rename'
+  | 'category.active.toggle'
+  | 'location.add'
+  | 'location.rename'
+  | 'location.active.toggle'
+  /** The one rename dialog categories and locations share. */
+  | 'setup.rename.save'
+  | 'setup.rename.cancel'
   // ── retail sale (M5) ──────────────────────────────────────────────────────
   | 'retail.customer.add'
   | 'retail.customer.pick'
@@ -136,7 +223,9 @@ export type ActionId =
   // ── settings and backup (M0, live) ────────────────────────────────────────
   | 'backup.run'
   | 'backup.restore'
+  | 'settings.section'
   | 'settings.shop-profile.save'
+  | 'settings.print.save'
   | 'users.add'
   | 'users.switch'
   | 'users.sign-out'
@@ -313,7 +402,13 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'goldrate.set': screen('Set Rate', 'goldrate.set'),
 
     // Still-undrawn M0 screens. The feature works; the form does not exist yet.
-    'settings.shop-profile.save': notBuilt('Save Shop Profile', 'settings'),
+    // One entry for the whole section list; each button supplies its own
+    // onActivate, the same way a rate row or a party match does.
+    'settings.section': screen('Show this section', 'settings.section'),
+    // Both live now: the shop's own details and everything that comes out of
+    // the printer are edited on the Settings screen and written to the database.
+    'settings.shop-profile.save': screen('Save Shop Details', 'settings.shop-profile.save'),
+    'settings.print.save': screen('Save Print Settings', 'settings.print.save'),
     'users.add': notBuilt('Add User', 'users'),
     // Switching who is working does NOT need the Users & Permissions screen —
     // it needs the "Who is working?" card, which exists. Sign out still belongs
@@ -344,6 +439,22 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     'wholesale.ledger.view-full': screen('View Full Ledger', 'wholesale.ledger.view-full'),
     'wholesale.ledger.view-entry': screen('View Entry', 'wholesale.ledger.view-entry'),
 
+    // The four navigation controls, and the number box beside them. Same
+    // shortcuts as retail's, because it is the same movement through the same
+    // kind of book — an operator who learns it on one screen has learned it on
+    // both.
+    'wholesale.nav.first': screen('First slip', 'wholesale.nav.first', 'Ctrl+Home'),
+    'wholesale.nav.prev': screen('Previous slip', 'wholesale.nav.prev', 'Ctrl+←'),
+    'wholesale.nav.next': screen('Next slip', 'wholesale.nav.next', 'Ctrl+→'),
+    'wholesale.nav.last': screen('Last slip', 'wholesale.nav.last', 'Ctrl+End'),
+    'wholesale.invoice.jump': screen('Go to this slip number', 'wholesale.invoice.jump'),
+    'wholesale.new': screen('NEW SLIP', 'wholesale.new', 'F9'),
+    'wholesale.edit': screen('Correct this posted slip', 'wholesale.edit'),
+    'wholesale.reversed.toggle': screen('Show reversed slips too', 'wholesale.reversed.toggle'),
+    'wholesale.guard.save': screen('Save this slip, then go', 'wholesale.guard.save'),
+    'wholesale.guard.discard': screen('Throw these changes away and go', 'wholesale.guard.discard'),
+    'wholesale.guard.cancel': screen('Stay on this slip', 'wholesale.guard.cancel'),
+
     // Settling. The over-return path is a question with a Continue button, so
     // both answers are real controls rather than one button and a dismiss.
     'wholesale.settle': screen('Post settlement', 'wholesale.settle'),
@@ -355,6 +466,81 @@ export function createActionRegistry(context: ActionContext): ActionRegistry {
     // blocked by Stock Management, not by Whole Sale, and the hover text says so.
     'wholesale.import-from-stock': notBuilt('Import from Stock', 'stock'),
     'wholesale.scan-barcode': notBuilt('Scan Barcode', 'stock'),
+
+    // M6 — Purchase. Built, so these are live. Each hands off to the screen
+    // that owns the state, exactly as the wholesale ones do.
+    'purchase.invoice.search': screen('Find Purchase', 'purchase.invoice.search'),
+    'purchase.invoice.jump': screen('Go to this purchase number', 'purchase.invoice.jump'),
+    'purchase.row.add': screen('Add Row', 'purchase.row.add'),
+    'purchase.row.clear': screen('Clear Row', 'purchase.row.clear'),
+    'purchase.row.delete': screen('Delete Row', 'purchase.row.delete'),
+    'purchase.save': screen('SAVE', 'purchase.save', 'F5'),
+    'purchase.save-and-print': screen('SAVE & PRINT', 'purchase.save-and-print', 'F6'),
+    'purchase.print': screen('PRINT', 'purchase.print', 'F7'),
+    'purchase.hold': screen('HOLD', 'purchase.hold', 'F8'),
+    'purchase.cancel': screen('CANCEL', 'purchase.cancel'),
+    'purchase.new': screen('NEW PURCHASE', 'purchase.new', 'F9'),
+    'purchase.nav.first': screen('First purchase', 'purchase.nav.first', 'Ctrl+Home'),
+    'purchase.nav.prev': screen('Previous purchase', 'purchase.nav.prev', 'Ctrl+←'),
+    'purchase.nav.next': screen('Next purchase', 'purchase.nav.next', 'Ctrl+→'),
+    'purchase.nav.last': screen('Last purchase', 'purchase.nav.last', 'Ctrl+End'),
+    'purchase.void': screen('Cancel this posted purchase', 'purchase.void'),
+    'purchase.void.confirm': screen('Cancel it — write the reversing rows', 'purchase.void.confirm'),
+    'purchase.void.back': screen('Keep the purchase as it is', 'purchase.void.back'),
+    'purchase.cancelled.toggle': screen('Show cancelled purchases too', 'purchase.cancelled.toggle'),
+    'purchase.guard.save': screen('Save this purchase, then go', 'purchase.guard.save'),
+    'purchase.guard.discard': screen('Throw these changes away and go', 'purchase.guard.discard'),
+    'purchase.guard.cancel': screen('Stay on this purchase', 'purchase.guard.cancel'),
+    // Same rule as the wholesale pair below: the import/scan features are not
+    // built, and the hover text says so rather than the buttons pretending.
+    'purchase.import-from-stock': notBuilt('Import from Stock', 'stock'),
+    'purchase.scan-barcode': notBuilt('Scan Barcode', 'stock'),
+
+    // M4 — Stock Management. Built, so these are live.
+    'stock.tab.summary': screen('Summary', 'stock.tab.summary'),
+    'stock.tab.ledger': screen('Ledger', 'stock.tab.ledger'),
+    'stock.tab.adjust': screen('Adjustment', 'stock.tab.adjust'),
+    'stock.tab.items': screen('Items', 'stock.tab.items'),
+    'stock.tab.setup': screen('Categories & Locations', 'stock.tab.setup'),
+    'stock.tab.inventory': screen('Inventory', 'stock.tab.inventory'),
+    'stock.tab.opening': screen('Opening Stock', 'stock.tab.opening'),
+    'stock.refresh': screen('Refresh stock figures', 'stock.refresh'),
+
+    // M4 stage 2 — the piece register.
+    'inventory.regroup': screen('Group the summary differently', 'inventory.regroup'),
+    'inventory.drill': screen('Show the pieces behind this row', 'inventory.drill'),
+    'inventory.back': screen('Back to the summary', 'inventory.back'),
+    'piece.open': screen('Open this piece', 'piece.open'),
+    'piece.move.save': screen('Move this piece', 'piece.move.save'),
+    'piece.close': screen('Close', 'piece.close'),
+    'opening.row.add': screen('Add Row', 'opening.row.add'),
+    'opening.row.clear': screen('Clear Row', 'opening.row.clear'),
+    'opening.row.delete': screen('Delete Row', 'opening.row.delete'),
+    'opening.save': screen('Post Opening Stock', 'opening.save', 'F5'),
+    'stock.adjust.save': screen('Record Adjustment', 'stock.adjust.save'),
+    'stock.ledger.open-ref': screen('Open the source document', 'stock.ledger.open-ref'),
+
+    // M4 stage 1 — the item master, categories and locations.
+    'item.add': screen('Add Item', 'item.add'),
+    'item.save': screen('Save Item', 'item.save'),
+    'item.cancel': screen('Cancel', 'item.cancel'),
+    'item.edit': screen('Edit this item', 'item.edit'),
+    'item.active.toggle': screen('Activate or deactivate this item', 'item.active.toggle'),
+    'item.inactive.show': screen('Show deactivated items too', 'item.inactive.show'),
+    'category.add': screen('Add Category', 'category.add'),
+    'category.rename': screen('Rename this category', 'category.rename'),
+    'category.active.toggle': screen(
+      'Activate or deactivate this category',
+      'category.active.toggle',
+    ),
+    'location.add': screen('Add Location', 'location.add'),
+    'location.rename': screen('Rename this location', 'location.rename'),
+    'location.active.toggle': screen(
+      'Activate or deactivate this location',
+      'location.active.toggle',
+    ),
+    'setup.rename.save': screen('Save the new name', 'setup.rename.save'),
+    'setup.rename.cancel': screen('Keep the old name', 'setup.rename.cancel'),
 
     // M5 — Sale (Retail). Built, so these are live. Each hands off to the
     // screen that owns the state, exactly as the wholesale ones do.

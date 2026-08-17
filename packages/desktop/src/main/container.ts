@@ -10,10 +10,14 @@ import {
   AuthService,
   BackupService,
   CustomerService,
+  InventoryService,
   PartyService,
+  PieceService,
+  PurchaseService,
   RateService,
   RetailSaleService,
   Settings,
+  StockService,
   WholesaleService,
   createPasswordHasher,
   type PasswordHasher,
@@ -46,6 +50,10 @@ export interface Container {
   readonly backups: BackupService
   readonly parties: PartyService
   readonly wholesale: WholesaleService
+  readonly purchase: PurchaseService
+  readonly stock: StockService
+  readonly inventory: InventoryService
+  readonly pieces: PieceService
   readonly retail: RetailSaleService
   /**
    * Retail customers, deliberately NOT `parties`.
@@ -138,6 +146,42 @@ export function createContainer(options: ContainerOptions): Container {
     clock,
   })
 
+  const purchase = new PurchaseService({
+    purchases: repositories.purchases,
+    parties: repositories.parties,
+    audit: repositories.audit,
+    rates,
+    settings,
+    clock,
+  })
+
+  const stock = new StockService({
+    stockLedger: repositories.stockLedger,
+    audit: repositories.audit,
+    rates,
+    clock,
+  })
+
+  const inventory = new InventoryService({
+    items: repositories.items,
+    itemCategories: repositories.itemCategories,
+    locations: repositories.locations,
+    parties: repositories.parties,
+    audit: repositories.audit,
+    clock,
+  })
+
+  const pieces = new PieceService({
+    pieces: repositories.pieces,
+    items: repositories.items,
+    itemCategories: repositories.itemCategories,
+    locations: repositories.locations,
+    parties: repositories.parties,
+    audit: repositories.audit,
+    rates,
+    clock,
+  })
+
   const retail = new RetailSaleService({
     retailSales: repositories.retailSales,
     retailBills: repositories.retailBills,
@@ -168,6 +212,10 @@ export function createContainer(options: ContainerOptions): Container {
     backups,
     parties,
     wholesale,
+    purchase,
+    stock,
+    inventory,
+    pieces,
     retail,
     retailCustomers,
     hasher,

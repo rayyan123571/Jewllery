@@ -15,7 +15,7 @@ import {
   type PublicUser,
   type WholesaleLineInput,
 } from '@jewellery/domain'
-import { OverReturnRequiresConfirmationError } from '@jewellery/application'
+import { OverReturnRequiresConfirmationError, Settings } from '@jewellery/application'
 import {
   IPC_M2,
   type BalanceDto,
@@ -33,6 +33,13 @@ import {
 } from '../shared/ipc.js'
 import type { Container } from './container.js'
 import type { Session } from './ipc.js'
+import {
+  displayInvoiceNo,
+  wholesaleLoadAsDraft,
+  wholesaleNeighbours,
+  wholesaleNextInvoiceNo,
+  type WholesaleNavDeps,
+} from './wholesaleHandlers.js'
 
 /**
  * Handlers for parties and wholesale.
@@ -98,6 +105,15 @@ export function registerWholesaleHandlers(container: Container, session: Session
   const requireUser = (): PublicUser => {
     if (!session.user) throw new Error('Sign in first.')
     return session.user
+  }
+
+  /** The bag the navigation handlers take. No Electron, so they are testable. */
+  const navDeps: WholesaleNavDeps = {
+    branchId: container.branchId,
+    wholesale: container.wholesale,
+    parties: container.repositories.parties,
+    settings: new Settings(container.repositories.settings),
+    session,
   }
 
   // ── parties ───────────────────────────────────────────────────────────────
@@ -190,8 +206,23 @@ export function registerWholesaleHandlers(container: Container, session: Session
 
   // ── wholesale ─────────────────────────────────────────────────────────────
 
-  ipcMain.handle(IPC_M2.wholesaleNextInvoice, (): string =>
-    container.repositories.wholesale.nextInvoiceNo(container.branchId, 'WS-'),
+  ipcMain.handle(IPC_M2.wholesaleNextInvoice, (): string => wholesaleNextInvoiceNo(navDeps))
+
+  /**
+   * Walking the slip book: the four arrows, and opening what they point at.
+   *
+   * Both bodies live in `wholesaleHandlers.ts` for the reason the retail ones
+   * do — `ipcMain.handle` needs an Electron process, and a handler that needs
+   * one cannot be exercised by `npm run test`.
+   */
+  ipcMain.handle(
+    IPC_M2.wholesaleNeighbours,
+    (_e, current: number | null, includeReversed: boolean) =>
+      wholesaleNeighbours(navDeps, current, includeReversed),
+  )
+
+  ipcMain.handle(IPC_M2.wholesaleLoadAsDraft, (_e, invoiceNumber: number) =>
+    wholesaleLoadAsDraft(navDeps, invoiceNumber),
   )
 
   /**
@@ -298,7 +329,7 @@ export function registerWholesaleHandlers(container: Container, session: Session
       })
       return {
         ok: true,
-        invoiceNo: result.posted.entry.invoiceNo,
+        invoiceNo: displayInvoiceNo(navDeps, result.posted.entry.invoiceNumber),
         entryId: result.posted.entry.id,
         balanceAfter: balanceDto(result.goldBalanceAfter),
         warnings: result.kattWarnings.map((w) => w.message),
@@ -321,7 +352,7 @@ export function registerWholesaleHandlers(container: Container, session: Session
       })
       return {
         ok: true,
-        invoiceNo: result.posted.entry.invoiceNo,
+        invoiceNo: displayInvoiceNo(navDeps, result.posted.entry.invoiceNumber),
         entryId: result.posted.entry.id,
         balanceAfter: balanceDto(result.goldBalanceAfter),
         warnings: [],
@@ -342,7 +373,7 @@ export function registerWholesaleHandlers(container: Container, session: Session
       return {
         entryId: row.entry.id,
         date: row.entry.entryDate,
-        invoiceNo: row.entry.invoiceNo,
+        invoiceNo: displayInvoiceNo(navDeps, row.entry.invoiceNumber),
         kind: row.entry.kind === 'ISSUE' ? 'Issued' : 'Settled',
         grossDisplay: row.entry.totalGross.format(),
         khalisDisplay: row.entry.totalKhalis.format(),

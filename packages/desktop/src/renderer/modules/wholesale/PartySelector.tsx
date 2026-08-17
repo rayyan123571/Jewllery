@@ -28,17 +28,39 @@ export function PartySelector({
   selected,
   onSelect,
   disabled,
+  /**
+   * `toolbar` drops the label and the Code field and renders the combo at
+   * toolbar height, which is how the slip toolbar carries it. It is a skin: the
+   * prefix autocomplete, the debounce, the empty-search card and the Add Party
+   * dialog are all unchanged, because a second implementation of a type-ahead is
+   * a second one to keep correct.
+   */
+  variant = 'field',
+  /** What the field calls itself. The item form says "Supplier" over the same combo. */
+  label = 'Party / Customer',
 }: {
   selected: PartyDto | null
   onSelect: (party: PartyDto | null) => void
   disabled?: boolean
+  variant?: 'field' | 'toolbar'
+  label?: string
 }) {
   const [query, setQuery] = useState('')
   const [code, setCode] = useState('')
   const [open, setOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
+  const toolbar = variant === 'toolbar'
 
+  /**
+   * Follows the selection FORWARDS only, and deliberately so.
+   *
+   * Typing past a chosen party clears the selection (see onChange below), so a
+   * effect that also followed it back to null would wipe the characters the
+   * operator is in the middle of typing. Clearing the box when the SCREEN drops
+   * the party — NEW, or opening a slip for somebody else — is done by remounting
+   * this component with a fresh key, which cannot race with typing.
+   */
   useEffect(() => {
     if (selected) {
       setQuery(selected.name)
@@ -62,9 +84,12 @@ export function PartySelector({
   )
 
   return (
-    <div className="party">
+    <div className={toolbar ? 'party party--toolbar' : 'party'}>
       <label className="field">
-        <span className="field__label">Party / Customer</span>
+        {/* The toolbar carries no label: at 40px of height the placeholder says
+            the same thing without spending the width, exactly as the retail
+            customer combo does. */}
+        {toolbar ? null : <span className="field__label">{label}</span>}
         {/* The type-ahead and its "add" button share ONE outline and focus
             together. They were two separate boxes of two different heights
             sitting next to each other, which read as two unrelated controls. */}
@@ -141,18 +166,25 @@ export function PartySelector({
 
       {/* Derived, not broken. It fills itself in from the party above, so it
           shows a dash and a dashed, flat ground rather than the same grey an
-          unavailable control uses. */}
-      <label className="field party__codefield">
-        <span className="field__label">Code</span>
-        <input
-          className="input input--derived"
-          value={code}
-          readOnly
-          disabled
-          placeholder="—"
-          aria-label="Party code"
-        />
-      </label>
+          unavailable control uses.
+
+          Not on the toolbar. The code is how a party is FOUND — it is searched
+          on in the box above — and once one is chosen the name is what says who
+          the slip is for. A second read-only box repeating it would cost the
+          combo width it needs more. */}
+      {toolbar ? null : (
+        <label className="field party__codefield">
+          <span className="field__label">Code</span>
+          <input
+            className="input input--derived"
+            value={code}
+            readOnly
+            disabled
+            placeholder="—"
+            aria-label="Party code"
+          />
+        </label>
+      )}
 
       {adding ? <AddPartyDialog onClose={() => setAdding(false)} onCreated={pick} /> : null}
       <PartyAddBridge onOpen={() => setAdding(true)} />

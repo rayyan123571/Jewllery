@@ -99,6 +99,22 @@ export interface BootstrapDto {
   readonly branchId: string
   readonly branchName: string
   /**
+   * The shop's own details, as Settings holds them.
+   *
+   * This field was dropped once, correctly, when the status bar that printed it
+   * was deleted and nothing else read it. Three things read it now — the menu's
+   * wordmark, the "Who is working?" card and the slip preview on the wholesale
+   * screen — and all three used to have the name typed into them, so every
+   * shop's screen said AL-HARAM whoever was using it.
+   *
+   * It rides on bootstrap rather than being fetched separately because the
+   * shell already waits for bootstrap before it draws: a second fetch would put
+   * somebody else's name on screen for a frame, or none at all.
+   */
+  readonly shop: ShopProfileDto
+  /** The last line of a receipt, so the slip PREVIEW says what will print. */
+  readonly receiptFooter: string
+  /**
    * Who is working. Null when the shop has more than one active user and
    * nobody has said which one yet — the shell then shows the "Who is working?"
    * card. With a single active user the main process picks it silently and this
@@ -154,12 +170,93 @@ export interface RendererApi {
   postIssue(request: PostIssueRequest): Promise<PostResult>
   settle(request: SettleRequest): Promise<PostResult>
   partyLedger(partyId: string): Promise<readonly LedgerRowDto[]>
+  /**
+   * Where the four wholesale navigation controls can go from `current`.
+   *
+   * `current` null means the screen is holding a slip that has not been posted.
+   * Every answer comes back preformatted, so the renderer never builds a slip
+   * number out of a prefix and an integer of its own.
+   */
+  wholesaleNeighbours(
+    current: number | null,
+    includeReversed: boolean,
+  ): Promise<WholesaleNeighboursDto>
+  /**
+   * A posted slip, in the shape the screen edits — not the shape it prints.
+   *
+   * The stored row keeps the INPUTS beside the results: gross and katt are what
+   * was typed, and khalis and amount are derived from them. So a loaded slip
+   * recalculates to the figures it was posted with rather than to something that
+   * merely looks similar.
+   */
+  wholesaleLoadAsDraft(invoiceNumber: number): Promise<WholesaleEntryDto | null>
   setRate(request: SetRateRequest): Promise<{ ok: true } | { ok: false; message: string }>
   rateHistory(): Promise<readonly RateHistoryDto[]>
   changePassword(
     current: string,
     next: string,
   ): Promise<{ ok: true } | { ok: false; message: string }>
+
+  // M6 — Purchase. See the block at the foot of this file.
+  purchaseNextInvoiceNo(): Promise<string>
+  /** The typed grid in, every khalis and amount out. Pure — writes nothing. */
+  purchasePreview(request: SavePurchaseRequest): Promise<PurchasePreviewDto>
+  purchaseSave(request: SavePurchaseRequest): Promise<PurchaseSaveResult>
+  /** Saves as HELD: a number and the lines, and NO stock movement. */
+  purchaseHold(request: SavePurchaseRequest): Promise<PurchaseSaveResult>
+  purchaseCancel(
+    entryId: string,
+    reason: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }>
+  purchaseNeighbours(
+    current: number | null,
+    includeCancelled: boolean,
+  ): Promise<PurchaseNeighboursDto>
+  /** A saved purchase, in the shape the screen edits — not the shape it prints. */
+  purchaseLoadAsDraft(invoiceNumber: number): Promise<PurchaseEntryDto | null>
+  /** The K24 rate in force on a date — what a purchase is priced against. */
+  purchaseRateFor(date: string): Promise<{ display: string; rupees: string } | null>
+
+  // M4 — Stock. Sums over the append-only ledger, never a stored balance.
+  stockSummary(): Promise<StockSummaryDto>
+  stockLedger(filter: StockLedgerRequest): Promise<readonly StockLedgerRowDto[]>
+  stockAdjust(request: StockAdjustRequest): Promise<StockAdjustResult>
+
+  // M4 stage 1 — the item master, categories and locations. Definitions only.
+  /** Empty query answers with the register itself, newest names A–Z. */
+  inventoryItems(query: string, includeInactive: boolean): Promise<readonly ItemDto[]>
+  inventoryItemCreate(request: SaveItemRequest): Promise<SaveItemResult>
+  inventoryItemUpdate(itemId: string, request: SaveItemRequest): Promise<SaveItemResult>
+  inventoryItemSetActive(itemId: string, isActive: boolean): Promise<InventorySetupResult>
+  inventoryCategoryTree(includeInactive: boolean): Promise<readonly CategoryNodeDto[]>
+  inventoryCategoryCreate(
+    parentId: string | null,
+    name: string,
+  ): Promise<InventorySetupResult>
+  inventoryCategoryRename(categoryId: string, name: string): Promise<InventorySetupResult>
+  inventoryCategorySetActive(
+    categoryId: string,
+    isActive: boolean,
+  ): Promise<InventorySetupResult>
+  inventoryLocations(includeInactive: boolean): Promise<readonly LocationDto[]>
+  inventoryLocationCreate(name: string): Promise<InventorySetupResult>
+  inventoryLocationRename(locationId: string, name: string): Promise<InventorySetupResult>
+  inventoryLocationSetActive(
+    locationId: string,
+    isActive: boolean,
+  ): Promise<InventorySetupResult>
+
+  // M4 stage 2 — the pieces. Quantity is a COUNT; khalis is a SUM. Always.
+  inventorySummary(groupBy: string): Promise<InventorySummaryDto>
+  pieceList(filter: PieceListRequest): Promise<readonly PieceDto[]>
+  pieceHistory(pieceId: string): Promise<PieceHistoryDto | null>
+  pieceMove(pieceId: string, locationId: string | null): Promise<InventorySetupResult>
+  /** A PREVIEW of the next tag number. Reserves nothing. */
+  openingNextTag(): Promise<string>
+  /** The typed opening grid in, every net and khalis out. Pure — writes nothing. */
+  openingPreview(request: OpeningPostRequest): Promise<OpeningPreviewDto>
+  /** Pieces + CREATED events + OPENING ledger rows, ONE transaction. */
+  openingPost(request: OpeningPostRequest): Promise<OpeningPostResult>
 
   // M5 — Sale (Retail). See the block at the foot of this file.
   retailCalculate(request: RetailCalculateRequest): Promise<RetailCalculationDto>
@@ -232,6 +329,21 @@ export interface RendererApi {
   retailRounding(): Promise<RetailRoundingDto>
   setRetailRounding(step: number): Promise<{ ok: true } | { ok: false; message: string }>
   /**
+   * The shop's identity, as it prints on every slip.
+   *
+   * Read from `shop_profile`, which is one row by construction. Never null on
+   * the wire: a shop that has not filled this in yet gets empty strings, so the
+   * form has something to render and the slip prints the defaults it always did.
+   */
+  shopProfile(): Promise<ShopProfileDto>
+  setShopProfile(
+    profile: ShopProfileDto,
+  ): Promise<{ ok: true } | { ok: false; message: string }>
+  printSettings(): Promise<PrintSettingsDto>
+  setPrintSettings(
+    changes: Partial<PrintSettingsDto>,
+  ): Promise<{ ok: true } | { ok: false; message: string }>
+  /**
    * Hands a URL to the operating system's browser.
    *
    * The one place this application deliberately leaves itself. It is not a
@@ -290,6 +402,10 @@ export const IPC_M2 = {
   wholesaleFind: 'wholesale:find',
   wholesaleRecent: 'wholesale:recent',
   wholesaleReverse: 'wholesale:reverse',
+  /** Where FIRST / PREV / NEXT / LAST can go from the slip on screen. */
+  wholesaleNeighbours: 'wholesale:neighbours',
+  /** A posted slip, read back in the shape the SCREEN edits. */
+  wholesaleLoadAsDraft: 'wholesale:loadAsDraft',
   rateSet: 'rates:set',
   /** Read-only. Every recorded rate, newest first, for the Gold Rate screen. */
   rateHistory: 'rates:history',
@@ -435,6 +551,51 @@ export interface SetRateRequest {
   readonly note: string | null
 }
 
+// ── walking the wholesale slip book ─────────────────────────────────────────
+//
+// The same four controls the retail toolbar has, over the wholesale ISSUE book.
+// They navigate by the INTEGER at the end of a slip number, because that is the
+// only thing an arrow can add one to; the display string is composed on the main
+// side and crosses preformatted, like every other figure here.
+
+/** Null means "nowhere to go", which is what disables an arrow. */
+export interface WholesaleNeighboursDto {
+  readonly first: InvoiceRefDto | null
+  readonly previous: InvoiceRefDto | null
+  readonly next: InvoiceRefDto | null
+  readonly last: InvoiceRefDto | null
+}
+
+/** A slip as the operator holds it: the party, the date, the rate, the rows. */
+export interface WholesaleDraftDto {
+  readonly partyId: string | null
+  readonly partyName: string
+  readonly partyCode: string
+  readonly entryDate: string
+  /** Empty means "use the rate recorded for this date". */
+  readonly ratePerTolaOverride: string
+  readonly lines: readonly LineInputDto[]
+  readonly notes: string | null
+}
+
+/**
+ * A posted slip, ready to be shown and — if the operator asks — corrected.
+ *
+ * Carries the rate it was PRICED at as an override, for the reason the retail
+ * one does: without it a slip from last week reprices itself at today's rate the
+ * moment it is opened, and the screen disagrees with the paper.
+ */
+export interface WholesaleEntryDto {
+  readonly entryId: string
+  readonly invoiceNumber: number
+  /** Preformatted, prefix already applied. */
+  readonly invoiceNo: string
+  readonly kind: string
+  /** A reversed slip is shown, and shown as reversed. */
+  readonly isReversed: boolean
+  readonly draft: WholesaleDraftDto
+}
+
 // ── retail (M5) ─────────────────────────────────────────────────────────────
 //
 // The retail screen is the strictest application of the rule this whole file
@@ -467,6 +628,12 @@ export const IPC_RETAIL = {
   /** The rounding step applied to the invoice total. See RetailRoundingDto. */
   rounding: 'settings:retailRounding',
   roundingSet: 'settings:retailRounding:set',
+  /** The shop's own identity — what prints at the top of every slip. */
+  shopProfile: 'settings:shopProfile',
+  shopProfileSet: 'settings:shopProfile:set',
+  /** Paper width, copies, the terms box, the footer and the number prefixes. */
+  printSettings: 'settings:print',
+  printSettingsSet: 'settings:print:set',
   // ── bills, which group slips ──────────────────────────────────────────────
   /** Every slip in the bill, computed. Pure: no writes. */
   billCalculate: 'retail:bill:calculate',
@@ -814,6 +981,40 @@ export interface RetailSaleDto {
   readonly wastageRuleLabel: string
 }
 
+/**
+ * The shop, as it prints.
+ *
+ * Every field is optional on the paper: a blank one hides its line rather than
+ * printing an empty row, which is what lets a one-owner shop with one phone
+ * number have a slip that looks deliberate rather than half-filled.
+ */
+export interface ShopProfileDto {
+  readonly name: string
+  readonly tagline: string
+  readonly ownerName: string
+  readonly secondOwnerName: string
+  readonly phone1: string
+  readonly phone2: string
+  readonly phone3: string
+  readonly address: string
+}
+
+/** Everything the print and receipt cards edit. */
+export interface PrintSettingsDto {
+  /** 80 or 58 — the thermal roll's width. */
+  readonly paperWidthMm: number
+  readonly copies: number
+  readonly printAfterSave: boolean
+  /** The terms box under the items. Blank prints no box at all. */
+  readonly terms: string
+  readonly footer: string
+  /** Shown in front of a number. Blank means a bare 1, 2, 3. */
+  readonly retailPrefix: string
+  readonly wholesalePrefix: string
+  readonly settlementPrefix: string
+  readonly purchasePrefix: string
+}
+
 export interface CustomerDto {
   readonly id: string
   readonly code: string
@@ -936,3 +1137,414 @@ export interface RetailDraftFoundDto {
   readonly total: string
   readonly savedAt: string
 }
+
+// ── purchase and stock (M6 / M4) ────────────────────────────────────────────
+//
+// The same rule as everything above: the renderer computes NOTHING. Khalis and
+// amounts are produced by the main process from the typed gross, katt and rate
+// — the same `computePurchaseLine` the save path runs — and arrive
+// preformatted. Stock figures are sums over the append-only ledger, computed
+// at the moment of asking and never stored.
+
+export const IPC_PURCHASE = {
+  /** A PREVIEW of the next purchase number. Reserves nothing. */
+  nextInvoiceNo: 'purchase:nextInvoiceNo',
+  /** The typed grid in, every khalis and amount out. Pure: no writes. */
+  preview: 'purchase:preview',
+  save: 'purchase:save',
+  /** Saves as HELD: a number and the lines, and NO stock movement. */
+  hold: 'purchase:hold',
+  /** Flips a purchase to cancelled and writes the reversing stock rows. */
+  cancel: 'purchase:cancel',
+  /** Where FIRST / PREV / NEXT / LAST can go from the purchase on screen. */
+  neighbours: 'purchase:neighbours',
+  /** A saved purchase, read back in the shape the SCREEN edits. */
+  loadAsDraft: 'purchase:loadAsDraft',
+  /** The K24 rate in force on a date — what a purchase is priced against. */
+  rateFor: 'purchase:rateFor',
+} as const
+
+export const IPC_STOCK = {
+  /** Per-bucket standing plus the valuation at this moment's 24K rate. */
+  summary: 'stock:summary',
+  /** The movements, filtered, with running balances. Newest first. */
+  ledger: 'stock:ledger',
+  /** A manual correction — an ADJUSTMENT row like any other movement. */
+  adjust: 'stock:adjust',
+} as const
+
+/** One purchase grid row, as typed. Parsed and computed on the main side. */
+export interface PurchaseLineInputDto {
+  readonly itemName: string
+  readonly grossGrams: string
+  readonly kattRatti: string
+  /** As typed. Empty means "use the header rate" — never zero. */
+  readonly rateRupees: string
+  /** FINISHED | SCRAP | BULLION. The screen defaults new rows to SCRAP. */
+  readonly bucket: string
+  readonly remarks: string | null
+}
+
+export interface PurchaseLinePreviewDto {
+  readonly itemName: string
+  readonly grossDisplay: string
+  readonly kattDisplay: string
+  readonly khalisDisplay: string
+  readonly rateDisplay: string
+  readonly amountDisplay: string
+  readonly purityDisplay: string
+  readonly bucket: string
+  readonly error: string | null
+}
+
+/** Live totals for the purchase grid footer and the slip preview. */
+export interface PurchasePreviewDto {
+  readonly lines: readonly PurchaseLinePreviewDto[]
+  readonly grossTotalDisplay: string
+  readonly khalisTotalDisplay: string
+  readonly amountTotalDisplay: string
+  readonly rateDisplay: string | null
+  readonly rateMissing: boolean
+}
+
+export interface SavePurchaseRequest {
+  readonly partyId: string
+  readonly entryDate: string
+  readonly lines: readonly PurchaseLineInputDto[]
+  /** Empty means "use the rate recorded for this date". */
+  readonly ratePerTolaOverride?: string
+  readonly notes: string | null
+  /** Set when the screen is holding a HELD purchase: same number, new lines. */
+  readonly heldId: string | null
+}
+
+export type PurchaseSaveResult =
+  | {
+      readonly ok: true
+      readonly invoiceNo: string
+      readonly entryId: string
+      readonly khalisTotalDisplay: string
+      readonly amountTotalDisplay: string
+    }
+  | { readonly ok: false; readonly message: string }
+
+/** A purchase as the operator holds it: the party, the date, the rate, the rows. */
+export interface PurchaseDraftDto {
+  readonly partyId: string | null
+  readonly partyName: string
+  readonly partyCode: string
+  readonly entryDate: string
+  /** The rate it was PRICED at, pinned — empty only for a fresh slip. */
+  readonly ratePerTolaOverride: string
+  readonly lines: readonly PurchaseLineInputDto[]
+  readonly notes: string | null
+}
+
+export interface PurchaseEntryDto {
+  readonly entryId: string
+  readonly invoiceNumber: number
+  /** Preformatted, prefix already applied. */
+  readonly invoiceNo: string
+  /** held | posted | cancelled. */
+  readonly status: string
+  /**
+   * Non-null when the stored khalis or amounts no longer reproduce from the
+   * STORED katt and rate — the record came from an earlier version of the
+   * arithmetic. The screen shows this banner plainly rather than silently
+   * displaying either figure.
+   */
+  readonly figuresWarning: string | null
+  readonly draft: PurchaseDraftDto
+}
+
+export interface PurchaseNeighboursDto {
+  readonly first: InvoiceRefDto | null
+  readonly previous: InvoiceRefDto | null
+  readonly next: InvoiceRefDto | null
+  readonly last: InvoiceRefDto | null
+}
+
+// ── stock ───────────────────────────────────────────────────────────────────
+
+export interface StockBucketDto {
+  readonly bucket: string
+  /** Magnitude only — the flag carries the sign. Never a bare minus (§4). */
+  readonly grossDisplay: string
+  readonly khalisDisplay: string
+  readonly isNegative: boolean
+}
+
+export interface StockSummaryDto {
+  readonly buckets: readonly StockBucketDto[]
+  readonly totalGrossDisplay: string
+  readonly totalKhalisDisplay: string
+  readonly totalIsNegative: boolean
+  /** Buckets currently below zero. Shown, never hidden. */
+  readonly negativeBuckets: readonly string[]
+  /**
+   * The khalis on hand at the 24K rate in force right now, or null when no
+   * rate exists. The rate and the moment are stated beside it because the
+   * valuation is only true for that moment.
+   */
+  readonly valuationDisplay: string | null
+  readonly valuationRateDisplay: string | null
+  readonly valuationAtDisplay: string
+}
+
+export interface StockLedgerRowDto {
+  readonly id: string
+  /** The business day, YYYY-MM-DD, plus a display form beside it. */
+  readonly date: string
+  readonly atDisplay: string
+  readonly kind: string
+  readonly bucket: string
+  readonly itemName: string | null
+  /** in = metal arriving, out = metal leaving. The displays are magnitudes. */
+  readonly direction: 'in' | 'out'
+  readonly grossDisplay: string
+  readonly khalisDisplay: string
+  readonly kattDisplay: string | null
+  readonly note: string | null
+  /** The document behind the movement, e.g. a purchase, preformatted. */
+  readonly refDisplay: string | null
+  readonly refType: string | null
+  /** Set when the reference can be opened — the purchase book's number. */
+  readonly refInvoiceNumber: number | null
+  /** The balance the whole book stood at AFTER this movement. Magnitudes. */
+  readonly runningGrossDisplay: string
+  readonly runningKhalisDisplay: string
+  readonly runningIsNegative: boolean
+}
+
+export interface StockLedgerRequest {
+  readonly fromDate?: string
+  readonly toDate?: string
+  readonly bucket?: string
+  readonly kind?: string
+}
+
+export interface StockAdjustRequest {
+  readonly bucket: string
+  /** add = count found more than the books; remove = less. */
+  readonly direction: 'add' | 'remove'
+  readonly grossGrams: string
+  /** Empty means katt 0 — the khalis equals the gross. */
+  readonly kattRatti: string
+  readonly itemName: string | null
+  /** Required. The correction must be as visible as everything else. */
+  readonly reason: string
+}
+
+export type StockAdjustResult =
+  | { readonly ok: true; readonly khalisDisplay: string }
+  | { readonly ok: false; readonly message: string }
+
+// ── inventory setup (M4 stage 1) ────────────────────────────────────────────
+//
+// Items are DEFINITIONS: no weight, no quantity, ever. Stock is the pieces
+// (stage 2), one row per physical article. These channels carry the item
+// master, the shop's own two-level category tree, and its locations.
+
+export const IPC_INVENTORY = {
+  itemSearch: 'inventory:items:search',
+  itemCreate: 'inventory:items:create',
+  itemUpdate: 'inventory:items:update',
+  itemSetActive: 'inventory:items:setActive',
+  categoryTree: 'inventory:categories:tree',
+  categoryCreate: 'inventory:categories:create',
+  categoryRename: 'inventory:categories:rename',
+  categorySetActive: 'inventory:categories:setActive',
+  locationList: 'inventory:locations:list',
+  locationCreate: 'inventory:locations:create',
+  locationRename: 'inventory:locations:rename',
+  locationSetActive: 'inventory:locations:setActive',
+} as const
+
+export interface ItemDto {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly categoryId: string | null
+  /** Preformatted: "Rings › Ladies", or "—" when unfiled. */
+  readonly categoryLabel: string
+  /** The stored token, K22, for the edit form. */
+  readonly purity: string
+  /** The display form, 22K. */
+  readonly purityDisplay: string
+  readonly defaultKattDisplay: string
+  readonly makingChargeBasis: string
+  /** Preformatted: "Rs 3,500 / tola" or "Rs 500". */
+  readonly makingChargeDisplay: string
+  /** The typed figure, for the edit form. */
+  readonly makingChargeRupees: string
+  readonly supplierId: string | null
+  readonly supplierName: string
+  readonly designNo: string | null
+  readonly notes: string | null
+  readonly isActive: boolean
+}
+
+export interface SaveItemRequest {
+  /** Ignored on update — a code prints on tags and never changes. */
+  readonly code: string
+  readonly name: string
+  readonly categoryId: string | null
+  readonly purity: string
+  readonly defaultKattRatti: string
+  readonly makingChargeBasis: string
+  readonly makingChargeRupees: string
+  readonly supplierId: string | null
+  readonly designNo: string
+  readonly notes: string
+}
+
+export type SaveItemResult =
+  | { readonly ok: true; readonly item: ItemDto }
+  | { readonly ok: false; readonly message: string }
+
+export interface CategoryChildDto {
+  readonly id: string
+  readonly name: string
+  readonly isActive: boolean
+}
+
+export interface CategoryNodeDto {
+  readonly id: string
+  readonly name: string
+  readonly isActive: boolean
+  readonly children: readonly CategoryChildDto[]
+}
+
+export interface LocationDto {
+  readonly id: string
+  readonly name: string
+  readonly isActive: boolean
+}
+
+export type InventorySetupResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly message: string }
+
+// ── pieces (M4 stage 2) ─────────────────────────────────────────────────────
+//
+// The inventory itself: one row per physical article. Quantity is a COUNT of
+// piece rows and khalis is a SUM over them — nothing below carries a stored
+// counter, and every weight arrives preformatted.
+
+export const IPC_PIECES = {
+  /** QUANTITY · GROSS · KHALIS over IN_STOCK pieces, grouped as asked. */
+  summary: 'pieces:summary',
+  /** The pieces behind a summary row, or any other slice. */
+  list: 'pieces:list',
+  /** One piece's full history: created, moved, issued, sold. */
+  history: 'pieces:history',
+  move: 'pieces:move',
+  /** A PREVIEW of the next tag number. Reserves nothing. */
+  nextTag: 'pieces:nextTag',
+  openingPreview: 'pieces:opening:preview',
+  openingPost: 'pieces:opening:post',
+} as const
+
+/**
+ * A slice of the piece register. Absent means "any"; null means "none
+ * recorded" — drilling into the "No location" row needs the difference.
+ */
+export interface PieceListRequest {
+  readonly status?: string
+  readonly itemId?: string
+  readonly categoryId?: string | null
+  readonly purity?: string
+  readonly locationId?: string | null
+  readonly supplierId?: string | null
+}
+
+export interface InventorySummaryRowDto {
+  readonly label: string
+  /** Hand this straight back to pieceList to see the rows behind the figure. */
+  readonly filter: PieceListRequest
+  readonly count: number
+  readonly grossDisplay: string
+  readonly khalisDisplay: string
+}
+
+export interface InventorySummaryDto {
+  readonly groupBy: string
+  readonly rows: readonly InventorySummaryRowDto[]
+  readonly totalCount: number
+  readonly totalGrossDisplay: string
+  readonly totalKhalisDisplay: string
+  readonly valuationDisplay: string | null
+  readonly valuationRateDisplay: string | null
+  readonly valuationAtDisplay: string
+}
+
+export interface PieceDto {
+  readonly id: string
+  readonly tagDisplay: string
+  readonly itemCode: string
+  readonly itemName: string
+  readonly categoryLabel: string
+  readonly purityDisplay: string
+  readonly grossDisplay: string
+  readonly stoneDisplay: string
+  readonly stoneCount: number
+  readonly netDisplay: string
+  readonly kattDisplay: string
+  readonly khalisDisplay: string
+  readonly locationId: string | null
+  readonly locationName: string
+  readonly status: string
+  /** "In stock", "Issued to karigar" — the token, said as words. */
+  readonly statusDisplay: string
+  readonly sourceDisplay: string
+  readonly createdDisplay: string
+}
+
+export interface PieceHistoryEventDto {
+  readonly atDisplay: string
+  readonly text: string
+}
+
+export interface PieceHistoryDto {
+  readonly piece: PieceDto
+  readonly events: readonly PieceHistoryEventDto[]
+}
+
+/** One opening grid row, as typed. Parsed and computed on the main side. */
+export interface OpeningLineDto {
+  /** Empty takes the next tag from the book; a number keeps an existing tag. */
+  readonly tagText: string
+  readonly itemCode: string
+  readonly grossGrams: string
+  readonly stoneGrams: string
+  readonly stoneCountText: string
+  /** Empty falls back to the item's default katt. */
+  readonly kattRatti: string
+  readonly locationId: string | null
+}
+
+export interface OpeningLinePreviewDto {
+  readonly tagDisplay: string
+  readonly itemName: string
+  readonly kattDisplay: string
+  readonly netDisplay: string
+  readonly khalisDisplay: string
+  readonly error: string | null
+}
+
+export interface OpeningPreviewDto {
+  readonly lines: readonly OpeningLinePreviewDto[]
+  readonly count: number
+  readonly grossTotalDisplay: string
+  readonly khalisTotalDisplay: string
+}
+
+export interface OpeningPostRequest {
+  readonly entryDate: string
+  readonly lines: readonly OpeningLineDto[]
+  readonly notes: string | null
+}
+
+export type OpeningPostResult =
+  | { readonly ok: true; readonly count: number; readonly khalisTotalDisplay: string }
+  | { readonly ok: false; readonly message: string }

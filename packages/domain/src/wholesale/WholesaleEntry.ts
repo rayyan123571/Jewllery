@@ -31,7 +31,19 @@ export interface WholesaleEntry {
   readonly branchId: string
   readonly partyId: string
   readonly kind: WholesaleEntryKind
-  readonly invoiceNo: string
+  /**
+   * The slip number, as a plain integer: 1, 2, 3.
+   *
+   * Not text, and not carrying a prefix. TEXT sorts lexically — 'WS-10' before
+   * 'WS-9' — so the arrows that walk the book would step onto the wrong slip.
+   * The prefix a shop wants printed is a display setting applied at the edge,
+   * which is why putting one back is a settings change and not a migration.
+   *
+   * Issues and settlements are numbered from SEPARATE sequences, so both books
+   * hold a slip 1. A reversal keeps the number of the slip it reverses: it is
+   * the same document being corrected, not a new one.
+   */
+  readonly invoiceNumber: number
   readonly entryDate: IsoDate
 
   /**

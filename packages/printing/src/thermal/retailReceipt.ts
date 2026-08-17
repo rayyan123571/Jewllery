@@ -64,6 +64,15 @@ export interface RetailReceiptData {
   readonly customerMobile?: string | null
   readonly ratePurity: string
   readonly ratePerTola: Money
+  /**
+   * The shop's terms box and footer line, from Settings.
+   *
+   * Both optional, and both meaningful when blank: an empty string means the
+   * shop cleared the field and wants nothing printed, while `undefined` means
+   * the caller did not set it and the slip keeps what it has always said.
+   */
+  readonly terms?: string | null
+  readonly footer?: string
   readonly lines: readonly RetailReceiptLine[]
   readonly totalFine: Weight
   readonly itemsTotal: Money
@@ -304,11 +313,30 @@ export function buildRetailReceiptHtml(data: RetailReceiptData): string {
     signatureCell('دستخط دکاندار') +
     '</div>'
 
+  /**
+   * The shop's own terms, printed in a ruled box under the totals.
+   *
+   * A blank setting prints NO BOX, rather than an empty rectangle: a shop that
+   * cleared the field is saying it wants no terms, and an empty box on a
+   * customer's receipt looks like something failed to print.
+   */
+  const termsBlock = (data.terms ?? '').trim()
+    ? `<div style="font-family:${FONT_STACK};font-size:${SMALL_PX}px;line-height:1.9;` +
+      `border:3px solid #000;margin-top:8px;padding:4px 7px;${STROKE}">` +
+      `${esc((data.terms ?? '').trim())}</div>`
+    : ''
+
+  // The shop's own words, or the ones this slip has always carried. A blank
+  // setting means the shop cleared the line, so nothing is printed at all —
+  // `??` would put the default back and overrule them on their own paper.
+  const footerText = data.footer === undefined ? 'شکریہ! دوبارہ تشریف لائیں' : data.footer.trim()
   const footer =
-    `<div style="font-family:${FONT_STACK};font-size:${SMALL_PX}px;text-align:center;` +
-    `border-top:3px solid #000;margin-top:9px;padding-top:7px;line-height:1.8;${STROKE}">` +
-    'شکریہ! دوبارہ تشریف لائیں' +
-    '</div>' +
+    (footerText
+      ? `<div style="font-family:${FONT_STACK};font-size:${SMALL_PX}px;text-align:center;` +
+        `border-top:3px solid #000;margin-top:9px;padding-top:7px;line-height:1.8;${STROKE}">` +
+        esc(footerText) +
+        '</div>'
+      : '') +
     (data.printedAt
       ? `<div style="font:600 16px ${NUMERIC_FONT};text-align:center;padding:2px 0 10px">${esc(data.printedAt)}</div>`
       : '<div style="height:10px"></div>')
@@ -328,6 +356,7 @@ export function buildRetailReceiptHtml(data: RetailReceiptData): string {
     `<table>${itemHeader}${itemRows}${fineRow}${chargeRows}${grandTotalRow}${settlementRows}</table>` +
     wordsBlock +
     remarksBlock +
+    termsBlock +
     ruleBlock +
     signature +
     footer +
