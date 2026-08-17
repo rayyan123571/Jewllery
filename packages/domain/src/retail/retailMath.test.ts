@@ -8,6 +8,7 @@ import {
   totalsOfRetail,
   type RetailLineInput,
   type WastageRule,
+  karatDeduction,
 } from './retailMath.js'
 
 // No database, no window — the whole point of the layering.
@@ -475,5 +476,27 @@ describe('tola conversion', () => {
 
   it('formats a negative without losing the sign', () => {
     expect(formatTola(Weight.fromMilligrams(-11_664))).toBe('-1.000')
+  })
+})
+
+describe('the milawat by karat', () => {
+  it('one tola at 22K deducts exactly 0.972 g — the shop own check figure', () => {
+    expect(karatDeduction(Weight.parse('11.664'), 22).format()).toBe('0.972')
+  })
+
+  it('24K deducts nothing; 18K deducts a quarter', () => {
+    expect(karatDeduction(Weight.parse('11.664'), 24).format()).toBe('0.000')
+    expect(karatDeduction(Weight.parse('11.664'), 18).format()).toBe('2.916')
+  })
+
+  it('is the karat fraction, not the hallmark fineness', () => {
+    // 916/999 would give 0.969 — a figure the counter would reject on sight.
+    expect(karatDeduction(Weight.parse('11.664'), 22).milligrams).toBe(972)
+  })
+
+  it('refuses a karat that is not a whole number from 1 to 24', () => {
+    expect(() => karatDeduction(Weight.parse('1.000'), 0)).toThrow(RangeError)
+    expect(() => karatDeduction(Weight.parse('1.000'), 25)).toThrow(RangeError)
+    expect(() => karatDeduction(Weight.parse('1.000'), 21.5)).toThrow(RangeError)
   })
 })

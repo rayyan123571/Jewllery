@@ -200,6 +200,7 @@ const api = {
     khalisTotalDisplay: '0.000',
   })),
   openingPost: vi.fn(),
+  retailDeductionFor: vi.fn(async () => null),
   retailHold: vi.fn(),
   retailLoad: vi.fn(async () => null),
   retailList: vi.fn(async () => []),

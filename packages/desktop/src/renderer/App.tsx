@@ -4,6 +4,7 @@ import { createActionRegistry, type ActionId } from './actions/registry.js'
 import { Icon } from './shell/Icon.js'
 import { MODULES, isModuleBuilt, moduleById, type ModuleId } from './shell/modules.js'
 import { ModulePlaceholder } from './shell/ModulePlaceholder.js'
+import { DashboardScreen } from './modules/dashboard/DashboardScreen.js'
 import { WholesaleScreen } from './modules/wholesale/WholesaleScreen.js'
 import { PurchaseScreen } from './modules/purchase/PurchaseScreen.js'
 import { StockScreen } from './modules/stock/StockScreen.js'
@@ -402,22 +403,20 @@ function AppShell() {
           <MessageRegion />
           <main className="content">
             {busy ? <div className="banner">{busy}</div> : null}
-            {active === 'wholesale' ? (
+            {active === 'dashboard' ? (
+              <DashboardScreen rates={boot.rates} onRateSaved={() => void reload()} />
+            ) : active === 'wholesale' ? (
               <WholesaleScreen
                 today={today}
-                rates={boot.rates}
                 shop={boot.shop}
                 receiptFooter={boot.receiptFooter}
-                onRateSaved={() => void reload()}
                 onPosted={() => void reload()}
               />
             ) : active === 'purchase' ? (
               <PurchaseScreen
                 today={today}
-                rates={boot.rates}
                 shop={boot.shop}
                 receiptFooter={boot.receiptFooter}
-                onRateSaved={() => void reload()}
                 onPosted={() => void reload()}
                 pendingOpen={pendingPurchase}
                 onPendingOpenHandled={() => setPendingPurchase(null)}
@@ -425,20 +424,13 @@ function AppShell() {
             ) : active === 'stock' ? (
               <StockScreen
                 today={today}
-                rates={boot.rates}
-                onRateSaved={() => void reload()}
                 onOpenPurchase={(invoiceNumber) => {
                   setPendingPurchase(invoiceNumber)
                   setActive('purchase')
                 }}
               />
             ) : active === 'sale-retail' ? (
-              <RetailScreen
-                today={today}
-                rates={boot.rates}
-                onRateSaved={() => void reload()}
-                onPosted={() => void reload()}
-              />
+              <RetailScreen today={today} onPosted={() => void reload()} />
             ) : active === 'gold-rate' ? (
               <GoldRateScreen
                 rates={boot.rates}

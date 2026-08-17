@@ -183,7 +183,9 @@ export {
 export { formatInvoiceNo, parseInvoiceNumber } from './retail/invoiceNumber.js'
 export {
   BASIS_POINTS,
+  DEDUCTION_KARATS,
   computeRetailInvoice,
+  karatDeduction,
   computeRetailLine,
   totalsOfRetail,
   type InvoiceChargeInput,

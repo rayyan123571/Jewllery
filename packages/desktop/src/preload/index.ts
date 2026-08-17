@@ -42,6 +42,7 @@ import {
   type WastageRuleChoice,
   type WastageRuleDto,
   type CategoryNodeDto,
+  type DeductionForRequest,
   type InventorySetupResult,
   type InventorySummaryDto,
   type ItemDto,
@@ -254,6 +255,10 @@ const api: RendererApi = {
   // arithmetic, the validation and the formatting all happen on the far side.
   retailCalculate: (request: RetailCalculateRequest) =>
     ipcRenderer.invoke(IPC_RETAIL.calculate, request) as Promise<RetailCalculationDto>,
+  retailDeductionFor: (request: DeductionForRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.deductionFor, request) as ReturnType<
+      RendererApi['retailDeductionFor']
+    >,
   retailSave: (request: RetailPostRequest) =>
     ipcRenderer.invoke(IPC_RETAIL.save, request) as Promise<RetailPostResult>,
   retailHold: (request: RetailPostRequest) =>

@@ -5,7 +5,6 @@ import { DateField } from '../../components/DateField.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import { useMessages } from '../../components/Messages.js'
 import { Modal } from '../../components/Modal.js'
-import { RateCard } from '../../components/RateCard.js'
 import { toDisplayDate } from '../../format/dates.js'
 import { PartySelector } from './PartySelector.js'
 import { SettlementPanel } from './SettlementPanel.js'
@@ -15,7 +14,6 @@ import type {
   PartyBalanceDto,
   PartyDto,
   PreviewDto,
-  RateDto,
   ShopProfileDto,
   WholesaleEntryDto,
   WholesaleNeighboursDto,
@@ -104,18 +102,14 @@ function partyOf(entry: WholesaleEntryDto): PartyDto | null {
 
 export function WholesaleScreen({
   today,
-  rates,
   shop,
   receiptFooter,
-  onRateSaved,
   onPosted,
 }: {
   today: string
-  rates: readonly RateDto[]
   /** The shop's own details, from Settings. Printed at the top of the slip. */
   shop: ShopProfileDto
   receiptFooter: string
-  onRateSaved: () => void
   onPosted: () => void
 }) {
   const [tab, setTab] = useState<Tab>('new')
@@ -768,16 +762,13 @@ export function WholesaleScreen({
       </div>
 
       <div className="screen__head">
-        {/* Wholesale does not lose its rate control when the top bar goes. It
-            mounts the same card retail does — one component, one setRate IPC,
-            one gold_rates table. */}
-        <RateCard rates={rates} onSaved={onRateSaved} />
-
+        {/* The rate board lives on the Dashboard now. What this screen keeps
+            is the rate it is PRICING with — the header rate box — and this
+            banner for the day nothing has been set. */}
         {preview?.rateMissing ? (
           <div className="banner">
-            No gold rate is recorded for {toDisplayDate(entryDate)}. Set the rate for that
-            day in Gold Rate before saving — every amount depends on it, and using
-            today&apos;s would price this slip wrongly.
+            No gold rate is recorded for {toDisplayDate(entryDate)}. Set the 24K rate on
+            the Dashboard before saving — every amount depends on it.
           </div>
         ) : null}
       </div>

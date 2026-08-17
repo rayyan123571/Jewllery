@@ -6,11 +6,9 @@ import { EmptyState } from '../../components/EmptyState.js'
 import { useMessages } from '../../components/Messages.js'
 import { toDisplayDate } from '../../format/dates.js'
 import type {
-  RateDto,
   StockLedgerRowDto,
   StockSummaryDto,
 } from '../../../shared/ipc.js'
-import { RateCard } from '../../components/RateCard.js'
 import { ItemsPanel } from './ItemsPanel.js'
 import { SetupPanel } from './SetupPanel.js'
 import { InventoryPanel } from './InventoryPanel.js'
@@ -50,13 +48,9 @@ const KINDS = [
 
 export function StockScreen({
   today,
-  rates,
-  onRateSaved,
   onOpenPurchase,
 }: {
   today: string
-  rates: readonly RateDto[]
-  onRateSaved: () => void
   /** Hands a purchase number to the shell, which opens the Purchase screen on it. */
   onOpenPurchase: (invoiceNumber: number) => void
 }) {
@@ -163,7 +157,6 @@ export function StockScreen({
   return (
     <div className="screen stock">
       <div className="screen__head">
-        <RateCard rates={rates} onSaved={onRateSaved} />
         {negativeCount > 0 ? (
           <div className="banner">
             {negativeCount} bucket{negativeCount > 1 ? 's' : ''} negative:{' '}

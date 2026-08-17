@@ -5,23 +5,27 @@ import { isoToday } from '../format/dates.js'
 import type { RateDto } from '../../shared/ipc.js'
 
 /**
- * The gold rate, as a card inside a module screen.
+ * The gold rate card — the Dashboard's, and only the Dashboard's.
  *
- * ── Why this is a component and not a bar ──────────────────────────────────
- * It used to live in the top bar, which cost every screen 76px of height to
- * carry a figure only two screens actually need. The bar is gone; the rate moved
- * INTO the screens that price things by it, where it sits beside the numbers it
- * governs instead of above every screen in the application.
+ * It used to be mounted on every screen that prices metal, which put a 76px
+ * strip of the same four figures on Purchase, Retail, Whole Sale and Stock.
+ * The shop asked for it once, in one place; every entry screen still shows the
+ * rate it is pricing WITH (the header rate box), it just no longer carries the
+ * board.
  *
- * ── There is still exactly one rate store ──────────────────────────────────
- * Saving here goes through the SAME `setRate` IPC the Gold Rate screen uses,
- * with effectiveFrom = today. A rate typed into this card is a new row in
- * `gold_rates` exactly as if it had been typed on the full screen — history and
- * the effective-date model are untouched, and there is no second place a rate
- * can live and drift.
+ * ── One typed figure, three calculated ─────────────────────────────────────
+ * The shop quotes pure gold. 22K is 916 parts of a thousand, 21K is 875, 18K
+ * is 750 — so only the 24K cell is editable, and saving it makes the service
+ * write the other three as derived rows (916/999 and so on, integer
+ * arithmetic, rounded once). The derived cells display what was written and
+ * say "auto"; there is deliberately no way to type into them here, because a
+ * second typed figure is a second place for the typo the ordering check
+ * exists to catch. A correction, if ever needed, still exists on the Gold
+ * Rate screen.
  *
- * Every module that prices metal gets this same component. Wholesale keeps its
- * rate control by mounting this, not by growing a private copy.
+ * There is still exactly one rate store: saving goes through the same
+ * `setRate` IPC as the Gold Rate screen, effectiveFrom = today, a new row in
+ * `gold_rates` — history and the effective-date model untouched.
  */
 export function RateCard({
   rates,
@@ -30,29 +34,27 @@ export function RateCard({
   rates: readonly RateDto[]
   onSaved: () => void
 }) {
-  const [editing, setEditing] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   // A refused rate used to vanish silently: the editor closed and showed the old
-  // figure, so a typo that broke the purity ordering looked like it had saved.
+  // figure, so a typo looked like it had saved.
   const [error, setError] = useState<string | null>(null)
 
-  const begin = (purity: string, display: string): void => {
-    setEditing(purity)
+  const begin = (display: string): void => {
+    setEditing(true)
     setError(null)
     // Digits only — somebody retyping "Rs. 358,000" wants to type the number,
     // not to delete the currency and the separators first.
     setDraft(display.replace(/[^\d.]/g, ''))
   }
 
-  const commit = async (purityLabel: string): Promise<void> => {
+  const commit = async (): Promise<void> => {
     if (saving) return
     setSaving(true)
     try {
-      // "22K" is the display form; the service wants the stored form, "K22".
-      const purity = `K${purityLabel.replace(/K$/i, '')}`
       const result = await window.api.setRate({
-        purity,
+        purity: 'K24',
         ratePerTolaRupees: draft,
         effectiveFrom: isoToday(),
         note: 'edited from the rate card',
@@ -61,14 +63,11 @@ export function RateCard({
         setError(null)
         onSaved()
       } else {
-        // Most often a purity-ordering conflict — RateService refuses a lower
-        // purity priced above a higher one. Say so, rather than closing the
-        // editor as though the figure had been accepted.
         setError(result.message)
       }
     } finally {
       setSaving(false)
-      setEditing(null)
+      setEditing(false)
     }
   }
 
@@ -81,62 +80,73 @@ export function RateCard({
         <div className="rate-card__empty">No rate set</div>
       ) : (
         <div className="rate-card__row">
-          {rates.map((rate) => (
-            <div className="rate-card__cell" key={rate.purity}>
-              <span className="rate-card__purity">{rate.purity}</span>
-              <span className="rate-card__figure">
-                {editing === rate.purity ? (
-                  <input
-                    className="rate-card__input"
-                    value={draft}
-                    autoFocus
-                    inputMode="decimal"
-                    aria-label={`${rate.purity} rate per tola`}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onBlur={() => void commit(rate.purity)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void commit(rate.purity)
-                      // Escape abandons the edit without writing a rate row.
-                      if (e.key === 'Escape') setEditing(null)
-                    }}
-                  />
-                ) : (
-                  <Action
-                    id="rate.edit"
-                    variant="plain"
-                    className={`rate-card__value${rate.display ? '' : ' is-unset'}`}
-                    ariaLabel={
-                      rate.display
-                        ? `Edit ${rate.purity} rate`
-                        : `Set ${rate.purity} rate — none recorded`
-                    }
-                    onActivate={() => begin(rate.purity, rate.display ?? '')}
-                  >
-                    {/* Every purity the shop deals in is listed, whether or not
-                        it has a rate. An unset one shows as unset and invites
-                        the rate — never as a zero, which is a price. */}
-                    {rate.display ? rate.display.replace(/^Rs\.?\s*/, '') : 'Not set'}
-                  </Action>
-                )}
-                {/* Its own refresh, per purity — the mockup shows four, and one
-                    shared control could not say which figure it had re-read. */}
-                <Action
-                  id="rate.refresh"
-                  variant="icon"
-                  className="rate-card__refresh"
-                  ariaLabel={`Refresh ${rate.purity} rate`}
-                  onActivate={onSaved}
-                >
-                  <Icon name="refresh" size={13} />
-                </Action>
-              </span>
-            </div>
-          ))}
+          {rates.map((rate) => {
+            const isPure = rate.purity === '24K'
+            return (
+              <div className="rate-card__cell" key={rate.purity}>
+                <span className="rate-card__purity">{rate.purity}</span>
+                <span className="rate-card__figure">
+                  {isPure && editing ? (
+                    <input
+                      className="rate-card__input"
+                      value={draft}
+                      autoFocus
+                      inputMode="decimal"
+                      aria-label="24K rate per tola"
+                      onChange={(e) => setDraft(e.target.value)}
+                      onBlur={() => void commit()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void commit()
+                        // Escape abandons the edit without writing a rate row.
+                        if (e.key === 'Escape') setEditing(false)
+                      }}
+                    />
+                  ) : isPure ? (
+                    <Action
+                      id="rate.edit"
+                      variant="plain"
+                      className={`rate-card__value${rate.display ? '' : ' is-unset'}`}
+                      ariaLabel={
+                        rate.display
+                          ? 'Edit 24K rate'
+                          : 'Set 24K rate — none recorded'
+                      }
+                      onActivate={() => begin(rate.display ?? '')}
+                    >
+                      {rate.display ? rate.display.replace(/^Rs\.?\s*/, '') : 'Not set'}
+                    </Action>
+                  ) : (
+                    // Derived, not typed. Showing it as plain text rather than
+                    // a disabled control is deliberate: this is a FIGURE, and
+                    // nothing about it is waiting to be enabled.
+                    <span
+                      className={`rate-card__value rate-card__value--derived${
+                        rate.display ? '' : ' is-unset'
+                      }`}
+                      title={`Calculated from the 24K rate (${rate.purity} fineness)`}
+                    >
+                      {rate.display ? rate.display.replace(/^Rs\.?\s*/, '') : '—'}
+                      <span className="rate-card__auto"> auto</span>
+                    </span>
+                  )}
+                  {isPure ? (
+                    <Action
+                      id="rate.refresh"
+                      variant="icon"
+                      className="rate-card__refresh"
+                      ariaLabel="Refresh rates"
+                      onActivate={onSaved}
+                    >
+                      <Icon name="refresh" size={13} />
+                    </Action>
+                  ) : null}
+                </span>
+              </div>
+            )
+          })}
         </div>
       )}
       {error ? (
-        // The card has no room for a sentence, so it carries the short form and
-        // the full message is one hover away. Gold Rate shows it in full.
         <div className="rate-card__error" role="alert" title={error}>
           Rate refused
         </div>

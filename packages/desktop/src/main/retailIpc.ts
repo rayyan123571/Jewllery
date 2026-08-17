@@ -5,6 +5,7 @@ import type {
   NewCustomerDto,
   RetailBillCalculateRequest,
   RetailBillDraftDto,
+  DeductionForRequest,
   RetailCalculateRequest,
   RetailDraftSaveRequest,
   RetailListRequest,
@@ -26,6 +27,7 @@ import {
   retailBillReceipt,
   retailBillSave,
   retailCalculate,
+  retailDeductionFor,
   retailDraftDiscard,
   retailDraftFind,
   retailDraftSave,
@@ -75,6 +77,9 @@ export function registerRetailHandlers(container: Container, session: Session): 
 
   ipcMain.handle(IPC_RETAIL.calculate, (_event, request: RetailCalculateRequest) =>
     retailCalculate(deps, request),
+  )
+  ipcMain.handle(IPC_RETAIL.deductionFor, (_event, request: DeductionForRequest) =>
+    retailDeductionFor(request),
   )
 
   ipcMain.handle(IPC_RETAIL.save, (_event, request: RetailPostRequest) =>

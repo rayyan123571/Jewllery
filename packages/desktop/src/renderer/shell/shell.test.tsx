@@ -217,6 +217,7 @@ const noopApi = {
     khalisTotalDisplay: '0.000',
   })),
   openingPost: vi.fn(),
+  retailDeductionFor: vi.fn(async () => null),
   retailHold: vi.fn(),
   retailLoad: vi.fn(async () => null),
   retailList: vi.fn(async () => []),
@@ -537,12 +538,20 @@ describe('the shell chrome matches the mockup', () => {
    * because it is a column of per-tola figures under a GOLD RATE header and the
    * currency is stated once, by the header, rather than four times.
    */
-  it('shows the gold rate card with a rate per purity', async () => {
+  it('shows the gold rate card on the Dashboard, with a rate per purity', async () => {
+    const user = userEvent.setup()
     render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+    await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Dashboard'))
     await screen.findByText('GOLD RATE')
-    expect(screen.getByText('8,950')).toBeTruthy()
-    expect(screen.getByText('8,550')).toBeTruthy()
-    expect(screen.getByText('7,300')).toBeTruthy()
+    expect(screen.getByText(/8,950/)).toBeTruthy()
+    expect(screen.getByText(/8,550/)).toBeTruthy()
+    expect(screen.getByText(/7,300/)).toBeTruthy()
+    // And nowhere else: the entry screens carry their own header rate box, not
+    // the board. One place to read it, one place to set it.
+    await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Whole Sale'))
+    await screen.findByText('ENTRY DETAILS')
+    expect(screen.queryByText('GOLD RATE')).toBeNull()
   })
 
   /**
@@ -565,7 +574,10 @@ describe('the shell chrome matches the mockup', () => {
   })
 
   it('lists every purity on the rate card, unset ones included', async () => {
+    const user = userEvent.setup()
     render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+    await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Dashboard'))
     await screen.findByText('GOLD RATE')
     // The fixture prices 22K, 21K and 18K but never 24K. All four appear, and
     // the unpriced one says so rather than being dropped or shown as zero.
@@ -573,18 +585,29 @@ describe('the shell chrome matches the mockup', () => {
       expect(screen.getByText(purity)).toBeTruthy()
     }
     expect(screen.getByLabelText('Set 24K rate — none recorded')).toBeTruthy()
-    expect(screen.queryByText('0')).toBeNull()
+    // Unset is never shown as a zero INSIDE the card — zero is a price. The
+    // dashboard's own "0 pieces in stock" is a count and is fine.
+    const card = document.querySelector('.rate-card')
+    expect(card).toBeTruthy()
+    expect(within(card as HTMLElement).queryByText('0')).toBeNull()
   })
 
-  it('gives every purity its own editable figure and refresh', async () => {
+  it('only 24K is typed — the other three are calculated from it', async () => {
+    const user = userEvent.setup()
     render(<App />)
+    await screen.findByText('ENTRY DETAILS')
+    await user.click(within(screen.getByLabelText('Main menu')).getByTitle('Dashboard'))
     await screen.findByText('GOLD RATE')
+    // One editable cell, one refresh — the shop quotes pure gold and the rest
+    // is fineness arithmetic (916/999 and so on), done by the service.
+    expect(screen.getByLabelText('Set 24K rate — none recorded')).toBeTruthy()
+    expect(screen.getByLabelText('Refresh rates')).toBeTruthy()
     for (const purity of ['22K', '21K', '18K']) {
-      expect(screen.getByLabelText(`Edit ${purity} rate`)).toBeTruthy()
-      expect(screen.getByLabelText(`Refresh ${purity} rate`)).toBeTruthy()
+      expect(screen.queryByLabelText(`Edit ${purity} rate`)).toBeNull()
+      expect(screen.queryByLabelText(`Refresh ${purity} rate`)).toBeNull()
     }
-    // The unset one still gets its own refresh; it is a purity, not a gap.
-    expect(screen.getByLabelText('Refresh 24K rate')).toBeTruthy()
+    // The derived cells say so.
+    expect(screen.getAllByText('auto')).toHaveLength(3)
   })
 
   /**

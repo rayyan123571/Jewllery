@@ -31,6 +31,28 @@ import type { LabourMode } from './RetailSale.js'
 /** 100% in basis points. 14.00% is 1400. */
 export const BASIS_POINTS = 10_000
 
+/** The karats milawat is quoted in at the counter. */
+export const DEDUCTION_KARATS = [24, 22, 21, 18] as const
+
+/**
+ * The milawat for a karat, off a net weight.
+ *
+ * A k-karat article is k parts gold in 24 by the trade's own reckoning, so the
+ * impurity to deduct is net × (24 − k) / 24. One tola — 11.664 g — at 22K
+ * deducts exactly 0.972 g, which is the shop's own check figure.
+ *
+ * Deliberately the KARAT fraction, not the hallmark fineness (916/999): the
+ * counter quotes milawat in karats, and 11.664 × 83/999 would give 0.969 —
+ * a figure the shop would reject on sight. Integer arithmetic via `scaled`,
+ * rounded exactly once.
+ */
+export function karatDeduction(net: Weight, karat: number): Weight {
+  if (!Number.isInteger(karat) || karat < 1 || karat > 24) {
+    throw new RangeError(`A karat is a whole number from 1 to 24, not ${karat}.`)
+  }
+  return net.scaled(24 - karat, 24)
+}
+
 export type WastageDirection = 'add' | 'subtract'
 export type WastageBasis = 'gross' | 'net'
 

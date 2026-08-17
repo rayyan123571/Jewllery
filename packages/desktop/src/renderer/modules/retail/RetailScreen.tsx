@@ -10,12 +10,10 @@ import { DateField } from '../../components/DateField.js'
 import { useMessages } from '../../components/Messages.js'
 import { Modal } from '../../components/Modal.js'
 import { Icon } from '../../shell/Icon.js'
-import { RateCard } from '../../components/RateCard.js'
 import { CustomerSelector } from './CustomerSelector.js'
 import { ItemsGrid } from './ItemsGrid.js'
 import type {
   CustomerDto,
-  RateDto,
   RetailBillCalculationDto,
   RetailBillDraftDto,
   RetailCalculationDto,
@@ -191,13 +189,9 @@ function fieldFrom(weight: WeightDto | undefined, unit: WeightUnit): WeightField
 
 export function RetailScreen({
   today,
-  rates,
-  onRateSaved,
   onPosted,
 }: {
   today: string
-  rates: readonly RateDto[]
-  onRateSaved: () => void
   onPosted: () => void
 }) {
   const [form, setForm] = useState<BillForm>(() => ({
@@ -1113,8 +1107,6 @@ export function RetailScreen({
             />
           </label>
         </div>
-
-        <RateCard rates={rates} onSaved={onRateSaved} />
       </div>
 
       {/* What the operator is looking at, whenever it is not a new bill. */}

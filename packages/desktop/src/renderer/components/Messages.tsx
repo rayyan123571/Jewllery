@@ -19,20 +19,21 @@ import { Icon } from '../shell/Icon.js'
  * event appeared in a different place, at a different width, depending on which
  * tab was open, and a confirmation on a scrolled screen could land off the top.
  *
- * Two dismissal rules, and they differ on purpose:
+ * The shop turned notifications OFF. What remains is the minimum a ledger
+ * can honestly run with:
  *
- *   - A success dismisses itself. "Saved WS-10007" is worth six seconds and no
- *     clicks; making the operator clear it costs a keystroke on every slip.
- *   - A failure stays until it is dismissed. Something did not happen, and an
- *     error that disappears while the operator is looking at the keyboard is an
- *     error they will never know about.
+ *   - A success shows nothing at all. The screen itself is the confirmation —
+ *     the grid clears and the invoice number advances.
+ *   - A failure appears (something did NOT happen, and silence there loses
+ *     money), then dismisses itself after a few seconds. Nothing ever waits
+ *     for a click.
  *
  * This is for events. A persistent CONDITION — no rate recorded for this date —
  * stays inline on the screen it constrains, because it is still true after the
  * toast would have gone.
  */
 
-const SUCCESS_LIFETIME_MS = 6000
+const FAILURE_LIFETIME_MS = 8000
 
 export interface AppMessage {
   readonly id: number
@@ -64,14 +65,22 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback(
     (kind: 'ok' | 'bad', text: string) => {
+      // Success notifications are OFF, at the shop's request: a till that
+      // pops a confirmation after every save is a till that trains people to
+      // click past messages. Success is visible where it matters — the grid
+      // clears, the number advances, the summary moves. Screens keep calling
+      // push('ok', …) so the record of WHAT to say survives; this is the one
+      // switch that decides it is not said.
+      if (kind === 'ok') return
       const id = nextId.current++
       setMessages((current) => [...current, { id, kind, text }])
-      if (kind === 'ok') {
-        timers.current.set(
-          id,
-          setTimeout(() => dismiss(id), SUCCESS_LIFETIME_MS),
-        )
-      }
+      // A failure still shows — a save that silently did not happen is money
+      // lost — but it dismisses itself too, so nothing on this screen ever
+      // demands a click.
+      timers.current.set(
+        id,
+        setTimeout(() => dismiss(id), FAILURE_LIFETIME_MS),
+      )
     },
     [dismiss],
   )

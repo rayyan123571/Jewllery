@@ -5,7 +5,6 @@ import { DateField } from '../../components/DateField.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import { useMessages } from '../../components/Messages.js'
 import { Modal } from '../../components/Modal.js'
-import { RateCard } from '../../components/RateCard.js'
 import { toDisplayDate } from '../../format/dates.js'
 import { PartySelector } from '../wholesale/PartySelector.js'
 import type {
@@ -14,7 +13,6 @@ import type {
   PurchaseLineInputDto,
   PurchaseNeighboursDto,
   PurchasePreviewDto,
-  RateDto,
   ShopProfileDto,
   StockSummaryDto,
 } from '../../../shared/ipc.js'
@@ -84,19 +82,15 @@ function partyOf(entry: PurchaseEntryDto): PartyDto | null {
 
 export function PurchaseScreen({
   today,
-  rates,
   shop,
   receiptFooter,
-  onRateSaved,
   onPosted,
   pendingOpen,
   onPendingOpenHandled,
 }: {
   today: string
-  rates: readonly RateDto[]
   shop: ShopProfileDto
   receiptFooter: string
-  onRateSaved: () => void
   onPosted: () => void
   /** An invoice number another screen asked to open — the stock ledger's reference. */
   pendingOpen?: number | null
@@ -625,13 +619,10 @@ export function PurchaseScreen({
       </div>
 
       <div className="screen__head">
-        <RateCard rates={rates} onSaved={onRateSaved} />
-
         {preview?.rateMissing ? (
           <div className="banner">
-            No gold rate is recorded for {toDisplayDate(entryDate)}. Set the rate for that
-            day in Gold Rate before saving — every amount depends on it, and using
-            today&apos;s would price this purchase wrongly.
+            No gold rate is recorded for {toDisplayDate(entryDate)}. Set the 24K rate on
+            the Dashboard before saving — every amount depends on it.
           </div>
         ) : null}
 

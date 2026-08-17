@@ -306,6 +306,79 @@ describe('a lower purity may never be worth more than a higher one', () => {
   })
 })
 
+describe('setting 24K derives the other three', () => {
+  // The shop quotes one figure — pure gold. 22K is 916/999 of it, 21K is
+  // 875/999, 18K is 750/999. Typing them separately is three chances at the
+  // typo the purity-ordering check exists to catch.
+
+  function set24(rupees: number) {
+    service.setRate(admin, {
+      branchId: BRANCH,
+      purity: 'K24',
+      ratePerTola: Money.fromRupees(rupees),
+      effectiveFrom: toIsoDate('2026-08-02'),
+      note: null,
+    })
+  }
+
+  it('writes four rows for one 24K entry, each a real row with a source note', () => {
+    set24(402_000)
+    expect(rates.rows).toHaveLength(4)
+    expect(rates.rows.map((row) => row.purity)).toEqual(['K24', 'K22', 'K21', 'K18'])
+    expect(rates.rows[1]?.note).toContain('Calculated from 24K')
+  })
+
+  it('derives by fineness with integer arithmetic, rounded once', () => {
+    set24(402_000)
+    const on = toIsoDate('2026-08-02')
+    // 40 200 000 paisa × 916/999 = 36 860 060.06… → 36 860 060.
+    expect(service.rateOn(BRANCH, 'K22', on)?.ratePerTola.paisa).toBe(36_860_060)
+    // × 875/999 = 35 210 210.2… → 35 210 210.
+    expect(service.rateOn(BRANCH, 'K21', on)?.ratePerTola.paisa).toBe(35_210_210)
+    // × 750/999 = 30 180 180.1… → 30 180 180.
+    expect(service.rateOn(BRANCH, 'K18', on)?.ratePerTola.paisa).toBe(30_180_180)
+  })
+
+  it('the derived ladder is monotonic, so the ordering check can never trip on it', () => {
+    set24(402_000)
+    const on = toIsoDate('2026-08-02')
+    const [k24, k22, k21, k18] = (['K24', 'K22', 'K21', 'K18'] as const).map(
+      (purity) => service.rateOn(BRANCH, purity, on)?.ratePerTola.paisa ?? 0,
+    )
+    expect(k24).toBeGreaterThan(k22 ?? 0)
+    expect(k22).toBeGreaterThan(k21 ?? 0)
+    expect(k21).toBeGreaterThan(k18 ?? 0)
+  })
+
+  it('a second 24K entry re-derives — the newest row wins for every purity', () => {
+    set24(402_000)
+    set24(410_000)
+    const on = toIsoDate('2026-08-02')
+    // 41 000 000 × 916/999 = 37 593 593.6 → 37 593 594.
+    expect(service.rateOn(BRANCH, 'K22', on)?.ratePerTola.paisa).toBe(37_593_594)
+    expect(rates.rows).toHaveLength(8)
+  })
+
+  it('audits every derived row with where it came from', () => {
+    set24(402_000)
+    const details = audit.entries.map((entry) => JSON.parse(entry.detail ?? '{}'))
+    expect(details).toHaveLength(4)
+    expect(details[1]).toMatchObject({ purity: 'K22', derivedFromK24Paisa: 40_200_000 })
+  })
+
+  it('setting a NON-24K rate derives nothing — it is a manual correction', () => {
+    rates.seed(BRANCH, 'K24', 500_000, '2026-08-01')
+    service.setRate(admin, {
+      branchId: BRANCH,
+      purity: 'K22',
+      ratePerTola: Money.fromRupees(458_000),
+      effectiveFrom: toIsoDate('2026-08-02'),
+      note: null,
+    })
+    expect(rates.rows).toHaveLength(2)
+  })
+})
+
 describe('the rate panel', () => {
   it('reports the current rate for every purity that has one', () => {
     rates.seed(BRANCH, 'K24', 9400, '2026-08-01')

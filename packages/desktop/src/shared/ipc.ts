@@ -260,6 +260,12 @@ export interface RendererApi {
 
   // M5 — Sale (Retail). See the block at the foot of this file.
   retailCalculate(request: RetailCalculateRequest): Promise<RetailCalculationDto>
+  /**
+   * The milawat a karat implies for an item's net weight (gross − stone),
+   * ready to drop into the Purity Deduction cell. One tola at 22K is exactly
+   * 0.972 g. Null when the karat is not one the counter quotes.
+   */
+  retailDeductionFor(request: DeductionForRequest): Promise<WeightDto | null>
   retailSave(request: RetailPostRequest): Promise<RetailPostResult>
   retailHold(request: RetailPostRequest): Promise<RetailPostResult>
   retailLoad(reference: RetailLoadRequest): Promise<RetailSaleDto | null>
@@ -609,6 +615,8 @@ export interface WholesaleEntryDto {
 export const IPC_RETAIL = {
   /** Draft in, fully computed DTO out. Pure: no writes, no side effects. */
   calculate: 'retail:calculate',
+  /** Net × (24 − karat)/24, as a filled-in deduction. Pure: no writes. */
+  deductionFor: 'retail:deductionFor',
   save: 'retail:save',
   hold: 'retail:hold',
   load: 'retail:load',
@@ -1548,3 +1556,15 @@ export interface OpeningPostRequest {
 export type OpeningPostResult =
   | { readonly ok: true; readonly count: number; readonly khalisTotalDisplay: string }
   | { readonly ok: false; readonly message: string }
+
+/**
+ * What the deduction karat selector sends: the item's typed weights, the unit
+ * the toggle is showing, and the karat picked. The answer comes back in both
+ * units so the fill-in is lossless whichever the screen is displaying.
+ */
+export interface DeductionForRequest {
+  readonly gross: WeightFieldDto
+  readonly stone: WeightFieldDto
+  readonly unit: string
+  readonly karat: number
+}

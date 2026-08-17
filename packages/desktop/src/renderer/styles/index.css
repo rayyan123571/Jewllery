@@ -4586,3 +4586,19 @@ a {
 .setup-tree__child {
   padding-left: 20px;
 }
+
+/* ── the dashboard rate card ──────────────────────────────────────────────────
+   Only the 24K figure is typed; the derived cells display what the service
+   calculated and wear a quiet "auto" so nobody hunts for the edit that is
+   deliberately not there. */
+
+.rate-card__value--derived {
+  cursor: default;
+}
+
+.rate-card__auto {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}

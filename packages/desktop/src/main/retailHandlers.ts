@@ -11,7 +11,9 @@ import {
   formatTola,
   isLabourMode,
   isPaymentMethod,
+  DEDUCTION_KARATS,
   isPurity,
+  karatDeduction,
   isSaleStatus,
   parsePurity,
   parseTola,
@@ -72,6 +74,7 @@ import type {
   WastageRuleChoice,
   WastageRuleDto,
   WeightDto,
+  DeductionForRequest,
   WeightFieldDto,
   WeightUnit,
 } from '../shared/ipc.js'
@@ -178,6 +181,22 @@ function weightOf(field: WeightFieldDto | null | undefined, unit: WeightUnit): W
   const text = field.text.trim()
   if (text === '') return Weight.ZERO
   return unit === 'tola' ? parseTola(text) : Weight.parse(text)
+}
+
+/**
+ * The milawat a karat implies, for the deduction cell's own selector.
+ *
+ * Pure and deps-free: net = gross − stone (tolerantly parsed, half-typed input
+ * being the normal state of a live screen), deduction = net × (24 − k) / 24 by
+ * the domain's own `karatDeduction`. The answer carries both unit strings and
+ * the exact milligrams, so the fill-in is as lossless as the unit toggle.
+ */
+export function retailDeductionFor(request: DeductionForRequest): WeightDto | null {
+  if (!(DEDUCTION_KARATS as readonly number[]).includes(request.karat)) return null
+  const unit: WeightUnit = request.unit === 'tola' ? 'tola' : 'gram'
+  const net = weightOrZero(request.gross, unit).minus(weightOrZero(request.stone, unit))
+  if (net.isNegative) return null
+  return weightDto(karatDeduction(net, request.karat))
 }
 
 function moneyOf(text: string | null | undefined): Money {

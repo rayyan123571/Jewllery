@@ -30,6 +30,7 @@ import {
   retailBillReceipt,
   retailBillSave,
   retailCalculate,
+  retailDeductionFor,
   retailDraftDiscard,
   retailDraftFind,
   retailDraftSave,
@@ -1098,4 +1099,59 @@ describe('the bill in progress, across the boundary', () => {
     expect(retailDraftFind(deps)).toBeNull()
   })
 
+})
+
+describe('the deduction karat selector', () => {
+  it('fills one tola at 22K as exactly 0.972 g, in both units', () => {
+    const result = retailDeductionFor({
+      gross: { text: '11.664', exactMg: null },
+      stone: { text: '', exactMg: null },
+      unit: 'gram',
+      karat: 22,
+    })
+    expect(result?.gram).toBe('0.972')
+    expect(result?.mg).toBe(972)
+  })
+
+  it('deducts the stone before the karat, and respects the tola unit', () => {
+    const result = retailDeductionFor({
+      gross: { text: '1.000', exactMg: null },
+      stone: { text: '0.100', exactMg: null },
+      unit: 'tola',
+      karat: 18,
+    })
+    // 0.900 tola = 10 497.6 → 10 498 mg net; × 6/24 = 2 624.5 → 2 625 mg.
+    expect(result?.mg).toBe(2625)
+  })
+
+  it('prefers the exact milligrams the unit toggle carried', () => {
+    const result = retailDeductionFor({
+      gross: { text: 'whatever', exactMg: 11_664 },
+      stone: { text: '', exactMg: null },
+      unit: 'gram',
+      karat: 22,
+    })
+    expect(result?.mg).toBe(972)
+  })
+
+  it('answers null for a karat the counter does not quote', () => {
+    expect(
+      retailDeductionFor({
+        gross: { text: '11.664', exactMg: null },
+        stone: { text: '', exactMg: null },
+        unit: 'gram',
+        karat: 23,
+      }),
+    ).toBeNull()
+  })
+
+  it('tolerates half-typed weights — the normal state of a live screen', () => {
+    const result = retailDeductionFor({
+      gross: { text: '1.2.3', exactMg: null },
+      stone: { text: '', exactMg: null },
+      unit: 'gram',
+      karat: 22,
+    })
+    expect(result?.mg).toBe(0)
+  })
 })

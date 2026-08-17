@@ -157,6 +157,42 @@ export class RateService {
       }),
     })
 
+    // The shop quotes ONE figure — pure gold. Everything else is arithmetic:
+    // 22K is 916 parts of a thousand, so its tola is 916/999 of the 24K tola,
+    // and typing it separately only creates a second place for a typo. Setting
+    // the 24K rate therefore writes the three derived rates as their own rows,
+    // same effective date, each saying where it came from. They are real rows
+    // — history stays honest and every valuation path is untouched — and the
+    // division goes through Money.scaled, so it is integer arithmetic rounded
+    // exactly once. A directly-set 22K (the Gold Rate screen still allows a
+    // correction) simply lands as a newer row and wins.
+    if (input.purity === 'K24') {
+      for (const purity of ['K22', 'K21', 'K18'] as const) {
+        const derived = input.ratePerTola.scaled(FINENESS[purity], FINENESS.K24)
+        const derivedRow = this.deps.goldRates.record({
+          branchId: input.branchId,
+          purity,
+          ratePerTola: derived,
+          effectiveFrom: input.effectiveFrom,
+          createdByUserId: actor.id,
+          note: `Calculated from 24K (Rs ${input.ratePerTola.formatWhole()})`,
+        })
+        this.deps.audit.append({
+          branchId: input.branchId,
+          userId: actor.id,
+          action: 'GOLD_RATE_SET',
+          entity: 'gold_rates',
+          entityId: derivedRow.id,
+          detail: JSON.stringify({
+            purity,
+            effectiveFrom: input.effectiveFrom,
+            ratePerTolaPaisa: derived.paisa,
+            derivedFromK24Paisa: input.ratePerTola.paisa,
+          }),
+        })
+      }
+    }
+
     return recorded
   }
 

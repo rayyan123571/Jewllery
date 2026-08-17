@@ -6,6 +6,7 @@ import type {
   RetailItemDto,
   RetailLineDto,
   WeightDto,
+  WeightFieldDto,
   WeightUnit,
 } from '../../../shared/ipc.js'
 
@@ -37,7 +38,10 @@ export const VISIBLE_COLUMNS = 4
 const PURITY_OPTIONS = ['K24', 'K22', 'K21', 'K18'] as const
 
 /** A cell that takes a number. Everything but the name and the mode toggle. */
-type Kind = 'text' | 'number' | 'derived' | 'rate' | 'labour' | 'action'
+type Kind = 'text' | 'number' | 'derived' | 'rate' | 'labour' | 'deduction' | 'action'
+
+/** The karats the milawat selector offers, display order. */
+const DEDUCTION_KARAT_OPTIONS = [24, 22, 21, 18] as const
 
 interface RowSpec {
   readonly key: string
@@ -59,7 +63,7 @@ export const ROWS: readonly RowSpec[] = [
   { key: 'itemName', label: 'Item Name', kind: 'text' },
   { key: 'gross', label: 'Weight', kind: 'number', unitLabel: true },
   { key: 'stone', label: 'Stone', kind: 'number', unitLabel: true },
-  { key: 'deduction', label: 'Purity Deduction', kind: 'number', unitLabel: true },
+  { key: 'deduction', label: 'Purity Deduction', kind: 'deduction', unitLabel: true },
   { key: 'net', label: 'Net Weight', kind: 'derived', unitLabel: true },
   { key: 'polishPercent', label: 'Polish %', kind: 'number' },
   { key: 'polish', label: 'Polish', kind: 'derived', unitLabel: true },
@@ -273,6 +277,32 @@ export function ItemsGrid({
     else onPatch(column, patch)
   }
 
+  /**
+   * The milawat selector: pick a karat and the deduction fills itself in —
+   * net × (24 − k) / 24, computed by main (one tola at 22K is exactly
+   * 0.972 g). A one-shot FILL, not a binding: the cell stays a typed value
+   * the operator can edit, and re-picking after a weight change recomputes.
+   */
+  const pickKarat = async (column: number, karat: number): Promise<void> => {
+    const item = items[column]
+    const empty: WeightFieldDto = { text: '', exactMg: null }
+    const result = await window.api.retailDeductionFor({
+      gross: item?.grossWeight ?? empty,
+      stone: item?.stoneWeight ?? empty,
+      unit,
+      karat,
+    })
+    if (!result) return
+    const patch = {
+      purityDeduction: {
+        text: unit === 'tola' ? result.tola : result.gram,
+        exactMg: result.mg,
+      },
+    }
+    if (column >= items.length) onAppend(patch)
+    else onPatch(column, patch)
+  }
+
   const scrollBy = (direction: 1 | -1): void => {
     const first = scroller.current?.querySelector<HTMLElement>('.item-column')
     scroller.current?.scrollBy({
@@ -368,6 +398,7 @@ export function ItemsGrid({
                       }
                       onDelete={() => onDelete(column)}
                       onPrint={() => onPrint(column)}
+                      onKarat={(karat) => void pickKarat(column, karat)}
                     />
                   ))}
                 </div>
@@ -471,6 +502,7 @@ function Cell({
   onPatch,
   onDelete,
   onPrint,
+  onKarat,
 }: {
   spec: RowSpec
   row: number
@@ -486,6 +518,7 @@ function Cell({
   onPatch: (patch: Partial<RetailItemDto>) => void
   onDelete: () => void
   onPrint: () => void
+  onKarat: (karat: number) => void
 }) {
   const id = cellId(row, column)
   const keys = (event: KeyboardEvent<HTMLElement>): void => onKeyDown(event, row, column)
@@ -581,6 +614,44 @@ function Cell({
         >
           {item?.labourMode === 'per_tola' ? '/tola' : 'fixed'}
         </Action>
+      </div>
+    )
+  }
+
+  if (spec.kind === 'deduction') {
+    return (
+      <div className="item-column__cell is-editable item-column__rate">
+        {/* Pick a karat and the milawat enters itself: net × (24 − k) / 24.
+            Shows no selection afterwards because it is a fill, not a state —
+            the FIGURE beside it is the state, and it stays editable. */}
+        <select
+          className="cell-purity"
+          value=""
+          onChange={(event) => {
+            const karat = Number(event.target.value)
+            if (karat) onKarat(karat)
+          }}
+          disabled={locked}
+          aria-label={`Item ${column + 1} deduction karat`}
+        >
+          <option value="">—</option>
+          {DEDUCTION_KARAT_OPTIONS.map((karat) => (
+            <option key={karat} value={karat}>
+              {karat}K
+            </option>
+          ))}
+        </select>
+        <input
+          className="cell-input numeric"
+          data-cell={id}
+          value={typedValue(spec, item)}
+          onChange={(event) => onCommit(event.target.value)}
+          onFocus={(event) => onFocusCapture(event.target.value)}
+          onKeyDown={keys}
+          inputMode="decimal"
+          disabled={locked}
+          aria-label={`Item ${column + 1} purity deduction`}
+        />
       </div>
     )
   }

@@ -234,6 +234,7 @@ const api = {
   retailDraftFind: vi.fn(async () => null),
   retailDraftDiscard: vi.fn(async () => ({ ok: true as const })),
   retailSave: vi.fn(),
+  retailDeductionFor: vi.fn(async () => null),
   retailHold: vi.fn(),
   retailLoad: vi.fn(async () => null),
   retailList: vi.fn(async () => []),
