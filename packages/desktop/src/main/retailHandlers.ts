@@ -201,42 +201,67 @@ export function retailDeductionFor(request: DeductionForRequest): WeightDto | nu
 }
 
 /**
- * The inverse of `retailDeductionFor`: given a TYPED deduction and the item's
- * current net weight, which standard karat (if any) produced it?
+ * The inverse of `retailDeductionFor`: the EXACT karat a typed deduction
+ * implies, ready to display — "18", "21.5", "17.61".
  *
  * A deduction alone does not fix a karat — k = 24 × (1 − deduction / net), so
  * the same figure implies a different karat on a different net weight. This is
- * judged fresh against gross and stone exactly as they stand, the same net
- * basis `retailDeductionFor` fills FROM.
+ * judged against gross and stone exactly as they stand, the same net basis
+ * `retailDeductionFor` fills FROM, so the two directions round-trip.
  *
- * "Within 0.05 karat of a standard one" is never computed as k itself — that
- * would put a float division back in the one place this system goes out of
- * its way to avoid it. Instead the 0.05-karat window is turned into a WEIGHT
- * tolerance (net × 0.05 ÷ 24 = net ÷ 480) and tested by cross-multiplying:
- * `diff × 480 ≤ net` is exactly `diff ≤ net ÷ 480` without ever rounding that
- * quotient, so it can never drift onto the wrong side of the boundary the way
- * a `Number` division could.
+ * It does NOT snap to the four karats the menu offers. A piece really can be
+ * 17.61K, and a counter that silently showed 18 — or showed nothing at all —
+ * for a figure the operator typed deliberately would be hiding the answer it
+ * was asked for.
  *
- * Returns null — never a guess — when there is no net weight to judge against,
- * the typed text does not parse as a weight at all, or the figure simply is
- * not close to any of the four karats the milawat selector offers.
+ * Exact throughout, because k is a ratio of two weights and this system does
+ * not put a decimal division in front of one. `scaleDiv` takes it straight to
+ * HUNDREDTHS of a karat as an integer — 2400 × (net − deduction) ÷ net — with
+ * one rounding, half away from zero, at that last step. The decimal point is
+ * then placed by hand in `formatKarat`, never by `toFixed` on a float.
+ *
+ * Null — a blank box, never a guess — when there is no net weight to judge
+ * against, nothing has been typed yet, the text does not parse as a weight, or
+ * the answer falls outside the 0–24 a karat can be.
  */
-export function retailKaratFor(request: KaratForRequest): number | null {
+export function retailKaratFor(request: KaratForRequest): string | null {
   const unit: WeightUnit = request.unit === 'tola' ? 'tola' : 'gram'
   const net = weightOrZero(request.gross, unit).minus(weightOrZero(request.stone, unit))
   if (!net.isPositive) return null
 
+  // An empty box is not zero milawat here. Blank means the operator has not
+  // said yet, and answering "24" for it would put a figure on screen nobody
+  // typed — the forward direction is what fills a deduction in, not this.
+  if (isBlankWeightField(request.deduction)) return null
   const typed = weightOrNull(request.deduction, unit)
-  if (!typed || typed.isNegative) return null
+  if (!typed) return null
 
-  let best: { karat: number; diffMg: number } | null = null
-  for (const karat of DEDUCTION_KARATS) {
-    const candidate = karatDeduction(net, karat)
-    const diffMg = Math.abs(typed.milligrams - candidate.milligrams)
-    if (diffMg * 480 > net.milligrams) continue
-    if (!best || diffMg < best.diffMg) best = { karat, diffMg }
-  }
-  return best?.karat ?? null
+  const centiKarat = scaleDiv(net.minus(typed).milligrams, 2400, net.milligrams)
+  if (centiKarat < 0 || centiKarat > 2400) return null
+  return formatKarat(centiKarat)
+}
+
+/** True when nothing has been typed, as against a typed zero. */
+function isBlankWeightField(field: WeightFieldDto | null | undefined): boolean {
+  if (!field) return true
+  if (field.exactMg !== null && field.exactMg !== undefined) return false
+  return field.text.trim() === ''
+}
+
+/**
+ * Hundredths of a karat as the counter writes it: 1800 → "18", 2150 → "21.5",
+ * 1761 → "17.61".
+ *
+ * String surgery on an integer, like `Weight.format` and `formatTola` before
+ * it. Trailing zeros are trimmed because "18.00K" reads as a measurement to
+ * two places when it is simply eighteen.
+ */
+function formatKarat(centiKarat: number): string {
+  const whole = Math.trunc(centiKarat / 100)
+  const fraction = centiKarat % 100
+  if (fraction === 0) return String(whole)
+  if (fraction % 10 === 0) return `${whole}.${fraction / 10}`
+  return `${whole}.${fraction.toString().padStart(2, '0')}`
 }
 
 function moneyOf(text: string | null | undefined): Money {

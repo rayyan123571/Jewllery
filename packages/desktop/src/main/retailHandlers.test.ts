@@ -31,6 +31,7 @@ import {
   retailBillSave,
   retailCalculate,
   retailDeductionFor,
+  retailKaratFor,
   retailDraftDiscard,
   retailDraftFind,
   retailDraftSave,
@@ -1167,5 +1168,123 @@ describe('the deduction karat selector', () => {
       karat: 22,
     })
     expect(result?.mg).toBe(0)
+  })
+})
+
+describe('retailKaratFor — the reverse of the deduction karat selector', () => {
+  // One tola (11.664 g), no stone: net = 11 664 mg, so karat is read straight
+  // off k = 24 × (1 − deduction / net) with no snapping of any kind.
+  const oneTola = { gross: { text: '11.664', exactMg: null }, stone: { text: '', exactMg: null } }
+
+  it('names the exact karat a figure matches', () => {
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '0.972', exactMg: null }, unit: 'gram' }),
+    ).toBe('22')
+  })
+
+  it('shows a NON-standard karat exactly, rather than snapping or blanking', () => {
+    // 24 × (1 − 3.104/11.664) = 17.6131… → 17.61 to two places. The whole
+    // point of Task 4: this used to answer "—" because 17.61 is not one of
+    // the four the menu offers, which hid an answer the operator asked for.
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '3.104', exactMg: null }, unit: 'gram' }),
+    ).toBe('17.61')
+  })
+
+  it('trims trailing zeros — 18.00 is "18", 21.50 is "21.5"', () => {
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '2.916', exactMg: null }, unit: 'gram' }),
+    ).toBe('18')
+    // 21.5K ⇒ deduction = net × 2.5/24 = 1215 mg exactly.
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '1.215', exactMg: null }, unit: 'gram' }),
+    ).toBe('21.5')
+  })
+
+  it('reads a deduction equal to the whole net weight as 0', () => {
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '11.664', exactMg: null }, unit: 'gram' }),
+    ).toBe('0')
+  })
+
+  it('blanks a deduction HEAVIER than the net — a karat cannot be negative', () => {
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '12.000', exactMg: null }, unit: 'gram' }),
+    ).toBeNull()
+  })
+
+  it('blanks a negative deduction — nor can a karat exceed 24', () => {
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '-1.000', exactMg: null }, unit: 'gram' }),
+    ).toBeNull()
+  })
+
+  it('blanks an empty deduction rather than answering 24K for it', () => {
+    // Blank means "not said yet". Answering 24 would put a figure on screen
+    // nobody typed — filling one in is the forward direction's job.
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '', exactMg: null }, unit: 'gram' }),
+    ).toBeNull()
+  })
+
+  it('does not treat unparseable text as zero — answers null, not 24K', () => {
+    expect(
+      retailKaratFor({ ...oneTola, deduction: { text: '1.2.3', exactMg: null }, unit: 'gram' }),
+    ).toBeNull()
+  })
+
+  it('keeps "net is 0 or empty" at null, never a false 24K', () => {
+    expect(
+      retailKaratFor({
+        gross: { text: '', exactMg: null },
+        stone: { text: '', exactMg: null },
+        deduction: { text: '0.000', exactMg: null },
+        unit: 'gram',
+      }),
+    ).toBeNull()
+  })
+
+  it('respects the stone deduction and the tola unit, like retailDeductionFor', () => {
+    // 0.900 tola net (1.000 gross − 0.100 stone) → 18K deduction is 2 625 mg
+    // (10 498 mg net × 6 / 24, from the retailDeductionFor test above). Given
+    // via exactMg so this exercises net/stone math, not the tola string
+    // parser's own rounding.
+    expect(
+      retailKaratFor({
+        gross: { text: '1.000', exactMg: null },
+        stone: { text: '0.100', exactMg: null },
+        deduction: { text: 'ignored', exactMg: 2625 },
+        unit: 'tola',
+      }),
+    ).toBe('18')
+  })
+
+  describe('round-trips retailDeductionFor exactly, on the SAME net basis', () => {
+    // gross = 11.664 tola, stone = 0. Whatever retailDeductionFor fills in for
+    // a karat, retailKaratFor must read back as that same karat — both judged
+    // against net = gross − stone, not against net-AFTER-the-deduction.
+    const item = {
+      gross: { text: '11.664', exactMg: null },
+      stone: { text: '', exactMg: null },
+      unit: 'tola' as const,
+    }
+
+    it.each([
+      [24, '0.000'],
+      [22, '0.972'],
+      [21, '1.458'],
+      [18, '2.916'],
+    ])('%iK: deductionFor → %s, karatFor(%s) → %i', (karat, expectedTola) => {
+      const filled = retailDeductionFor({ ...item, karat })
+      expect(filled?.tola).toBe(expectedTola)
+
+      const impliedKarat = retailKaratFor({
+        gross: item.gross,
+        stone: item.stone,
+        deduction: { text: expectedTola, exactMg: null },
+        unit: item.unit,
+      })
+      expect(impliedKarat).toBe(String(karat))
+    })
   })
 })

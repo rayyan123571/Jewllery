@@ -267,11 +267,12 @@ export interface RendererApi {
    */
   retailDeductionFor(request: DeductionForRequest): Promise<WeightDto | null>
   /**
-   * The inverse: which standard karat (if any) is TYPED figure implies, given
-   * the item's current net weight. Null when nothing is close — see
-   * `KaratForRequest`.
+   * The inverse: the EXACT karat a typed deduction implies for the item's
+   * current net weight, preformatted for display — "18", "21.5", "17.61".
+   * Null when it cannot be told, which shows as a blank box. Not snapped to a
+   * standard karat — see `KaratForRequest`.
    */
-  retailKaratFor(request: KaratForRequest): Promise<number | null>
+  retailKaratFor(request: KaratForRequest): Promise<string | null>
   retailSave(request: RetailPostRequest): Promise<RetailPostResult>
   retailHold(request: RetailPostRequest): Promise<RetailPostResult>
   retailLoad(reference: RetailLoadRequest): Promise<RetailSaleDto | null>
@@ -744,16 +745,18 @@ export interface RetailItemDto {
   /** Typed on this line. Empty means "use this item's purity rate". */
   readonly ratePerTola: string
   /**
-   * The karat last picked from the Purity Deduction milawat selector.
+   * The karat shown beside the Purity Deduction figure, preformatted —
+   * "18", "21.5", "17.61".
    *
-   * Display only — main never reads it, and it plays no part in any
-   * calculation. Its entire job is letting the dropdown keep showing which
-   * karat produced the figure beside it instead of resetting to "—" the
-   * instant the one-shot fill completes. Optional so every existing place
-   * that builds a `RetailItemDto` — a loaded invoice, a resumed draft, main's
-   * own parsing — is unaffected by not setting it.
+   * Display only: main never reads it back and it plays no part in any
+   * calculation. It is a STRING because the implied karat is exact rather
+   * than one of four choices — a piece really can be 17.61K — and because
+   * every other figure crossing this boundary arrives ready to render for the
+   * same reason (the renderer does no arithmetic). Optional so every existing
+   * place that builds a `RetailItemDto` — a loaded invoice, a resumed draft,
+   * main's own parsing — is unaffected by not setting it.
    */
-  readonly deductionKarat?: number | null
+  readonly deductionKarat?: string | null
 }
 
 export interface RetailDraftDto {

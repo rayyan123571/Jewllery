@@ -24,6 +24,7 @@ import type {
   RetailItemDto,
   RetailLineDto,
   RetailSlipDto,
+  KaratForRequest,
   WeightDto,
   WeightFieldDto,
   WeightUnit,
@@ -335,6 +336,7 @@ const api = {
   })),
   openingPost: vi.fn(),
   retailDeductionFor: vi.fn(async (): Promise<WeightDto | null> => null),
+  retailKaratFor: vi.fn(async (_request: KaratForRequest): Promise<string | null> => null),
   retailHold: vi.fn(),
   retailLoad: vi.fn(async () => null),
   retailList: vi.fn(async () => []),
@@ -1044,5 +1046,114 @@ describe('typing a manual Purity Deduction value', () => {
     // The screen opens in Tola, so the fill lands in the tola figure the
     // mocked response carries — the point is that it overwrote '21.34' at all.
     await waitFor(() => expect(cell(0, 'deduction')).toBe('0.347'))
+  })
+})
+
+describe('the reverse direction — a typed value implies a karat', () => {
+  it('shows the karat a typed figure implies, once the lookup answers', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    await user.click(screen.getByLabelText('Item 1 purity deduction'))
+
+    api.retailKaratFor.mockResolvedValueOnce('22')
+    await user.keyboard('0.347')
+
+    const karatSelect = screen.getByLabelText('Item 1 deduction karat') as HTMLSelectElement
+    await waitFor(() => expect(karatSelect.value).toBe('22'))
+    // Only the dropdown changed — the figure itself stands exactly as typed.
+    expect(cell(0, 'deduction')).toBe('0.347')
+  })
+
+  it('shows a NON-standard implied karat, which a fixed list of four cannot', async () => {
+    // The control has to render 17.61 — a value that is deliberately not one
+    // of the four the menu offers — as its own selected option.
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '11.664')
+    await user.click(screen.getByLabelText('Item 1 purity deduction'))
+
+    api.retailKaratFor.mockResolvedValueOnce('17.61')
+    await user.keyboard('3.104')
+
+    const karatSelect = screen.getByLabelText('Item 1 deduction karat') as HTMLSelectElement
+    await waitFor(() => expect(karatSelect.value).toBe('17.61'))
+    // Shown in the same style as the standard ones, and the four are still
+    // there to pick from underneath it.
+    expect(within(karatSelect).getByText('17.61K')).toBeTruthy()
+    expect(within(karatSelect).getByText('18K')).toBeTruthy()
+    expect(cell(0, 'deduction')).toBe('3.104')
+  })
+
+  it('reverts the dropdown to blank once the figure implies no karat at all', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    const deductionInput = screen.getByLabelText('Item 1 purity deduction')
+    await user.click(deductionInput)
+
+    api.retailKaratFor.mockResolvedValueOnce('22')
+    await user.keyboard('0.347')
+    const karatSelect = screen.getByLabelText('Item 1 deduction karat') as HTMLSelectElement
+    await waitFor(() => expect(karatSelect.value).toBe('22'))
+
+    // A deduction heavier than the whole net weight: no karat can be negative,
+    // so main answers null and the box goes blank.
+    api.retailKaratFor.mockResolvedValueOnce(null)
+    await user.clear(deductionInput)
+    await user.keyboard('9.000')
+    await waitFor(() => expect(karatSelect.value).toBe(''))
+  })
+
+  it('sends the item’s RAW gross/stone, never a post-deduction net, to the lookup', async () => {
+    // The wrong-net-basis bug this guards: `net = gross − stone` has to reach
+    // main exactly as typed. Feeding it net-AFTER-the-deduction instead (an
+    // easy mistake — the grid also shows a derived Net Weight column) would
+    // make 1.458 on this item resolve against 10.206, not 11.664, and answer
+    // "—" for a figure that is exactly 21K.
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '11.664')
+    await user.click(screen.getByLabelText('Item 1 purity deduction'))
+    await user.keyboard('1.458')
+
+    await waitFor(() => expect(api.retailKaratFor).toHaveBeenCalled())
+    const request = api.retailKaratFor.mock.calls.at(-1)?.[0]
+    expect(request?.gross.text).toBe('11.664')
+    expect(request?.stone.text).toBe('')
+    expect(request?.deduction.text).toBe('1.458')
+  })
+
+  it('picking a karat from the dropdown does not also trigger the reverse lookup', async () => {
+    // Guards the feedback loop the two directions could otherwise form:
+    // `pickKarat` patches state directly and never goes through `commit`, so
+    // it must never itself cause a `retailKaratFor` call.
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+
+    api.retailDeductionFor.mockResolvedValueOnce({ mg: 972, gram: '0.972', tola: '0.083' })
+    const karatSelect = screen.getByLabelText('Item 1 deduction karat') as HTMLSelectElement
+    await user.selectOptions(karatSelect, '22')
+    await waitFor(() => expect(cell(0, 'deduction')).toBe('0.083'))
+
+    expect(api.retailKaratFor).not.toHaveBeenCalled()
+  })
+
+  it('forward still round-trips: pick 18K, the figure fills, the box reads 18', async () => {
+    // Task 2's direction, re-checked against the new combo: picking fills the
+    // deduction AND leaves the box showing the karat that produced it — the
+    // same string the reverse direction derives from that figure.
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '11.664')
+
+    api.retailDeductionFor.mockResolvedValueOnce({ mg: 2_916, gram: '2.916', tola: '0.250' })
+    const karatSelect = screen.getByLabelText('Item 1 deduction karat') as HTMLSelectElement
+    await user.selectOptions(karatSelect, '18')
+
+    await waitFor(() => expect(cell(0, 'deduction')).toBe('0.250'))
+    expect(karatSelect.value).toBe('18')
+    expect(api.retailKaratFor).not.toHaveBeenCalled()
   })
 })

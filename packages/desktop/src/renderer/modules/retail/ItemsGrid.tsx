@@ -134,9 +134,12 @@ export function ItemsGrid({
    *
    * Debounced the same way the whole-bill calculation is: a keystroke cancels
    * whatever lookup the previous keystroke queued, so a fast typist fires one
-   * IPC round trip per pause, not one per character.
+   * IPC round trip per pause, not one per character. `karatLookupTokens` pairs
+   * with it so a reply that is still in flight when a NEWER keystroke's lookup
+   * has already landed cannot overwrite it out of order.
    */
   const karatLookupTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+  const karatLookupTokens = useRef(new Map<number, number>())
 
   useEffect(() => {
     const timers = karatLookupTimers.current
@@ -291,6 +294,54 @@ export function ItemsGrid({
     if (!patch) return
     if (column >= items.length) onAppend(patch)
     else onPatch(column, patch)
+    // The reverse of `pickKarat`, and it goes through here rather than through
+    // `pickKarat` itself for exactly that reason: `pickKarat` patches state
+    // directly and never calls `commit`, so a picked karat cannot loop back
+    // into this and re-derive itself. Only a hand-typed figure reaches here.
+    if (spec.key === 'deduction') queueImpliedKarat(column, value)
+  }
+
+  /**
+   * Asks main which standard karat, if any, the just-typed deduction implies
+   * for this item's current net weight — the exact inverse of `pickKarat`.
+   * Debounced per column; see `karatLookupTimers`.
+   *
+   * Never touches `purityDeduction` — the operator's own figure is never
+   * overwritten by this, only the dropdown beside it.
+   */
+  const queueImpliedKarat = (column: number, typedValue: string): void => {
+    const pending = karatLookupTimers.current.get(column)
+    if (pending) clearTimeout(pending)
+    const token = (karatLookupTokens.current.get(column) ?? 0) + 1
+    karatLookupTokens.current.set(column, token)
+    const timer = setTimeout(() => {
+      karatLookupTimers.current.delete(column)
+      const item = items[column]
+      const empty: WeightFieldDto = { text: '', exactMg: null }
+      void window.api
+        .retailKaratFor({
+          gross: item?.grossWeight ?? empty,
+          stone: item?.stoneWeight ?? empty,
+          deduction: { text: typedValue, exactMg: null },
+          unit,
+        })
+        .then((karat) => {
+          // Superseded by a keystroke whose own lookup already landed — drop
+          // this one rather than let an out-of-order reply overwrite it.
+          if (karatLookupTokens.current.get(column) !== token) return
+          const patch = { deductionKarat: karat }
+          if (column >= items.length) onAppend(patch)
+          else onPatch(column, patch)
+        })
+        .catch(() => {
+          // A failed lookup is not a matched karat. Left silent otherwise —
+          // this is display-only polish on a live keystroke, not a save path
+          // with something to refuse — but it must not vanish as an unhandled
+          // rejection, which is what let a stale IPC channel look, on screen,
+          // exactly like "nothing is close" instead of "the call never landed".
+        })
+    }, 120)
+    karatLookupTimers.current.set(column, timer)
   }
 
   /**
@@ -318,7 +369,10 @@ export function ItemsGrid({
         text: unit === 'tola' ? result.tola : result.gram,
         exactMg: result.mg,
       },
-      deductionKarat: karat,
+      // A whole number of karats needs no formatting — 18 shows as "18", the
+      // same string the reverse direction would derive from the figure this
+      // fill just wrote, so the two agree without one asking the other.
+      deductionKarat: String(karat),
     }
     if (column >= items.length) onAppend(patch)
     else onPatch(column, patch)
@@ -640,23 +694,37 @@ function Cell({
   }
 
   if (spec.kind === 'deduction') {
+    /*
+     * A combo, not a fixed list: it SHOWS whatever karat the typed figure
+     * implies — 17.61 is a real answer for a real piece — and still OPENS the
+     * four standard karats that fill the figure in for you.
+     *
+     * Still a <select>, deliberately. The implied karat is carried as one more
+     * option, so the control keeps the size, the position, the keyboard
+     * behaviour and the styling it already had; a hand-rolled popover would
+     * have to re-earn all four. The extra option is added only when the
+     * implied karat is NOT one of the four, so the menu never lists 18 twice.
+     */
+    const implied = item?.deductionKarat ?? ''
+    const isStandard = (DEDUCTION_KARAT_OPTIONS as readonly number[]).includes(Number(implied))
     return (
       <div className="item-column__cell is-editable item-column__rate">
-        {/* Pick a karat and the milawat enters itself: net × (24 − k) / 24.
-            The picker keeps SHOWING that karat afterwards — display only, so
-            the operator can always see what produced the figure — while the
-            FIGURE beside it stays the real, independently editable state. */}
         <select
           className="cell-purity"
-          value={item?.deductionKarat ?? ''}
+          value={implied}
           onChange={(event) => {
             const karat = Number(event.target.value)
-            if (karat) onKarat(karat)
+            // Only the four standard karats FILL the figure in. Re-picking the
+            // implied-karat option is a no-op: it is what is already on
+            // screen, and acting on it would overwrite the typed figure with
+            // a rounded-to-two-places version of itself.
+            if ((DEDUCTION_KARAT_OPTIONS as readonly number[]).includes(karat)) onKarat(karat)
           }}
           disabled={locked}
           aria-label={`Item ${column + 1} deduction karat`}
         >
           <option value="">—</option>
+          {implied !== '' && !isStandard ? <option value={implied}>{implied}K</option> : null}
           {DEDUCTION_KARAT_OPTIONS.map((karat) => (
             <option key={karat} value={karat}>
               {karat}K
