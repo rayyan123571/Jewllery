@@ -8,6 +8,7 @@ import { registerWholesaleHandlers } from './wholesaleIpc.js'
 import { registerRetailHandlers } from './retailIpc.js'
 import { registerPurchaseHandlers } from './purchaseIpc.js'
 import { registerInventoryHandlers } from './inventoryIpc.js'
+import { fetchLiveGoldOnce, getLastLiveGold, startLiveGold, stopLiveGold } from './liveGold.js'
 import { IPC_M2 } from '../shared/ipc.js'
 
 /**
@@ -141,6 +142,12 @@ function createWindow(): BrowserWindow {
     void window.loadFile(join(__dirname, '../dist/index.html'))
   }
 
+  // Started after the page has something to receive a push, never before —
+  // the first poll is async and must not compete with startup for anything.
+  window.webContents.once('did-finish-load', () => {
+    if (process.env.JEWELLERY_NO_TICKER !== '1') startLiveGold(window)
+  })
+
   return window
 }
 
@@ -192,6 +199,7 @@ app.whenReady().then(
     registerPurchaseHandlers(container, session)
     registerInventoryHandlers(container, session)
     registerWindowControls()
+    registerLiveGoldHandler()
 
     createWindow()
 
@@ -241,6 +249,20 @@ function registerWindowControls(): void {
   ipcMain.handle(IPC_M2.windowIsFullscreen, (event): boolean =>
     BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
   )
+}
+
+/**
+ * On-demand fetch+parse of the live gold spot — used by the renderer to seed
+ * its ticker box on mount, before the first background push arrives.
+ */
+function registerLiveGoldHandler(): void {
+  ipcMain.handle(IPC_M2.liveGoldGet, async () => {
+    try {
+      return await fetchLiveGoldOnce()
+    } catch {
+      return getLastLiveGold()
+    }
+  })
 }
 
 /**
@@ -353,6 +375,7 @@ app.on('window-all-closed', () => {
 // Close the connection cleanly so the WAL is folded back into the .sqlite file
 // and the database is self-contained for anyone copying it.
 app.on('will-quit', () => {
+  stopLiveGold()
   container?.dispose()
   container = null
 })

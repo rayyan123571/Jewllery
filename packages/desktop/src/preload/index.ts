@@ -46,6 +46,7 @@ import {
   type InventorySetupResult,
   type InventorySummaryDto,
   type ItemDto,
+  type LiveGoldDto,
   type LocationDto,
   type OpeningPostRequest,
   type OpeningPostResult,
@@ -348,6 +349,15 @@ const api: RendererApi = {
       const handler = (_event: unknown, fullscreen: boolean): void => listener(fullscreen)
       ipcRenderer.on(IPC_M2.windowFullscreenChanged, handler)
       return () => ipcRenderer.removeListener(IPC_M2.windowFullscreenChanged, handler)
+    },
+  },
+
+  liveGold: {
+    get: () => ipcRenderer.invoke(IPC_M2.liveGoldGet) as Promise<LiveGoldDto>,
+    onUpdate: (listener: (data: LiveGoldDto) => void) => {
+      const handler = (_event: unknown, data: LiveGoldDto): void => listener(data)
+      ipcRenderer.on(IPC_M2.liveGoldPush, handler)
+      return () => ipcRenderer.removeListener(IPC_M2.liveGoldPush, handler)
     },
   },
 }

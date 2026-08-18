@@ -379,6 +379,22 @@ export interface RendererApi {
     /** Returns an unsubscribe function. */
     onFullscreenChange(listener: (fullscreen: boolean) => void): () => void
   }
+
+  /**
+   * The live gold spot ticker — display-only reference, Dashboard only.
+   *
+   * Ported from the GoldLab reference implementation. Independent of
+   * `gold_rates`: it names the international XAUUSD spot the shop can see
+   * moving in real time, never a figure a calculation or a receipt reads. The
+   * rate a bill prices against is still the one typed onto the Dashboard's
+   * rate card, per DECISIONS — this is a second number shown beside it.
+   */
+  readonly liveGold: {
+    /** One fetch+parse now, to seed the box before the first push arrives. */
+    get(): Promise<LiveGoldDto>
+    /** Main pushes on every tick the bid changed or the feed's ok-state flipped. Returns an unsubscribe function. */
+    onUpdate(listener: (data: LiveGoldDto) => void): () => void
+  }
 }
 
 declare global {
@@ -427,6 +443,9 @@ export const IPC_M2 = {
    * lies as soon as the keyboard is used.
    */
   windowFullscreenChanged: 'window:fullscreenChanged',
+  liveGoldGet: 'liveGold:get',
+  /** Main -> renderer, one push per tick that changed. */
+  liveGoldPush: 'liveGold:push',
 } as const
 
 export interface PartyDto {
@@ -1567,4 +1586,19 @@ export interface DeductionForRequest {
   readonly stone: WeightFieldDto
   readonly unit: string
   readonly karat: number
+}
+
+/**
+ * One frame of the live gold spot ticker (XAUUSD, USD per troy ounce).
+ *
+ * `bid`/`ask` hold the last GOOD values even when `ok` is false — a dropped
+ * feed greys the display out, it does not blank it. Both are null only until
+ * the very first value has ever arrived. `price` mirrors `bid`.
+ */
+export interface LiveGoldDto {
+  readonly bid: number | null
+  readonly ask: number | null
+  readonly price: number | null
+  readonly ts: string | null
+  readonly ok: boolean
 }

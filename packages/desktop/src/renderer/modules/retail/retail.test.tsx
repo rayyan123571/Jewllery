@@ -24,6 +24,7 @@ import type {
   RetailItemDto,
   RetailLineDto,
   RetailSlipDto,
+  WeightDto,
   WeightFieldDto,
   WeightUnit,
 } from '../../../shared/ipc.js'
@@ -333,7 +334,7 @@ const api = {
     khalisTotalDisplay: '0.000',
   })),
   openingPost: vi.fn(),
-  retailDeductionFor: vi.fn(async () => null),
+  retailDeductionFor: vi.fn(async (): Promise<WeightDto | null> => null),
   retailHold: vi.fn(),
   retailLoad: vi.fn(async () => null),
   retailList: vi.fn(async () => []),
@@ -1004,5 +1005,44 @@ describe('the invoice-number jump', () => {
 
     expect(await screen.findByText('Save this invoice first?')).toBeTruthy()
     expect(api.retailLoadAsDraft).not.toHaveBeenCalled()
+  })
+})
+
+describe('typing a manual Purity Deduction value', () => {
+  it('lands the digits in typed order — the caret does not jump mid-entry', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+
+    // A caret that reset to the front of the field on every keystroke would
+    // type this backwards or interleaved; only forward-typing produces this
+    // exact string.
+    await user.click(screen.getByLabelText('Item 1 purity deduction'))
+    await user.keyboard('21.34')
+
+    expect(cell(0, 'deduction')).toBe('21.34')
+  })
+
+  it('leaves the karat picker live after a manual figure was typed', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'BANGLE', '4.050')
+    await user.click(screen.getByLabelText('Item 1 purity deduction'))
+    await user.keyboard('21.34')
+
+    const karatSelect = screen.getByLabelText('Item 1 deduction karat') as HTMLSelectElement
+    expect(karatSelect.disabled).toBe(false)
+
+    // Picking a karat after typing a manual figure is still a one-shot FILL —
+    // it overwrites what was typed, same as it would on a blank cell.
+    api.retailDeductionFor.mockResolvedValueOnce({
+      mg: 4_050,
+      gram: '4.050',
+      tola: '0.347',
+    })
+    await user.selectOptions(karatSelect, '22')
+    // The screen opens in Tola, so the fill lands in the tola figure the
+    // mocked response carries — the point is that it overwrote '21.34' at all.
+    await waitFor(() => expect(cell(0, 'deduction')).toBe('0.347'))
   })
 })

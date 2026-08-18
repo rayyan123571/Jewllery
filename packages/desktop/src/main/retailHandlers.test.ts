@@ -1059,6 +1059,20 @@ describe('the bill in progress, across the boundary', () => {
     expect(retailDraftFind(deps)).toBeNull()
   })
 
+  it('keeps a draft that has an item but no customer name — the item IS the work', () => {
+    // The operator types the item first and the customer's name last, or never
+    // (a walk-in). Either way there is a real bill on screen and it must
+    // survive a restart, so nothing here checks the name.
+    const noName = saveRequest([slipOf(1, 'Full Bill')], {
+      customerName: '',
+      customerMobile: '',
+    })
+    expect(retailDraftSave(deps, noName).ok).toBe(true)
+    const found = retailDraftFind(deps)
+    expect(found).toBeTruthy()
+    expect(found?.itemCount).toBe(1)
+  })
+
   it('clears a stored draft once the bill is emptied back down to nothing', () => {
     expect(retailDraftSave(deps, saveRequest([slipOf(1, 'Full Bill')])).ok).toBe(true)
     expect(retailDraftFind(deps)).toBeTruthy()

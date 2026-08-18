@@ -1732,6 +1732,14 @@ export function retailDraftFind(deps: RetailHandlerDeps): RetailDraftFoundDto | 
     if (!found) return null
 
     const state = draftDtoOf(found)
+    // A row can be empty here even though `retailDraftSave` now refuses to
+    // write one: this branch's draft may predate that guard. Read time gets
+    // the same rule so a stale empty row self-heals on the next launch
+    // instead of surfacing forever as a card offering to resume nothing.
+    if (draftIsEmpty(state.draft)) {
+      deps.retail.discardDraft(deps.branchId)
+      return null
+    }
     const computed = retailBillCalculate(deps, {
       draft: state.draft,
       activeSlipNo: state.activeSlipNo,

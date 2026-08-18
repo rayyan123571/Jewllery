@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RateCard } from '../../components/RateCard.js'
+import { GoldTicker } from '../../components/GoldTicker.js'
 import { EmptyState } from '../../components/EmptyState.js'
 import type { InventorySummaryDto, RateDto } from '../../../shared/ipc.js'
 
@@ -33,7 +34,10 @@ export function DashboardScreen({
   return (
     <div className="screen dashboard">
       <div className="screen__head">
-        <RateCard rates={rates} onSaved={onRateSaved} />
+        <div className="dashboard__head-row">
+          <RateCard rates={rates} onSaved={onRateSaved} />
+          <GoldTicker />
+        </div>
       </div>
 
       <div className="screen__body">

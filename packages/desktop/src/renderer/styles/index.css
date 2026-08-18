@@ -602,6 +602,106 @@ a {
   color: var(--colour-negative);
 }
 
+/* ── the Dashboard head row ─────────────────────────────────────────────── */
+/* The rate card plus, beside it, the live spot ticker — two independent
+   figures that must never be mistaken for one another, so they sit apart
+   rather than stacked. */
+.dashboard__head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-12);
+}
+
+/* ── the live gold spot ticker ──────────────────────────────────────────── */
+/* Reference only — see GoldTicker.tsx. Bid bold and larger, ask smaller and
+   muted, MT5 Market-Watch style. A flash on tick and a fade back to flat both
+   run off the same 600ms transition so a 1s feed reads as motion, not a strobe. */
+.gold-ticker {
+  flex: none;
+  align-self: start;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: var(--size-rate-card-head);
+  padding: 0 var(--space-12);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--size-radius);
+  background: var(--colour-surface);
+  box-shadow: var(--shadow-sm);
+  transition: background-color 600ms ease-out, border-color 600ms ease-out;
+}
+
+.gold-ticker--up {
+  background: var(--colour-positive-soft);
+  border-color: var(--colour-positive);
+}
+
+.gold-ticker--down {
+  background: var(--colour-negative-soft);
+  border-color: var(--colour-negative);
+}
+
+.gold-ticker__dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--size-radius-pill);
+  background: var(--colour-text-muted);
+}
+
+.gold-ticker__dot.is-live {
+  background: var(--colour-positive);
+}
+
+.gold-ticker__label {
+  font-size: var(--font-size-xxs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+}
+
+.gold-ticker__figures {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.gold-ticker__bid {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+  color: var(--colour-text);
+  transition: color 600ms ease-out;
+}
+
+.gold-ticker--up .gold-ticker__bid {
+  color: var(--colour-positive);
+}
+
+.gold-ticker--down .gold-ticker__bid {
+  color: var(--colour-negative);
+}
+
+.gold-ticker--stale .gold-ticker__bid {
+  color: var(--colour-text-muted);
+}
+
+.gold-ticker__sep,
+.gold-ticker__ask {
+  font-size: var(--font-size-xs);
+  color: var(--colour-text-muted);
+}
+
+.gold-ticker__offline {
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+  color: var(--colour-text-muted);
+  white-space: nowrap;
+}
+
 /* ── the user chip ──────────────────────────────────────────────────────── */
 
 /* It lives in the sidebar foot now that the top bar is gone, so it is
