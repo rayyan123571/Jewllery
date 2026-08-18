@@ -129,6 +129,22 @@ export function ItemsGrid({
   const grid = useRef<HTMLDivElement>(null)
   /** The value a cell held when it took focus, so Esc has something to revert to. */
   const beforeEdit = useRef<string>('')
+  /**
+   * One pending "which karat is this?" lookup per column, keyed by column.
+   *
+   * Debounced the same way the whole-bill calculation is: a keystroke cancels
+   * whatever lookup the previous keystroke queued, so a fast typist fires one
+   * IPC round trip per pause, not one per character.
+   */
+  const karatLookupTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+
+  useEffect(() => {
+    const timers = karatLookupTimers.current
+    return () => {
+      timers.forEach(clearTimeout)
+      timers.clear()
+    }
+  }, [])
 
   const unitWord = unit === 'tola' ? 'Tola' : 'Gram'
   /**
@@ -282,6 +298,10 @@ export function ItemsGrid({
    * net × (24 − k) / 24, computed by main (one tola at 22K is exactly
    * 0.972 g). A one-shot FILL, not a binding: the cell stays a typed value
    * the operator can edit, and re-picking after a weight change recomputes.
+   *
+   * The karat itself is kept alongside the figure — display only, so the
+   * dropdown goes on showing which karat produced it instead of springing
+   * back to "—" the moment the fill lands.
    */
   const pickKarat = async (column: number, karat: number): Promise<void> => {
     const item = items[column]
@@ -298,6 +318,7 @@ export function ItemsGrid({
         text: unit === 'tola' ? result.tola : result.gram,
         exactMg: result.mg,
       },
+      deductionKarat: karat,
     }
     if (column >= items.length) onAppend(patch)
     else onPatch(column, patch)
@@ -622,11 +643,12 @@ function Cell({
     return (
       <div className="item-column__cell is-editable item-column__rate">
         {/* Pick a karat and the milawat enters itself: net × (24 − k) / 24.
-            Shows no selection afterwards because it is a fill, not a state —
-            the FIGURE beside it is the state, and it stays editable. */}
+            The picker keeps SHOWING that karat afterwards — display only, so
+            the operator can always see what produced the figure — while the
+            FIGURE beside it stays the real, independently editable state. */}
         <select
           className="cell-purity"
-          value=""
+          value={item?.deductionKarat ?? ''}
           onChange={(event) => {
             const karat = Number(event.target.value)
             if (karat) onKarat(karat)

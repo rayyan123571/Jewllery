@@ -75,6 +75,7 @@ import type {
   WastageRuleDto,
   WeightDto,
   DeductionForRequest,
+  KaratForRequest,
   WeightFieldDto,
   WeightUnit,
 } from '../shared/ipc.js'
@@ -199,6 +200,45 @@ export function retailDeductionFor(request: DeductionForRequest): WeightDto | nu
   return weightDto(karatDeduction(net, request.karat))
 }
 
+/**
+ * The inverse of `retailDeductionFor`: given a TYPED deduction and the item's
+ * current net weight, which standard karat (if any) produced it?
+ *
+ * A deduction alone does not fix a karat — k = 24 × (1 − deduction / net), so
+ * the same figure implies a different karat on a different net weight. This is
+ * judged fresh against gross and stone exactly as they stand, the same net
+ * basis `retailDeductionFor` fills FROM.
+ *
+ * "Within 0.05 karat of a standard one" is never computed as k itself — that
+ * would put a float division back in the one place this system goes out of
+ * its way to avoid it. Instead the 0.05-karat window is turned into a WEIGHT
+ * tolerance (net × 0.05 ÷ 24 = net ÷ 480) and tested by cross-multiplying:
+ * `diff × 480 ≤ net` is exactly `diff ≤ net ÷ 480` without ever rounding that
+ * quotient, so it can never drift onto the wrong side of the boundary the way
+ * a `Number` division could.
+ *
+ * Returns null — never a guess — when there is no net weight to judge against,
+ * the typed text does not parse as a weight at all, or the figure simply is
+ * not close to any of the four karats the milawat selector offers.
+ */
+export function retailKaratFor(request: KaratForRequest): number | null {
+  const unit: WeightUnit = request.unit === 'tola' ? 'tola' : 'gram'
+  const net = weightOrZero(request.gross, unit).minus(weightOrZero(request.stone, unit))
+  if (!net.isPositive) return null
+
+  const typed = weightOrNull(request.deduction, unit)
+  if (!typed || typed.isNegative) return null
+
+  let best: { karat: number; diffMg: number } | null = null
+  for (const karat of DEDUCTION_KARATS) {
+    const candidate = karatDeduction(net, karat)
+    const diffMg = Math.abs(typed.milligrams - candidate.milligrams)
+    if (diffMg * 480 > net.milligrams) continue
+    if (!best || diffMg < best.diffMg) best = { karat, diffMg }
+  }
+  return best?.karat ?? null
+}
+
 function moneyOf(text: string | null | undefined): Money {
   const trimmed = (text ?? '').trim()
   return trimmed === '' ? Money.ZERO : Money.parse(trimmed)
@@ -218,6 +258,22 @@ function weightOrZero(field: WeightFieldDto | null | undefined, unit: WeightUnit
     return weightOf(field, unit)
   } catch {
     return Weight.ZERO
+  }
+}
+
+/**
+ * Like `weightOrZero`, but does not paper over a value that fails to parse.
+ *
+ * An empty box is a legitimate zero — `weightOf` already reads it that way
+ * without throwing — but text that does not parse (a stray letter mid-typing,
+ * a second decimal point) is not "no milawat"; it is nothing yet, and treating
+ * it as zero would confidently imply 24K while the operator is still typing.
+ */
+function weightOrNull(field: WeightFieldDto | null | undefined, unit: WeightUnit): Weight | null {
+  try {
+    return weightOf(field, unit)
+  } catch {
+    return null
   }
 }
 

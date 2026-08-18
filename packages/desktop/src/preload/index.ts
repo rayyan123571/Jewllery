@@ -43,6 +43,7 @@ import {
   type WastageRuleDto,
   type CategoryNodeDto,
   type DeductionForRequest,
+  type KaratForRequest,
   type InventorySetupResult,
   type InventorySummaryDto,
   type ItemDto,
@@ -259,6 +260,10 @@ const api: RendererApi = {
   retailDeductionFor: (request: DeductionForRequest) =>
     ipcRenderer.invoke(IPC_RETAIL.deductionFor, request) as ReturnType<
       RendererApi['retailDeductionFor']
+    >,
+  retailKaratFor: (request: KaratForRequest) =>
+    ipcRenderer.invoke(IPC_RETAIL.karatFor, request) as ReturnType<
+      RendererApi['retailKaratFor']
     >,
   retailSave: (request: RetailPostRequest) =>
     ipcRenderer.invoke(IPC_RETAIL.save, request) as Promise<RetailPostResult>,

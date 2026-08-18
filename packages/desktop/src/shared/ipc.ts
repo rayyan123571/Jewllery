@@ -266,6 +266,12 @@ export interface RendererApi {
    * 0.972 g. Null when the karat is not one the counter quotes.
    */
   retailDeductionFor(request: DeductionForRequest): Promise<WeightDto | null>
+  /**
+   * The inverse: which standard karat (if any) is TYPED figure implies, given
+   * the item's current net weight. Null when nothing is close — see
+   * `KaratForRequest`.
+   */
+  retailKaratFor(request: KaratForRequest): Promise<number | null>
   retailSave(request: RetailPostRequest): Promise<RetailPostResult>
   retailHold(request: RetailPostRequest): Promise<RetailPostResult>
   retailLoad(reference: RetailLoadRequest): Promise<RetailSaleDto | null>
@@ -636,6 +642,8 @@ export const IPC_RETAIL = {
   calculate: 'retail:calculate',
   /** Net × (24 − karat)/24, as a filled-in deduction. Pure: no writes. */
   deductionFor: 'retail:deductionFor',
+  /** The inverse of `deductionFor` — a typed figure back to a karat. */
+  karatFor: 'retail:karatFor',
   save: 'retail:save',
   hold: 'retail:hold',
   load: 'retail:load',
@@ -735,6 +743,17 @@ export interface RetailItemDto {
   readonly stoneCharges: string
   /** Typed on this line. Empty means "use this item's purity rate". */
   readonly ratePerTola: string
+  /**
+   * The karat last picked from the Purity Deduction milawat selector.
+   *
+   * Display only — main never reads it, and it plays no part in any
+   * calculation. Its entire job is letting the dropdown keep showing which
+   * karat produced the figure beside it instead of resetting to "—" the
+   * instant the one-shot fill completes. Optional so every existing place
+   * that builds a `RetailItemDto` — a loaded invoice, a resumed draft, main's
+   * own parsing — is unaffected by not setting it.
+   */
+  readonly deductionKarat?: number | null
 }
 
 export interface RetailDraftDto {
@@ -1586,6 +1605,19 @@ export interface DeductionForRequest {
   readonly stone: WeightFieldDto
   readonly unit: string
   readonly karat: number
+}
+
+/**
+ * The inverse question: given what was TYPED into the Purity Deduction cell,
+ * which standard karat (if any) produced it? Sent on every commit of that
+ * cell, with the item's current weights so the answer is judged against the
+ * same net basis `DeductionForRequest` fills FROM.
+ */
+export interface KaratForRequest {
+  readonly gross: WeightFieldDto
+  readonly stone: WeightFieldDto
+  readonly deduction: WeightFieldDto
+  readonly unit: string
 }
 
 /**

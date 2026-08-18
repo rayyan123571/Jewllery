@@ -221,8 +221,16 @@ export function RetailScreen({
   const [lastSlipSaleIds, setLastSlipSaleIds] = useState<ReadonlyMap<number, string>>(
     new Map(),
   )
-  /** A bill somebody was part-way through when the app last closed. */
-  const [recovered, setRecovered] = useState<RetailDraftFoundDto | null>(null)
+  /**
+   * True until the launch-time check for a leftover draft has resolved.
+   *
+   * Gates the autosave below: an untouched screen's own 400ms autosave must not
+   * write an EMPTY bill over a draft that has not been read onto the screen yet
+   * — `retailDraftSave` treats an empty bill as "nothing to keep" and discards
+   * whatever is stored, so a bad race here would silently destroy the very
+   * draft this flag exists to protect.
+   */
+  const [draftPending, setDraftPending] = useState(true)
 
   // ── the book, and where the screen is in it ───────────────────────────────
   /**
@@ -328,12 +336,12 @@ export function RetailScreen({
    * blocks a save, so a draft that came back without it would resume into a
    * screen that refuses to save and cannot say which line is at fault.
    *
-   * Suppressed while the resume card is up: until the operator has said Resume
-   * or Discard, the screen is showing an empty bill that must not be written
-   * over the draft it is offering to restore.
+   * Suppressed until the launch-time draft check has resolved: for that first
+   * moment the screen is showing an empty bill that must not be written over a
+   * draft still being read in and resumed automatically (see `draftPending`).
    */
   useEffect(() => {
-    if (recovered) return
+    if (draftPending) return
     // SUSPENDED while a stored invoice is displayed, and this is the whole
     // reason the guard can be trusted. `retail_draft_bills` holds ONE draft per
     // branch (migration 011 replaces it wholesale on every write), so an
@@ -345,18 +353,16 @@ export function RetailScreen({
       void window.api.retailDraftSave({ draft, activeSlipNo })
     }, 400)
     return () => clearTimeout(timer)
-  }, [draft, activeSlipNo, recovered, stored])
+  }, [draft, activeSlipNo, draftPending, stored])
 
   /**
-   * On launch: is there a bill somebody was part-way through?
+   * Loads a found draft straight onto the screen — no card, no confirmation.
    *
-   * Never reopened silently and never binned silently. The card names the
-   * customer, the slips, the items and the total, and the operator chooses.
+   * Called once, automatically, the moment `retailDraftFind` answers on launch.
+   * Silent by design: every entry made against a bill is meant to survive a
+   * restart without the operator being asked about it, so this is the ONLY path
+   * a leftover draft takes back onto the screen.
    */
-  useEffect(() => {
-    void window.api.retailDraftFind().then(setRecovered)
-  }, [])
-
   const resumeDraft = useCallback((found: RetailDraftFoundDto) => {
     const state = found.state
     setForm({
@@ -371,18 +377,24 @@ export function RetailScreen({
     })
     setSlips(state.draft.slips)
     setActiveSlipNo(state.activeSlipNo)
-    setRecovered(null)
     // Re-seed: a resumed bill is exactly what was left, so it is not dirty
     // until the operator touches it again.
     setBaseline('')
-    push('ok', `Resumed the bill for ${found.customerName}. Nothing was lost.`)
-  }, [push])
+  }, [])
 
-  const discardDraft = useCallback(async () => {
-    await window.api.retailDraftDiscard()
-    setRecovered(null)
-    push('ok', 'That draft has been discarded. Starting a new bill.')
-  }, [push])
+  /**
+   * On launch: is there a bill somebody was part-way through?
+   *
+   * Resumed automatically and silently the instant one is found — no card, no
+   * toast. `draftPending` drops either way once this answers, which is what
+   * lets the autosave below run again.
+   */
+  useEffect(() => {
+    void window.api.retailDraftFind().then((found) => {
+      if (found) resumeDraft(found)
+      setDraftPending(false)
+    })
+  }, [resumeDraft])
 
   const active: RetailCalculationDto | null = calc?.active ?? null
   const lines = active?.lines ?? []
@@ -1156,40 +1168,10 @@ export function RetailScreen({
 
       <div className="retail__notices">
         {/*
-          A bill somebody was part-way through.
-
-          Never reopened silently and never binned silently: the operator is
-          told what is there and chooses. Until they do, the debounced save is
-          suppressed, so the empty screen behind this card cannot overwrite the
-          draft it is offering to restore.
+          A bill somebody was part-way through is resumed automatically, above
+          in the `retailDraftFind` effect — silently, with no card and no toast.
+          See `resumeDraft` and `draftPending` for how that stays safe.
         */}
-        {recovered ? (
-          <div className="confirm">
-            <p className="confirm__text">
-              A bill for <strong>{recovered.customerName}</strong> was still open when
-              the application last closed — {recovered.slipCount} slip
-              {recovered.slipCount === 1 ? '' : 's'}, {recovered.itemCount} item
-              {recovered.itemCount === 1 ? '' : 's'}, Rs {recovered.total}. Nothing has
-              been posted.
-            </p>
-            <div className="confirm__actions">
-              <Action
-                id="retail.draft.discard"
-                variant="ghost"
-                onActivate={() => void discardDraft()}
-              >
-                Discard it
-              </Action>
-              <Action
-                id="retail.draft.resume"
-                className="login__submit"
-                onActivate={() => resumeDraft(recovered)}
-              >
-                Resume this bill
-              </Action>
-            </div>
-          </div>
-        ) : null}
 
         {rateMissing ? (
         <div className="banner">
