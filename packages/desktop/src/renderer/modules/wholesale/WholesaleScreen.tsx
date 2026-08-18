@@ -41,10 +41,23 @@ import type {
  * new.
  */
 
-const EMPTY_ROW: LineInputDto = { itemName: '', grossGrams: '', kattRatti: '', remarks: null }
+const EMPTY_ROW: LineInputDto = {
+  itemName: '',
+  grossGrams: '',
+  kattRatti: '',
+  remarks: null,
+  // Empty, not 'K22': a row that has not named a karat keeps whatever the SLIP
+  // is priced at, and defaulting here would pin every row to 22K the moment it
+  // was created. See `purityOf` in wholesaleIpc.
+  purity: '',
+  male: null,
+}
+
+/** The karats a line can be priced at, in the order the counter reads them. */
+const RATE_PURITY_OPTIONS = ['K24', 'K22', 'K21', 'K18'] as const
 
 /** The typeable columns, in tab order. Khalis, rate and amount are computed. */
-const COLUMNS = ['itemName', 'grossGrams', 'kattRatti', 'remarks'] as const
+const COLUMNS = ['itemName', 'grossGrams', 'kattRatti', 'male', 'remarks'] as const
 
 /**
  * Whether a preformatted figure is worth colouring.
@@ -414,25 +427,43 @@ export function WholesaleScreen({
   /**
    * The two keyboard behaviours a counter operator actually uses.
    *
-   * Enter walks DOWN a column, because a slip is entered a column at a time —
-   * six gross weights, then six katts — not a row at a time. Tab off the last
-   * cell of the last row opens a new one and lands in its first cell, so a long
-   * slip never needs the mouse. Both matter more than anything visual on this
-   * screen: they are the difference between typing a slip and operating a form.
+   * Enter walks ACROSS the row — name, then gross, then katt — and off the last
+   * cell it opens the next row and lands in its first. That finishes one item
+   * before starting the next, which is how the operator here reads a slip out.
+   *
+   * It used to walk DOWN the column instead, on the reasoning that a slip is
+   * entered a column at a time (six gross weights, then six katts). Changed on
+   * the shop's own instruction: whichever is right in general, the counter that
+   * runs this is entering item by item. Tab is unchanged and still opens a new
+   * row off the last cell, so the old habit still has a key.
    */
   const onCellKeyDown = (
     rowIndex: number,
     columnIndex: number,
     event: KeyboardEvent<HTMLInputElement>,
   ): void => {
+    const lastCell = rowIndex === rows.length - 1 && columnIndex === COLUMNS.length - 1
+
     if (event.key === 'Enter') {
       event.preventDefault()
-      const below = cells.current.get(`${rowIndex + 1}:${columnIndex}`)
-      below?.focus()
-      below?.select()
+      if (columnIndex < COLUMNS.length - 1) {
+        const next = cells.current.get(`${rowIndex}:${columnIndex + 1}`)
+        next?.focus()
+        next?.select()
+        return
+      }
+      // Off the end of the row: the next one down, opening it if it is the last.
+      if (lastCell) {
+        addRow()
+        setPendingFocus(`${rowIndex + 1}:0`)
+        return
+      }
+      const nextRow = cells.current.get(`${rowIndex + 1}:0`)
+      nextRow?.focus()
+      nextRow?.select()
       return
     }
-    const lastCell = rowIndex === rows.length - 1 && columnIndex === COLUMNS.length - 1
+
     if (event.key === 'Tab' && !event.shiftKey && lastCell) {
       event.preventDefault()
       addRow()
@@ -915,6 +946,7 @@ export function WholesaleScreen({
                         <col className="col--rate" />
                         <col className="col--amount" />
                         <col className="col--remarks" />
+                        <col className="col--remarks" />
                         <col className="col--action" />
                       </colgroup>
                       <thead>
@@ -928,8 +960,12 @@ export function WholesaleScreen({
                           <th className="numeric">Gross g</th>
                           <th className="numeric">Katt r/t</th>
                           <th className="numeric">Khalis g</th>
+                          {/* The rate, and the karat it came from. One cell:
+                              237,970 at 22K and 237,970 at 24K are different
+                              claims about the same figure. */}
                           <th className="numeric">Rate</th>
                           <th className="numeric">Amount</th>
+                          <th>Male</th>
                           <th>Remarks</th>
                           <th className="grid__action">Action</th>
                         </tr>
@@ -990,8 +1026,42 @@ export function WholesaleScreen({
                               >
                                 {computed?.khalisDisplay ?? '—'}
                               </td>
-                              <td className="numeric muted">{computed?.rateDisplay ?? '—'}</td>
+                              {/* The rate, with the karat that produced it
+                                  beside it. Picking a karat reprices THIS row
+                                  only — the figure itself stays computed by
+                                  main, like every other figure here. */}
+                              <td className="numeric muted cell-rate">
+                                <select
+                                  className="cell-purity"
+                                  value={row.purity ?? ''}
+                                  onChange={(e) => setRow(index, { purity: e.target.value })}
+                                  disabled={isLocked}
+                                  aria-label={`Rate purity row ${index + 1}`}
+                                >
+                                  {/* Blank means "whatever the slip is priced
+                                      at", which is what an untouched row and
+                                      every slip typed before this did. */}
+                                  <option value="">—</option>
+                                  {RATE_PURITY_OPTIONS.map((purity) => (
+                                    <option key={purity} value={purity}>
+                                      {purity.slice(1)}K
+                                    </option>
+                                  ))}
+                                </select>
+                                <span>{computed?.rateDisplay ?? '—'}</span>
+                              </td>
                               <td className="numeric muted">{computed?.amountDisplay ?? '—'}</td>
+                              <td>
+                                <input
+                                  className="input input--cell"
+                                  value={row.male ?? ''}
+                                  onChange={(e) => setRow(index, { male: e.target.value })}
+                                  placeholder="—"
+                                  aria-label={`Male row ${index + 1}`}
+                                  disabled={isLocked}
+                                  {...cell(3)}
+                                />
+                              </td>
                               <td>
                                 <input
                                   className="input input--cell"
@@ -1000,7 +1070,7 @@ export function WholesaleScreen({
                                   placeholder="—"
                                   aria-label={`Remarks row ${index + 1}`}
                                   disabled={isLocked}
-                                  {...cell(3)}
+                                  {...cell(4)}
                                 />
                               </td>
                               <td className="grid__action">
@@ -1035,6 +1105,8 @@ export function WholesaleScreen({
                           </td>
                           <td />
                           <td className="numeric">{totals.amount}</td>
+                          {/* Male and Remarks: two note columns, no total. */}
+                          <td />
                           <td />
                           <td className="grid__action" />
                         </tr>
@@ -1330,14 +1402,17 @@ function InvoicePreview({
         {items.length > 0 ? (
           <>
             <div className="slip__rule" />
-            <div className="slip__row slip__head">
+            {/* `slip__row--cols` puts the heading, the items and the totals on
+                ONE shared four-column grid. Without it each row spaced itself
+                by its own content and no figure sat under its own heading. */}
+            <div className="slip__row slip__row--cols slip__head">
               <span>ITEM</span>
               <span>GR</span>
               <span>KATT</span>
               <span>PR</span>
             </div>
             {items.map((line, index) => (
-              <div className="slip__row slip__item" key={index}>
+              <div className="slip__row slip__row--cols slip__item" key={index}>
                 <span>{line.itemName}</span>
                 <span>{line.grossDisplay}</span>
                 <span>{line.kattDisplay}</span>
@@ -1348,7 +1423,7 @@ function InvoicePreview({
             {/* The parentheses stay HERE and only here: this is a facsimile of
                 the paper, and the thermal renderer prints them. The on-screen
                 totals row does not. */}
-            <div className="slip__row">
+            <div className="slip__row slip__row--cols">
               <span>Total</span>
               <span>( {preview?.grossTotalDisplay ?? '0.000'} )</span>
               <span />

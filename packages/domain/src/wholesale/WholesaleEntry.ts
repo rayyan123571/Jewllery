@@ -24,6 +24,16 @@ export interface WholesaleLineItem {
   readonly ratePerTola: Money
   readonly amount: Money
   readonly remarks: string | null
+  /**
+   * The karat whose rate priced this line — migration 019.
+   *
+   * Stored beside the rate rather than instead of it: the rate is what the
+   * line was charged, this is why. A reprint reads the rate; a reader asking
+   * what the line WAS reads this.
+   */
+  readonly purity: string
+  /** The shop's second free-text note. Never printed — migration 020. */
+  readonly male: string | null
 }
 
 export interface WholesaleEntry {

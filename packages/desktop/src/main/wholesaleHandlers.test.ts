@@ -217,7 +217,16 @@ describe('a posted slip, read back in the shape the screen edits', () => {
     expect(loaded?.invoiceNumber).toBe(number)
     expect(loaded?.invoiceNo).toBe(String(number))
     expect(loaded?.draft.lines).toEqual([
-      { itemName: 'GOLD CHAIN', grossGrams: '47.240', kattRatti: '9.000', remarks: null },
+      {
+        itemName: 'GOLD CHAIN',
+        grossGrams: '47.240',
+        kattRatti: '9.000',
+        remarks: null,
+        // Written by the fake at post time: a line that named no karat is
+        // stored as the shop default it was actually priced at.
+        purity: 'K22',
+        male: null,
+      },
     ])
   })
 

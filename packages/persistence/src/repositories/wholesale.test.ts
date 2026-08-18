@@ -68,6 +68,8 @@ function issueEntry(overrides: Partial<NewWholesaleEntry> = {}): NewWholesaleEnt
       ratePerTola: line.ratePerTola,
       amount: line.amount,
       remarks: line.remarks,
+      purity: line.purity ?? 'K22',
+      male: line.male ?? null,
     })),
     ...overrides,
   }
@@ -162,6 +164,8 @@ describe('posting the real slip', () => {
               ratePerTola: Money.ZERO,
               amount: Money.ZERO,
               remarks: null,
+              purity: 'K22',
+              male: null,
             },
           ],
         }),

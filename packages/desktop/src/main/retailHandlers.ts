@@ -336,6 +336,8 @@ function parseItem(dto: RetailItemDto, unit: WeightUnit, ratePurity: Purity): Re
     // Empty is not zero. An empty Rate cell means "price this at its purity's
     // rate"; a zero would mean the shop is giving the metal away.
     ...(dto.ratePerTola?.trim() ? { ratePerTola: moneyOf(dto.ratePerTola) } : {}),
+    // Trimmed to null: a box holding only spaces is a box nobody wrote in.
+    remarks: dto.remarks?.trim() ? dto.remarks.trim() : null,
   }
 }
 
@@ -783,6 +785,7 @@ export function retailLoadAsDraft(
       ratePerTola: item.ratePerTola.isZero
         ? found.sale.ratePerTola.format()
         : item.ratePerTola.format(),
+      remarks: item.remarks,
     }))
 
     const draft: RetailBillDraftDto = {
@@ -1698,6 +1701,7 @@ function draftBillOf(
         labourMode: item.labourMode,
         stoneCharges: item.stoneCharges,
         ratePerTola: item.ratePerTola,
+        remarks: item.remarks ?? '',
       })),
     })),
   }
@@ -1738,6 +1742,7 @@ function draftDtoOf(draft: DraftBill): RetailDraftStateDto {
           labourMode: item.labourMode,
           stoneCharges: item.stoneCharges,
           ratePerTola: item.ratePerTola,
+          remarks: item.remarks ?? '',
         })),
       })),
     },

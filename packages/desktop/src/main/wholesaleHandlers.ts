@@ -116,6 +116,8 @@ export function wholesaleLoadAsDraft(
       grossGrams: line.gross.format(),
       kattRatti: line.katt.format(),
       remarks: line.remarks,
+      purity: line.purity,
+      male: line.male,
     }))
 
     return {

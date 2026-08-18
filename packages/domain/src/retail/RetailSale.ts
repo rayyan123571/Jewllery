@@ -87,6 +87,14 @@ export interface RetailSaleItem {
    */
   readonly ratePerTola: Money
   readonly lineAmount: Money
+  /**
+   * The shop's own note on this piece — migration 021.
+   *
+   * Not the sale's `remarks`, which is about the visit; this is about the one
+   * line. Deliberately absent from `RetailReceiptLine`: the customer gets the
+   * invoice, the shop keeps its notes.
+   */
+  readonly remarks: string | null
 }
 
 export interface RetailSale {

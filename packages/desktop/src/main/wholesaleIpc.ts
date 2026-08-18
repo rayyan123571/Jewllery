@@ -13,9 +13,14 @@ import {
   type DescribedBalance,
   type Party,
   type PublicUser,
+  type Purity,
   type WholesaleLineInput,
 } from '@jewellery/domain'
-import { OverReturnRequiresConfirmationError, Settings } from '@jewellery/application'
+import {
+  OverReturnRequiresConfirmationError,
+  Settings,
+  WHOLESALE_RATE_PURITY,
+} from '@jewellery/application'
 import {
   IPC_M2,
   type BalanceDto,
@@ -246,6 +251,16 @@ export function registerWholesaleHandlers(container: Container, session: Session
     }
   }
 
+  /**
+   * The karat a row named, or null for "did not name one".
+   *
+   * Null is not K22 and the difference matters: a row that named nothing keeps
+   * whatever the SLIP resolved, which is how every slip typed before purity was
+   * per-line goes on pricing exactly as it did.
+   */
+  const purityOf = (raw: string | undefined): Purity | null =>
+    raw && (PURITIES as readonly string[]).includes(raw) ? parsePurity(raw) : null
+
   ipcMain.handle(IPC_M2.wholesalePreview, (_e, request: PostIssueRequest): PreviewDto => {
     const date = toIsoDate(request.entryDate)
     const rate =
@@ -258,13 +273,29 @@ export function registerWholesaleHandlers(container: Container, session: Session
     for (const line of request.lines) {
       if (!line.itemName.trim() && !line.grossGrams.trim()) continue
       try {
-        if (!rate) throw new Error('No gold rate for this date.')
+        // The rate for THIS line's karat, resolved the same way the post path
+        // resolves it — an override still wins over everything, and a line that
+        // names no purity keeps the slip rate. A preview that priced a 24K line
+        // at the 22K rate would disagree with the invoice it is previewing.
+        const linePurity = purityOf(line.purity)
+        const lineRate =
+          overrideOf(request.ratePerTolaOverride) ??
+          (linePurity
+            ? container.wholesale.rateFor(container.branchId, date, linePurity)
+            : rate)
+        if (!lineRate) {
+          throw new Error(
+            `No ${(linePurity ?? WHOLESALE_RATE_PURITY).slice(1)}K gold rate for this date.`,
+          )
+        }
         const input: WholesaleLineInput = {
           itemName: line.itemName.trim(),
           gross: Weight.parse(line.grossGrams || '0'),
           katt: Katt.parse(line.kattRatti || '0'),
-          ratePerTola: rate,
+          ratePerTola: lineRate,
           remarks: line.remarks,
+          purity: linePurity ?? WHOLESALE_RATE_PURITY,
+          male: line.male ?? null,
         }
         const computed = computeLine(input)
         valid.push(input)
@@ -276,6 +307,10 @@ export function registerWholesaleHandlers(container: Container, session: Session
           rateDisplay: computed.ratePerTola.formatWhole(),
           amountDisplay: computed.amount.format(),
           purityDisplay: computed.katt.purityPercent(),
+          // Which KARAT priced the line, as against `purityDisplay`, which is
+          // the katt as a percentage. Two different facts that both got called
+          // purity on the old single-rate slip.
+          ratePurity: formatPurity(linePurity ?? WHOLESALE_RATE_PURITY),
           error: null,
         })
       } catch (error) {
@@ -287,6 +322,7 @@ export function registerWholesaleHandlers(container: Container, session: Session
           rateDisplay: rate?.formatWhole() ?? '—',
           amountDisplay: '—',
           purityDisplay: '—',
+          ratePurity: formatPurity(purityOf(line.purity) ?? WHOLESALE_RATE_PURITY),
           error: messageOf(error),
         })
       }
@@ -319,12 +355,19 @@ export function registerWholesaleHandlers(container: Container, session: Session
         ...(override ? { ratePerTolaOverride: override } : {}),
         lines: request.lines
           .filter((l) => l.itemName.trim() || l.grossGrams.trim())
-          .map((l) => ({
-            itemName: l.itemName,
-            gross: Weight.parse(l.grossGrams || '0'),
-            katt: Katt.parse(l.kattRatti || '0'),
-            remarks: l.remarks,
-          })),
+          .map((l) => {
+            const purity = purityOf(l.purity)
+            return {
+              itemName: l.itemName,
+              gross: Weight.parse(l.grossGrams || '0'),
+              katt: Katt.parse(l.kattRatti || '0'),
+              remarks: l.remarks,
+              // Omitted rather than defaulted when the row named nothing, so
+              // the service can tell "keep the slip rate" from "price at K22".
+              ...(purity ? { purity } : {}),
+              male: l.male ?? null,
+            }
+          }),
         notes: request.notes,
       })
       return {

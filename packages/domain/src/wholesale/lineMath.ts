@@ -35,13 +35,25 @@ export function amountOf(khalis: Weight, ratePerTola: Money): Money {
   return Money.valueOfAtTolaRate(khalis, ratePerTola)
 }
 
-/** One line of a wholesale entry, as the grid shows it. */
+/**
+ * One line of a wholesale entry, as the grid shows it.
+ *
+ * Note what is NOT here: the purity. A karat is a way of CHOOSING a rate, and
+ * by the time a line reaches this file that choice has been made and resolved
+ * to `ratePerTola` one layer up, in the service. The same rule retail follows —
+ * `RetailLineInput` carries no purity either — and it is what keeps this file
+ * pure arithmetic over weights and money.
+ */
 export interface WholesaleLineInput {
   readonly itemName: string
   readonly gross: Weight
   readonly katt: Katt
   readonly ratePerTola: Money
   readonly remarks: string | null
+  /** Carried for the stored row, never used in a calculation here. */
+  readonly purity?: string
+  /** The shop's second free-text note. Never calculated with. */
+  readonly male?: string | null
 }
 
 export interface WholesaleLineComputed extends WholesaleLineInput {

@@ -495,6 +495,22 @@ export interface LineInputDto {
   readonly grossGrams: string
   readonly kattRatti: string
   readonly remarks: string | null
+  /**
+   * Which karat this line is priced at — 'K24', 'K22'.
+   *
+   * Per LINE, because one party can take 24K bars and 22K jewellery in the
+   * same visit and the slip has to charge each at its own rate. Absent means
+   * the shop's default (K22), which is what every row written before this
+   * existed was priced at.
+   */
+  readonly purity?: string
+  /**
+   * The shop's second working note on this row, beside `remarks`.
+   *
+   * Free text with no meaning to any calculation, and not on the printed slip.
+   * Added on the counter's own instruction — see migration 020.
+   */
+  readonly male?: string | null
 }
 
 export interface LinePreviewDto {
@@ -504,7 +520,10 @@ export interface LinePreviewDto {
   readonly khalisDisplay: string
   readonly rateDisplay: string
   readonly amountDisplay: string
+  /** The KATT as a percentage — how pure the metal is. */
   readonly purityDisplay: string
+  /** The KARAT whose rate priced this line — "22K". A different fact. */
+  readonly ratePurity: string
   readonly error: string | null
 }
 
@@ -744,6 +763,16 @@ export interface RetailItemDto {
   readonly stoneCharges: string
   /** Typed on this line. Empty means "use this item's purity rate". */
   readonly ratePerTola: string
+  /**
+   * The counter's own note about this piece.
+   *
+   * Deliberately NOT on the printed slip: `RetailReceiptLine` has no field for
+   * it and is not to be given one. This is the shop's working note — a stone to
+   * check, a customer's instruction, which tray it came from — and the customer
+   * gets the invoice, not the shop's notes. It is still SAVED, because a note
+   * that vanished when the screen was left would be worse than no note at all.
+   */
+  readonly remarks?: string | null
   /**
    * The karat shown beside the Purity Deduction figure, preformatted —
    * "18", "21.5", "17.61".

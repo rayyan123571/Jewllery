@@ -84,6 +84,12 @@ export interface RetailItemInput {
    * as soon as the purity is chosen.
    */
   readonly ratePerTola?: Money
+  /**
+   * The shop's own note on this piece. Never printed, never calculated with —
+   * it rides through to the stored row and comes back on the screen, and that
+   * is the whole of its life. See migration 021.
+   */
+  readonly remarks?: string | null
 }
 
 export interface RetailDraftInput {
@@ -404,6 +410,7 @@ export class RetailSaleService {
           stoneCharges: line.stoneCharges,
           ratePerTola: line.ratePerTola,
           lineAmount: line.lineAmount,
+          remarks: input.items[index]?.remarks ?? null,
         })),
       },
     )
@@ -749,6 +756,9 @@ export class RetailSaleService {
         stoneCharges: line.stoneCharges,
         ratePerTola: line.ratePerTola,
         lineAmount: line.lineAmount,
+        // Off the SLIP input, not the computed line: the domain carries no
+        // note, exactly as it carries no purity, because neither is arithmetic.
+        remarks: slip.items[index]?.remarks ?? null,
       })),
     }
   }

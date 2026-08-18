@@ -38,7 +38,15 @@ export const VISIBLE_COLUMNS = 4
 const PURITY_OPTIONS = ['K24', 'K22', 'K21', 'K18'] as const
 
 /** A cell that takes a number. Everything but the name and the mode toggle. */
-type Kind = 'text' | 'number' | 'derived' | 'rate' | 'labour' | 'deduction' | 'action'
+type Kind =
+  | 'text'
+  | 'number'
+  | 'derived'
+  | 'rate'
+  | 'labour'
+  | 'deduction'
+  | 'note'
+  | 'action'
 
 /** The karats the milawat selector offers, display order. */
 const DEDUCTION_KARAT_OPTIONS = [24, 22, 21, 18] as const
@@ -69,6 +77,9 @@ export const ROWS: readonly RowSpec[] = [
   { key: 'polish', label: 'Polish', kind: 'derived', unitLabel: true },
   { key: 'labour', label: 'Labour Charges', kind: 'labour' },
   { key: 'stoneCharges', label: 'Stone Charges', kind: 'number' },
+  // The counter's own note about the piece. It is NOT on the printed slip and
+  // is not meant to be — see RetailItemDto.remarks.
+  { key: 'remarks', label: 'Remarks', kind: 'note' },
   { key: 'rate', label: 'Rate (PKR)', kind: 'rate' },
   { key: 'amount', label: 'Amount (PKR)', kind: 'derived' },
   { key: 'action', label: 'Action', kind: 'action' },
@@ -140,6 +151,8 @@ export function ItemsGrid({
    */
   const karatLookupTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
   const karatLookupTokens = useRef(new Map<number, number>())
+  /** Derivations already asked for, so a re-render cannot re-ask mid-flight. */
+  const derivedKaratFor = useRef(new Set<string>())
 
   useEffect(() => {
     const timers = karatLookupTimers.current
@@ -345,6 +358,60 @@ export function ItemsGrid({
   }
 
   /**
+   * Re-derives the implied karat for any item that arrived without one.
+   *
+   * The karat is DERIVED, not recorded, and that is what makes this the whole
+   * of the fix: it is a pure function of gross, stone and the deduction, and
+   * all three are already stored. So nothing about it needs a column in the
+   * draft, a migration, or a field on the posted invoice — it is recomputed
+   * from what was saved, wherever the items came from.
+   *
+   * Which matters because this screen UNMOUNTS. Switching to another module
+   * and back throws the grid's state away and rebuilds it from the autosaved
+   * draft (App.tsx renders one module at a time), and neither that draft nor a
+   * loaded invoice carries the karat. Without this the box read blank on every
+   * return, for a figure sitting right beside it that plainly implies one.
+   *
+   * `undefined` means "never asked"; `null` means "asked, and no karat fits".
+   * Only the first is fetched, so an item that genuinely has no karat is not
+   * re-asked on every render — and since every answer is written back as one
+   * or the other, this can run at most once per item per figure. That is also
+   * what keeps it clear of the typing path: a hand-typed figure has already
+   * set the field to a defined value, so this never fires behind it.
+   */
+  useEffect(() => {
+    const empty: WeightFieldDto = { text: '', exactMg: null }
+    items.forEach((item, column) => {
+      if (item.deductionKarat !== undefined) return
+      // The typing path owns any column it has touched. Between a keystroke
+      // and its debounce landing the karat is legitimately still unset, and
+      // derivation must not read that gap as "restored without one" — it
+      // would fire an undebounced lookup per character and race the typed
+      // one to the answer. A token is minted synchronously on the first
+      // keystroke, so this is already true by the time the effect runs.
+      if (karatLookupTokens.current.has(column)) return
+      const deduction = item.purityDeduction
+      // Nothing typed is not a karat of nothing — leave the box blank rather
+      // than spend a round trip to be told so.
+      if (deduction.text.trim() === '' && deduction.exactMg === null) return
+
+      const key = `${column}:${deduction.exactMg ?? deduction.text}`
+      if (derivedKaratFor.current.has(key)) return
+      derivedKaratFor.current.add(key)
+
+      void window.api
+        .retailKaratFor({
+          gross: item.grossWeight ?? empty,
+          stone: item.stoneWeight ?? empty,
+          deduction,
+          unit,
+        })
+        .then((karat) => onPatch(column, { deductionKarat: karat }))
+        .catch(() => derivedKaratFor.current.delete(key))
+    })
+  }, [items, unit, onPatch])
+
+  /**
    * The milawat selector: pick a karat and the deduction fills itself in —
    * net × (24 − k) / 24, computed by main (one tola at 22K is exactly
    * 0.972 g). A one-shot FILL, not a binding: the cell stays a typed value
@@ -506,6 +573,8 @@ function patchFor(key: string, value: string): Partial<RetailItemDto> | null {
       return { labourCharges: value }
     case 'stoneCharges':
       return { stoneCharges: value }
+    case 'remarks':
+      return { remarks: value }
     case 'rate':
       return { ratePerTola: value }
     default:
@@ -531,6 +600,8 @@ function typedValue(spec: RowSpec, item: RetailItemDto | undefined): string {
       return item.labourCharges
     case 'stoneCharges':
       return item.stoneCharges
+    case 'remarks':
+      return item.remarks ?? ''
     case 'rate':
       return item.ratePerTola
     default:
@@ -653,6 +724,27 @@ function Cell({
             'data-cell': id,
             onFocus: (event) => onFocusCapture(event.target.value),
           }}
+        />
+      </div>
+    )
+  }
+
+  if (spec.kind === 'note') {
+    // Free text, and the only cell here that is not a figure or a choice. It
+    // reads back exactly what was typed and goes nowhere near the arithmetic
+    // or the paper.
+    return (
+      <div className="item-column__cell is-editable">
+        <input
+          className="cell-input"
+          data-cell={id}
+          value={typedValue(spec, item)}
+          onChange={(event) => onCommit(event.target.value)}
+          onFocus={(event) => onFocusCapture(event.target.value)}
+          onKeyDown={keys}
+          disabled={locked}
+          placeholder="—"
+          aria-label={`Item ${column + 1} remarks`}
         />
       </div>
     )

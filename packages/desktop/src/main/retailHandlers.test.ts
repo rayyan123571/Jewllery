@@ -1093,6 +1093,21 @@ describe('the bill in progress, across the boundary', () => {
     expect(retailDraftFind(deps)).toBeNull()
   })
 
+  it('keeps a per-item remarks through a draft round trip', () => {
+    // The shop's own note on ONE piece, as against the slip-level remarks
+    // beside it. It has to survive the screen being left and rebuilt, which is
+    // the whole reason it is stored rather than held in the renderer.
+    const noted = item({ remarks: 'stone loose — check before handover' })
+    expect(retailDraftSave(deps, saveRequest([slipOf(1, 'Full Bill', [noted])])).ok).toBe(
+      true,
+    )
+
+    const found = retailDraftFind(deps)
+    expect(found?.state.draft.slips[0]?.items[0]?.remarks).toBe(
+      'stone loose — check before handover',
+    )
+  })
+
   it('clears the draft when the bill posts, but not when the post is refused', () => {
     // Refused: a walk-in that has not paid in full. The work must survive it.
     const unpaid = saveRequest([slipOf(1, 'Full Bill')])

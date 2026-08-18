@@ -41,7 +41,14 @@ export interface WholesaleDependencies {
   readonly clock: Clock
 }
 
-/** The purity whose rate a wholesale slip is priced at. */
+/**
+ * The purity a wholesale line is priced at when it does not name one.
+ *
+ * Was the purity of the WHOLE slip until lines could choose (migration 019).
+ * It stays as the default because it is the historical truth: every line
+ * written before that WAS priced at the K22 rate, since it was the only rate
+ * this service could resolve.
+ */
 export const WHOLESALE_RATE_PURITY: Purity = 'K22'
 
 export interface IssueLineInput {
@@ -49,6 +56,10 @@ export interface IssueLineInput {
   readonly gross: Weight
   readonly katt: Katt
   readonly remarks: string | null
+  /** Priced at this karat's rate. Absent means WHOLESALE_RATE_PURITY. */
+  readonly purity?: Purity
+  /** A second free-text note. Never calculated with, never printed. */
+  readonly male?: string | null
 }
 
 export interface PostIssueInput {
@@ -140,8 +151,8 @@ export class WholesaleService {
    * that is fatal: an issue can be priced by an override, a cash settlement
    * cannot proceed at all.
    */
-  rateFor(branchId: string, on: IsoDate): Money | null {
-    return this.deps.rates.rateOn(branchId, WHOLESALE_RATE_PURITY, on)?.ratePerTola ?? null
+  rateFor(branchId: string, on: IsoDate, purity: Purity = WHOLESALE_RATE_PURITY): Money | null {
+    return this.deps.rates.rateOn(branchId, purity, on)?.ratePerTola ?? null
   }
 
   postIssue(actor: PublicUser, input: PostIssueInput): PostedResult {
@@ -168,7 +179,40 @@ export class WholesaleService {
       if (line.gross.isZero) {
         throw new ValidationError(`"${name}" has no weight. Remove the row or enter one.`)
       }
-      return { itemName: name, gross: line.gross, katt: line.katt, ratePerTola: rate, remarks: line.remarks }
+      /*
+       * The rate for THIS line's purity.
+       *
+       * An explicit override still wins over everything — it is the operator
+       * saying what the whole slip is priced at — and a line that names no
+       * purity falls back to the slip rate resolved above, so a slip typed
+       * before purity was per-line prices exactly as it did.
+       *
+       * A line naming a purity the shop has no rate for is REFUSED rather than
+       * quietly priced at the K22 rate. Pricing 24K metal at the 22K rate is
+       * invisible on the slip and wrong in the ledger.
+       */
+      const linePurity = line.purity ?? WHOLESALE_RATE_PURITY
+      const lineRate =
+        input.ratePerTolaOverride ??
+        (line.purity
+          ? this.rateFor(input.branchId, input.entryDate, line.purity)
+          : rate)
+      if (!lineRate || !lineRate.isPositive) {
+        throw new ValidationError(
+          `No ${linePurity.slice(1)}K gold rate has been recorded on or before ` +
+            `${input.entryDate}, and "${name}" is priced at it. Set that rate ` +
+            `before saving this slip.`,
+        )
+      }
+      return {
+        itemName: name,
+        gross: line.gross,
+        katt: line.katt,
+        ratePerTola: lineRate,
+        remarks: line.remarks,
+        purity: linePurity,
+        male: line.male ?? null,
+      }
     })
 
     const computed = lineInputs.map(computeLine)
@@ -183,6 +227,8 @@ export class WholesaleService {
       ratePerTola: line.ratePerTola,
       amount: line.amount,
       remarks: line.remarks,
+      purity: line.purity ?? WHOLESALE_RATE_PURITY,
+      male: line.male ?? null,
     }))
 
     const posted = this.deps.wholesale.post({

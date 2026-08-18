@@ -626,6 +626,9 @@ export class FakeRetailSaleRepository implements RetailSaleRepository {
         ...item,
         id: `${id}-item-${index}`,
         saleId: id,
+        // Optional going IN (most lines carry no note), always present coming
+        // back OUT — the stored row has the column either way.
+        remarks: item.remarks ?? null,
       })),
     }
   }

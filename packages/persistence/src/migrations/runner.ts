@@ -17,6 +17,9 @@ import { migration015 } from './015-shared-directory.js'
 import { migration016 } from './016-purchase-stock.js'
 import { migration017 } from './017-inventory-setup.js'
 import { migration018 } from './018-pieces.js'
+import { migration019 } from './019-wholesale-line-purity.js'
+import { migration020 } from './020-wholesale-line-male.js'
+import { migration021 } from './021-retail-item-remarks.js'
 
 export interface Migration {
   /** Applied in ascending order. Never renumber a released migration. */
@@ -52,6 +55,9 @@ const MIGRATIONS: readonly Migration[] = [
   migration016,
   migration017,
   migration018,
+  migration019,
+  migration020,
+  migration021,
 ]
 
 /**

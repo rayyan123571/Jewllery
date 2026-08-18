@@ -245,6 +245,10 @@ export interface NewWholesaleEntry {
 export interface NewWholesaleLine {
   readonly lineNo: number
   readonly itemName: string
+  /** Which karat's rate priced this line — migration 019. */
+  readonly purity: string
+  /** A second free-text note. Never printed — migration 020. */
+  readonly male: string | null
   readonly gross: Weight
   readonly katt: Katt
   readonly khalis: Weight
@@ -362,6 +366,15 @@ export interface NewRetailSaleItem {
   /** What this line was priced at. Zero means not recorded — migration 014. */
   readonly ratePerTola: Money
   readonly lineAmount: Money
+  /**
+   * The shop's own note on this piece. Never printed — migration 021.
+   *
+   * Optional, unlike the weights and the rate beside it, and the difference is
+   * real rather than convenience: those must always be recorded or the line is
+   * not a line, whereas most items simply have nothing written on them. Absent
+   * and empty mean the same thing here, and both store as NULL.
+   */
+  readonly remarks?: string | null
 }
 
 export interface NewRetailSale {
@@ -557,6 +570,8 @@ export interface DraftItem {
   readonly stoneCharges: string
   /** As typed. Empty means "use this item's purity rate" — never zero. */
   readonly ratePerTola: string
+  /** The shop's own note on this piece, as typed. Never printed. */
+  readonly remarks?: string
 }
 
 export interface DraftSlip {

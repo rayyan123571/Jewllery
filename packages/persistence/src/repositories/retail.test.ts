@@ -946,6 +946,7 @@ describe('a draft survives a crash', () => {
             labourMode: 'fixed',
             stoneCharges: '',
             ratePerTola: '',
+            remarks: '',
           },
           {
             lineNo: 2,
@@ -959,6 +960,9 @@ describe('a draft survives a crash', () => {
             labourMode: 'per_tola',
             stoneCharges: '2500',
             ratePerTola: '',
+            // The shop's own per-item note. Optional going in, always present
+            // coming back — the column exists on the row either way.
+            remarks: 'stone loose',
           },
         ],
       },
@@ -990,6 +994,9 @@ describe('a draft survives a crash', () => {
             labourMode: 'fixed',
             stoneCharges: '',
             ratePerTola: '',
+            // Left blank here, so the round trip proves an untouched note
+            // survives as '' rather than coming back as null.
+            remarks: '',
           },
         ],
       },

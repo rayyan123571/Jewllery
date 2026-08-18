@@ -121,6 +121,46 @@ describe('posting the real slip', () => {
     expect(() => postSlip()).toThrow(/No gold rate has been recorded/)
   })
 
+  it('prices a line at ITS OWN karat, not the slip default', () => {
+    // 24K is dearer than 22K, and a party taking both in one visit must be
+    // charged each at its own rate. Before lines could name a karat the whole
+    // slip went out at the K22 rate.
+    rates.seed(BRANCH, 'K24', 390_000, '2026-08-01')
+
+    const { posted } = service.postIssue(admin, {
+      branchId: BRANCH,
+      partyId,
+      entryDate: TODAY,
+      lines: [
+        { itemName: 'BAR', gross: Weight.parse('11.664'), katt: Katt.ZERO, remarks: null, purity: 'K24' },
+        { itemName: 'CHAIN', gross: Weight.parse('11.664'), katt: Katt.ZERO, remarks: null },
+      ],
+      notes: null,
+    })
+
+    expect(posted.lines[0]?.ratePerTola.paisa).toBe(39_000_000)
+    expect(posted.lines[0]?.purity).toBe('K24')
+    // The one that named nothing keeps the slip rate, exactly as before.
+    expect(posted.lines[1]?.ratePerTola.paisa).toBe(35_800_000)
+    expect(posted.lines[1]?.purity).toBe('K22')
+  })
+
+  it('refuses a line whose karat has no rate, rather than pricing it at K22', () => {
+    // Silently charging 24K metal at the 22K rate is invisible on the slip and
+    // wrong in the ledger, so it is refused by name.
+    expect(() =>
+      service.postIssue(admin, {
+        branchId: BRANCH,
+        partyId,
+        entryDate: TODAY,
+        lines: [
+          { itemName: 'BAR', gross: Weight.parse('11.664'), katt: Katt.ZERO, remarks: null, purity: 'K24' },
+        ],
+        notes: null,
+      }),
+    ).toThrow(/No 24K gold rate/)
+  })
+
   it('refuses an empty slip', () => {
     expect(() =>
       service.postIssue(admin, {

@@ -24,6 +24,7 @@ import type {
   RetailItemDto,
   RetailLineDto,
   RetailSlipDto,
+  RetailDraftFoundDto,
   KaratForRequest,
   WeightDto,
   WeightFieldDto,
@@ -266,7 +267,10 @@ const api = {
   retailBillSave,
   retailBillNextNo: vi.fn(async () => 'RB-00001'),
   retailDraftSave: vi.fn(async () => ({ ok: true as const })),
-  retailDraftFind: vi.fn(async () => null),
+  // Typed loosely on purpose, like `retailNeighbours` below: a literal-null
+  // default would fix the type at `null`, and the restore tests hand it a real
+  // draft to rebuild the screen from.
+  retailDraftFind: vi.fn(async () => null as RetailDraftFoundDto | null),
   retailDraftDiscard: vi.fn(async () => ({ ok: true as const })),
   retailBillReceipt: vi.fn(async () => null),
   retailSave: vi.fn(),
@@ -1138,6 +1142,78 @@ describe('the reverse direction — a typed value implies a karat', () => {
     await waitFor(() => expect(cell(0, 'deduction')).toBe('0.083'))
 
     expect(api.retailKaratFor).not.toHaveBeenCalled()
+  })
+
+  it('re-derives the karat for a bill restored from storage — the tab-change case', async () => {
+    /*
+     * Leaving the retail tab UNMOUNTS the screen (App.tsx renders one module
+     * at a time), so coming back rebuilds the grid from the autosaved draft —
+     * and that draft stores the deduction FIGURE, never the karat beside it.
+     * Before this was derived on mount the box came back blank every time,
+     * which is exactly what an operator reported: "wo again khtam ho jata ha".
+     *
+     * The draft below is what main hands back: a real deduction, and no
+     * `deductionKarat` anywhere in it.
+     */
+    api.retailDraftFind.mockResolvedValueOnce({
+      customerName: 'Walk-in customer',
+      slipCount: 1,
+      itemCount: 1,
+      total: '0.00',
+      savedAt: '2026-08-18 11:00',
+      state: {
+        activeSlipNo: 1,
+        draft: {
+          saleDate: '2026-08-18',
+          saleTime: '11:00',
+          customerId: null,
+          customerName: '',
+          customerMobile: null,
+          ratePurity: 'K22',
+          ratePerTolaOverride: '',
+          weightUnit: 'tola',
+          slips: [
+            {
+              slipNo: 1,
+              slipLabel: 'Full Bill',
+              draftId: 'draft-restored',
+              items: [
+                {
+                  itemName: 'BANGLE',
+                  purity: 'K22',
+                  grossWeight: { text: '11.664', exactMg: null },
+                  stoneWeight: { text: '', exactMg: null },
+                  purityDeduction: { text: '2.916', exactMg: null },
+                  wastagePercent: '',
+                  labourCharges: '',
+                  labourMode: 'fixed',
+                  stoneCharges: '',
+                  ratePerTola: '',
+                },
+              ],
+              customerGold: { text: '', exactMg: null },
+              customerGoldPurity: 'K22',
+              hallmarkCharges: '',
+              otherCharges: '',
+              discount: '',
+              amountPaid: '',
+              paymentMethod: 'cash',
+              remarks: null,
+            },
+          ],
+        },
+      },
+    })
+    api.retailKaratFor.mockResolvedValueOnce('18')
+
+    const user = userEvent.setup()
+    await openRetail(user)
+
+    // The figure came back from storage, and the karat was worked out FROM it
+    // rather than having had to be stored alongside it.
+    await waitFor(() => expect(cell(0, 'deduction')).toBe('2.916'))
+    const karatSelect = screen.getByLabelText('Item 1 deduction karat') as HTMLSelectElement
+    await waitFor(() => expect(karatSelect.value).toBe('18'))
   })
 
   it('forward still round-trips: pick 18K, the figure fills, the box reads 18', async () => {

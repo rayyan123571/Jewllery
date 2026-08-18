@@ -2109,14 +2109,38 @@ a {
   gap: var(--space-8);
 }
 
+/*
+   The ITEM BLOCK is a real four-column grid, not a flex row.
+
+   `space-between` above is right for a two-part line — a label at the left, its
+   figure at the right — and wrong for anything with columns: it spaces the
+   spans by their own CONTENT width, so the heading row and every item row set
+   their boundaries independently and no figure lands under its own heading. On
+   a slip whose whole job is to be checked by eye against the paper, that is the
+   one thing it must not do. A shared grid template is what makes the columns
+   the same columns on all three rows — heading, items, and the totals line
+   whose second figure sits under KATT with an empty cell before it.
+
+   The three figure columns are fixed and equal, and the slip sets
+   `font-variant-numeric: tabular-nums`, so digits line up down the column as
+   well as across it. */
+.slip__row--cols {
+  display: grid;
+  grid-template-columns: 1fr 4.4em 4.4em 4.4em;
+}
+
+.slip__row--cols > span:not(:first-child) {
+  text-align: right;
+}
+
 .slip__head {
   font-weight: 700;
   border-bottom: 1px solid var(--colour-border);
   padding-bottom: 2px;
 }
 
-.slip__item span:first-child {
-  flex: 1;
+.slip__item span:first-child,
+.slip__row--cols > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3543,6 +3567,16 @@ a {
   color: var(--colour-text);
   font-family: inherit;
   font-size: var(--font-size-xxs);
+}
+
+/* The wholesale grid's Rate cell: the karat picker, then the figure it
+   produced. Right-aligned as one unit so the rate column still reads as a
+   column of figures rather than a column of controls. */
+.cell-rate {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
 }
 
 /* The trailing blank column is an invitation, so it sits back a little. */

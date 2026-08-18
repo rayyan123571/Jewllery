@@ -107,6 +107,7 @@ interface ItemRow {
   stone_charges_paisa: number
   rate_per_tola_paisa: number
   line_amount_paisa: number
+  remarks: string | null
 }
 
 interface CustomerRow {
@@ -198,6 +199,7 @@ function toItem(row: ItemRow): RetailSaleItem {
     stoneCharges: Money.fromPaisa(row.stone_charges_paisa),
     ratePerTola: Money.fromPaisa(row.rate_per_tola_paisa),
     lineAmount: Money.fromPaisa(row.line_amount_paisa),
+    remarks: row.remarks,
   }
 }
 
@@ -365,8 +367,8 @@ const INSERT_ITEM = `
     (id, sale_id, line_no, item_name, purity, gross_weight_mg,
      stone_weight_mg, purity_deduction_mg, net_weight_mg, wastage_bp,
      wastage_mg, fine_weight_mg, labour_charges_paisa, labour_mode,
-     stone_charges_paisa, rate_per_tola_paisa, line_amount_paisa)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+     stone_charges_paisa, rate_per_tola_paisa, line_amount_paisa, remarks)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
 
 /**
  * The integer and the text are written from ONE argument, here, and there is no
@@ -441,6 +443,9 @@ function itemParams(item: NewRetailSaleItem, saleId: string): unknown[] {
     item.stoneCharges.paisa,
     item.ratePerTola.paisa,
     item.lineAmount.paisa,
+    // Absent and empty are the same fact on a posted line, and NULL is how this
+    // table already says it — see `remarks` beside it on the sale itself.
+    item.remarks?.trim() ? item.remarks.trim() : null,
   ]
 }
 
@@ -898,6 +903,7 @@ interface DraftItemRow {
   labour_mode: string
   stone_charges_text: string
   rate_text: string
+  remarks_text: string
 }
 
 /**
@@ -962,8 +968,8 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
            (id, draft_slip_id, line_no, item_name, purity, gross_text, gross_mg,
             stone_text, stone_mg, purity_deduction_text, purity_deduction_mg,
             wastage_percent_text, labour_text, labour_mode, stone_charges_text,
-            rate_text)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            rate_text, remarks_text)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
 
       for (const slip of draft.slips) {
@@ -1002,6 +1008,10 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
             item.labourMode,
             item.stoneCharges,
             item.ratePerTola,
+            // A scratchpad column: '' is simply what an untouched box holds,
+            // which is why this table takes NOT NULL DEFAULT '' rather than the
+            // nullable the posted row uses.
+            item.remarks ?? '',
           )
         }
       }
@@ -1063,6 +1073,7 @@ export class SqliteRetailDraftRepository implements RetailDraftRepository {
           labourMode: item.labour_mode,
           stoneCharges: item.stone_charges_text,
           ratePerTola: item.rate_text,
+          remarks: item.remarks_text,
         })),
       })),
     }

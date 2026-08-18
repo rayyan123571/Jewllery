@@ -63,6 +63,8 @@ interface LineRow {
   rate_per_tola_paisa: number
   amount_paisa: number
   remarks: string | null
+  purity: string
+  male: string | null
 }
 
 function toEntry(row: EntryRow): WholesaleEntry {
@@ -116,6 +118,8 @@ function toLine(row: LineRow): WholesaleLineItem {
     ratePerTola: Money.fromPaisa(row.rate_per_tola_paisa),
     amount: Money.fromPaisa(row.amount_paisa),
     remarks: row.remarks,
+    purity: row.purity,
+    male: row.male,
   }
 }
 
@@ -215,8 +219,9 @@ export class SqliteWholesaleRepository implements WholesaleRepository {
       const insertLine = db.prepare(
         `INSERT INTO wholesale_line_items
            (id, entry_id, branch_id, line_no, item_name, gross_mg,
-            katt_milli_ratti, khalis_mg, rate_per_tola_paisa, amount_paisa, remarks)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+            katt_milli_ratti, khalis_mg, rate_per_tola_paisa, amount_paisa, remarks,
+            purity, male)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       for (const line of entry.lines) {
         insertLine.run(
@@ -231,6 +236,8 @@ export class SqliteWholesaleRepository implements WholesaleRepository {
           line.ratePerTola.paisa,
           line.amount.paisa,
           line.remarks,
+          line.purity,
+          line.male?.trim() ? line.male.trim() : null,
         )
       }
     })
