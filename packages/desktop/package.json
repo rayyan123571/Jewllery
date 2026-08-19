@@ -1,6 +1,6 @@
 {
   "name": "@jewellery/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "main": "dist-electron/main.cjs",
   "comment": "Electron. main/ is the composition root and may see everything; renderer/ is sandboxed React and may see neither persistence nor the filesystem. NOTE: no \"type\": \"module\" here on purpose \u00e2\u20ac\u201d vite-plugin-electron reads it to choose its output format, and both the main process and a sandboxed preload must be CommonJS.",

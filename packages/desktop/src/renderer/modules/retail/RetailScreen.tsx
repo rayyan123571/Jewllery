@@ -1427,14 +1427,26 @@ function SummaryCard({
               <span className="sum-line__value">0.000</span>
             </div>
           ) : (
-            lines.map((line, index) => (
-              <div className="sum-line" key={index}>
-                <span className="sum-line__label">
-                  {line.itemName || `Item ${index + 1}`}
-                </span>
-                <span className="sum-line__value">{show(line.gross, unit)}</span>
-              </div>
-            ))
+            lines.map((line, index) => {
+              /*
+               * The milawat karat, beside the name it belongs to.
+               *
+               * Read off the ITEM rather than the computed line, because it is
+               * a display value the grid derived — the calculation never sees a
+               * karat, only the weight it implies. Blank when the deduction
+               * implies none, which is exactly when the grid's own box is blank.
+               */
+              const karat = slip?.items[index]?.deductionKarat
+              return (
+                <div className="sum-line" key={index}>
+                  <span className="sum-line__label">
+                    {line.itemName || `Item ${index + 1}`}
+                    {karat ? <span className="sum-line__karat">{karat}K</span> : null}
+                  </span>
+                  <span className="sum-line__value">{show(line.gross, unit)}</span>
+                </div>
+              )
+            })
           )}
         </div>
 

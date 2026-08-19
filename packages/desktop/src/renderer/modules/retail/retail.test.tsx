@@ -1216,6 +1216,35 @@ describe('the reverse direction — a typed value implies a karat', () => {
     await waitFor(() => expect(karatSelect.value).toBe('18'))
   })
 
+  it('writes the karat beside the item name in the SUMMARY', async () => {
+    // The rail lists items by name and weight; the karat rides along with the
+    // name so the operator can check the milawat of each piece without
+    // reading back across the grid.
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'RING', '11.664')
+    await user.click(screen.getByLabelText('Item 1 purity deduction'))
+
+    api.retailKaratFor.mockResolvedValueOnce('21')
+    await user.keyboard('1.458')
+
+    const summary = document.querySelector('.panel--summary') as HTMLElement
+    await waitFor(() => expect(within(summary).getByText('21K')).toBeTruthy())
+    // The name is still its own text — the karat is an aside beside it, not
+    // glued into the name.
+    expect(within(summary).getByText('RING')).toBeTruthy()
+  })
+
+  it('leaves the summary name alone when no karat is implied', async () => {
+    const user = userEvent.setup()
+    await openRetail(user)
+    await addItem(user, 'RING', '11.664')
+
+    const summary = document.querySelector('.panel--summary') as HTMLElement
+    await waitFor(() => expect(within(summary).getByText('RING')).toBeTruthy())
+    expect(within(summary).queryByText(/\dK$/)).toBeNull()
+  })
+
   it('forward still round-trips: pick 18K, the figure fills, the box reads 18', async () => {
     // Task 2's direction, re-checked against the new combo: picking fills the
     // deduction AND leaves the box showing the karat that produced it — the

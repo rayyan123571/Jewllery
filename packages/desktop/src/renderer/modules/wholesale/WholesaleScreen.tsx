@@ -56,8 +56,14 @@ const EMPTY_ROW: LineInputDto = {
 /** The karats a line can be priced at, in the order the counter reads them. */
 const RATE_PURITY_OPTIONS = ['K24', 'K22', 'K21', 'K18'] as const
 
-/** The typeable columns, in tab order. Khalis, rate and amount are computed. */
-const COLUMNS = ['itemName', 'grossGrams', 'kattRatti', 'male', 'remarks'] as const
+/**
+ * The typeable columns, in tab order. Khalis, rate and amount are computed.
+ *
+ * `male` sits second, beside the name rather than out past the figures: it is
+ * written while the item is being named, and a note column stranded after
+ * Amount is one the operator has to cross the whole row to reach.
+ */
+const COLUMNS = ['itemName', 'male', 'grossGrams', 'kattRatti', 'remarks'] as const
 
 /**
  * Whether a preformatted figure is worth colouring.
@@ -940,12 +946,12 @@ export function WholesaleScreen({
                       <colgroup>
                         <col className="col--index" />
                         <col />
+                        <col className="col--remarks" />
                         <col className="col--gross" />
                         <col className="col--katt" />
                         <col className="col--khalis" />
                         <col className="col--rate" />
                         <col className="col--amount" />
-                        <col className="col--remarks" />
                         <col className="col--remarks" />
                         <col className="col--action" />
                       </colgroup>
@@ -953,6 +959,7 @@ export function WholesaleScreen({
                         <tr>
                           <th className="grid__index">#</th>
                           <th>Item Name</th>
+                          <th>Male</th>
                           {/* Short forms. At 11px uppercase with tracking the
                               parenthesised units grew past their own columns
                               and every heading ellipsised. The units are on the
@@ -965,7 +972,6 @@ export function WholesaleScreen({
                               claims about the same figure. */}
                           <th className="numeric">Rate</th>
                           <th className="numeric">Amount</th>
-                          <th>Male</th>
                           <th>Remarks</th>
                           <th className="grid__action">Action</th>
                         </tr>
@@ -996,6 +1002,17 @@ export function WholesaleScreen({
                               </td>
                               <td>
                                 <input
+                                  className="input input--cell"
+                                  value={row.male ?? ''}
+                                  onChange={(e) => setRow(index, { male: e.target.value })}
+                                  placeholder="—"
+                                  aria-label={`Male row ${index + 1}`}
+                                  disabled={isLocked}
+                                  {...cell(1)}
+                                />
+                              </td>
+                              <td>
+                                <input
                                   className="input input--cell input--numeric"
                                   value={row.grossGrams}
                                   onChange={(e) => setRow(index, { grossGrams: e.target.value })}
@@ -1003,7 +1020,7 @@ export function WholesaleScreen({
                                   inputMode="decimal"
                                   aria-label={`Gross weight row ${index + 1}`}
                                   disabled={isLocked}
-                                  {...cell(1)}
+                                  {...cell(2)}
                                 />
                               </td>
                               <td>
@@ -1015,7 +1032,7 @@ export function WholesaleScreen({
                                   inputMode="decimal"
                                   aria-label={`Katt row ${index + 1}`}
                                   disabled={isLocked}
-                                  {...cell(2)}
+                                  {...cell(3)}
                                 />
                               </td>
                               <td
@@ -1054,17 +1071,6 @@ export function WholesaleScreen({
                               <td>
                                 <input
                                   className="input input--cell"
-                                  value={row.male ?? ''}
-                                  onChange={(e) => setRow(index, { male: e.target.value })}
-                                  placeholder="—"
-                                  aria-label={`Male row ${index + 1}`}
-                                  disabled={isLocked}
-                                  {...cell(3)}
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  className="input input--cell"
                                   value={row.remarks ?? ''}
                                   onChange={(e) => setRow(index, { remarks: e.target.value })}
                                   placeholder="—"
@@ -1096,6 +1102,8 @@ export function WholesaleScreen({
                         <tr>
                           <td className="grid__index" />
                           <td>Total</td>
+                          {/* Male: a note column, no total. */}
+                          <td />
                           <td className="numeric">{totals.gross}</td>
                           <td />
                           <td
@@ -1105,8 +1113,7 @@ export function WholesaleScreen({
                           </td>
                           <td />
                           <td className="numeric">{totals.amount}</td>
-                          {/* Male and Remarks: two note columns, no total. */}
-                          <td />
+                          {/* Remarks: likewise. */}
                           <td />
                           <td className="grid__action" />
                         </tr>

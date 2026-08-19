@@ -323,7 +323,7 @@ describe('no dead buttons on the wholesale toolbar', () => {
 })
 
 describe('Enter walks across the row', () => {
-  it('moves from the item name to the gross weight of the SAME row', async () => {
+  it('moves from the item name to Male, which now sits beside it', async () => {
     // The shop enters a slip item by item, so Enter finishes the item in hand
     // rather than jumping to the next row's name. (It used to walk DOWN the
     // column; changed on the counter's own instruction.)
@@ -334,19 +334,19 @@ describe('Enter walks across the row', () => {
     await user.click(name)
     await user.keyboard('BANGLE{Enter}')
 
-    expect(document.activeElement).toBe(screen.getByLabelText('Gross weight row 1'))
+    expect(document.activeElement).toBe(screen.getByLabelText('Male row 1'))
   })
 
-  it('carries on across gross, katt and the two note columns', async () => {
+  it('carries on across the figures to Remarks at the end', async () => {
     const user = userEvent.setup()
     await openWholesale()
 
-    await user.click(screen.getByLabelText('Gross weight row 1'))
+    await user.click(screen.getByLabelText('Male row 1'))
     await user.keyboard('{Enter}')
-    expect(document.activeElement).toBe(screen.getByLabelText('Katt row 1'))
+    expect(document.activeElement).toBe(screen.getByLabelText('Gross weight row 1'))
 
     await user.keyboard('{Enter}')
-    expect(document.activeElement).toBe(screen.getByLabelText('Male row 1'))
+    expect(document.activeElement).toBe(screen.getByLabelText('Katt row 1'))
 
     await user.keyboard('{Enter}')
     expect(document.activeElement).toBe(screen.getByLabelText('Remarks row 1'))

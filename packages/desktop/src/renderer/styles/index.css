@@ -4281,6 +4281,18 @@ a {
   text-overflow: ellipsis;
 }
 
+/* The item's milawat karat, riding along with its name.
+   Set back so the NAME still reads as the label and the karat as an aside —
+   two things at the same weight would make the summary a list of pairs to
+   read rather than a column of names to scan. */
+.sum-line__karat {
+  margin-left: var(--space-4);
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-xxs);
+  color: var(--colour-text-muted);
+}
+
 .sum-line__value {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums;
